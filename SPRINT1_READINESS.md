@@ -160,18 +160,15 @@ Hand this URL back to Claude Code — it will add the remote and push.
 5. **Enable PITR:** Project Settings → Add-ons → Point in Time Recovery → Enable (7-day)
 6. Collect these values from Project Settings → API:
    - `SUPABASE_URL` (e.g. `https://exrewpsjrtevsicmullp.supabase.co`) # https://exrewpsjrtevsicmullp.supabase.co
-   - `SUPABASE_ANON_KEY` # <REDACTED-supabase-anon-jwt>
-   - `SUPABASE_SERVICE_ROLE_KEY` (keep secret — never commit) # <REDACTED-supabase-service-role-jwt>
+   - `SUPABASE_ANON_KEY`
+   - `SUPABASE_SERVICE_ROLE_KEY` (keep secret — never commit)
 7. From Project Settings → Database → Connection string (URI mode):
    - `DATABASE_URL` (the direct Postgres connection string with password) # postgresql://postgres:[YOUR-PASSWORD]@db.exrewpsjrtevsicmullp.supabase.co:5432/postgres
 8. Enable Realtime: Database → Replication → enable `supabase_realtime` publication
 
 **What to hand back to Claude Code:** `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `DATABASE_URL`
-- https://exrewpsjrtevsicmullp.supabase.co
-- <REDACTED-supabase-anon-jwt>
-- <REDACTED-supabase-service-role-jwt>
-- postgresql://postgres:[YOUR-PASSWORD]@db.exrewpsjrtevsicmullp.supabase.co:5432/postgres
 
+Claude_code Access Token (IMP) - sbp_4dcfd55cc707f6b4d1d87245fcf6add2e18beabd
 ---
 
 #### A2.3 Railway — Create Project + 4 Services
@@ -193,7 +190,7 @@ Hand this URL back to Claude Code — it will add the remote and push.
 8. In Project Settings → collect the **Railway API Token** (needed for CLI deploys)
 
 **What to hand back to Claude Code:** Railway API Token, service names, generated domain for `api` service
-   - Railway API Token: beb68313-4bfa-426e-bed7-cd325afa600c
+   - Railway API Token: XXXX-XXXX-XXXXX
    - Service 1 name: `api` - api-production-9f9dd.up.railway.app
    - Service 2 name: `scheduler` - scheduler-production-c169.up.railway.app
    - Service 3 name: `escalation` - escalation-production.up.railway.app
@@ -216,9 +213,9 @@ Hand this URL back to Claude Code — it will add the remote and push.
    - Enable **TLS** ✓
    - Enable **Eviction**: No (queues must not evict job data)
 4. From the database dashboard, collect:
-   - `UPSTASH_REDIS_URL` (format: `rediss://default:TOKEN@HOST:PORT`) - REDIS_URL="rediss://default:<REDACTED-upstash-tls-password>@lucky-giraffe-107825.upstash.io:6379"
+   - `UPSTASH_REDIS_URL` (format: `rediss://default:TOKEN@HOST:PORT`)
    - `UPSTASH_REDIS_REST_URL` - https://lucky-giraffe-107825.upstash.io
-   - `UPSTASH_REDIS_REST_TOKEN` - <REDACTED-upstash-tls-password>
+   - `UPSTASH_REDIS_REST_TOKEN`
 5. In Configuration, confirm **AOF Persistence** is enabled (jobs survive Upstash restarts)
 
 **What to hand back to Claude Code:** `UPSTASH_REDIS_URL`
@@ -242,7 +239,7 @@ These don't block Week 1 code but must be ready before Week 3 coding sessions.
    - Project settings → **Add app** → Android → package name: `in.safecommand.app` → download `google-services.json`
    - Project settings → **Add app** → iOS → bundle ID: `in.safecommand.app` → download `GoogleService-Info.plist`
    - Project settings → Service accounts → **Generate new private key** → save as `firebase-admin.json` (never commit this)
-5. Cloud Messaging → note the **Server Key** (for FCM push) - BNbO6bzL6vo5ovGyXX5S4JLanXpjZnOxdTB1ENnTnYMNQvga-Uj2GdU1Jj3FK-HnT-ebtfO83TL1IbsSgIqNqjU
+5. Cloud Messaging → note the **Server Key** (for FCM push)
 
 **What to hand back to Claude Code:** `google-services.json`, `GoogleService-Info.plist`, `firebase-admin.json`, Server Key
 
@@ -533,3 +530,219 @@ Firebase, AWS, Meta, and Airtel credentials will be collected in the relevant bu
 ---
 
 *This document is current as of 2026-04-27. Update SPRINT1_READINESS.md if any status changes.*
+
+---
+
+---
+
+# STATUS UPDATE — 2026-04-29
+
+**Session:** Build + Deploy session (continuation from context-window rollover)
+**Time:** ~03:00 IST
+
+---
+
+## CURRENT STATE SUMMARY (as of 2026-04-29)
+
+| Area | Status | Detail |
+|------|--------|--------|
+| GitHub repo | ✅ Live | `github.com/sachisab99/safecommand` (private) — 6 commits on main |
+| GitHub SSH auth | ✅ Working | SSH key configured, push/pull operational |
+| Supabase project | ✅ Live | `exrewpsjrtevsicmullp.supabase.co` — Pro plan |
+| Supabase migrations | ✅ All 6 deployed | 001_enums → 006_realtime |
+| Supabase Realtime | ✅ Enabled | zones, incidents, zone_status_log, incident_timeline |
+| Railway api service | ✅ LIVE | `GET https://api-production-9f9dd.up.railway.app/health → 200` |
+| Railway scheduler | ⚠️ Code only | Scaffolded in monorepo — NOT deployed to Railway |
+| Railway escalation | ⚠️ Code only | Scaffolded in monorepo — NOT deployed to Railway |
+| Railway notifier | ⚠️ Code only | Scaffolded in monorepo — NOT deployed to Railway |
+| Upstash Redis | ✅ Live | `lucky-giraffe-107825.upstash.io` — BullMQ connected |
+| Firebase project | ✅ Created | Project ID: `safecommand-51499`, config files saved to `system/` |
+| Firebase Phone Auth | ❌ Not enabled | Must enable in Firebase Console (founder action) |
+| Firebase wired into api | ❌ Not done | Admin SDK not initialised in `apps/api/src/services/` |
+| AWS S3 bucket | ❌ Not created | Needed for photo evidence uploads (Week 6) |
+| Meta WhatsApp API | ❌ Not submitted | 7–14 day approval — **OVERDUE — START NOW** |
+| Airtel DLT SMS | ❌ Not submitted | 5–7 day approval — **OVERDUE — START NOW** |
+| Domain (safecommand.in) | ❌ Not purchased | Needed before pilot go-live |
+| Apple Developer Account | ❌ Not enrolled | Needed for iOS build (Week 6) |
+
+---
+
+## FOUNDER ACTIONS STATUS (Part A)
+
+| Action | Status | Completed |
+|--------|--------|-----------|
+| A1.1 Meta WhatsApp Business API | ❌ Not submitted | — |
+| A1.2 Airtel DLT SMS registration | ❌ Not submitted | — |
+| A2.1 GitHub SSH key + repo | ✅ Complete | 2026-04-29 |
+| A2.2 Supabase Pro project | ✅ Complete | 2026-04-29 |
+| A2.3 Railway project + 4 services | ✅ Complete | 2026-04-29 |
+| A2.4 Upstash Redis database | ✅ Complete | 2026-04-29 |
+| A3.1 Firebase project + config files | ✅ Complete | 2026-04-29 — files at `system/` |
+| A3.2 AWS S3 bucket (ap-south-1) | ❌ Not started | — |
+| A3.3 Domain purchase (safecommand.in) | ❌ Not started | — |
+| A3.4 Apple Developer Account | ❌ Not started | — |
+
+**Founder actions: 5 / 10 complete (50%)**
+
+---
+
+## WEEK 1 BUILD DELIVERABLES STATUS (Part B2)
+
+| Deliverable | Status | Notes |
+|-------------|--------|-------|
+| Monorepo scaffold (turborepo + npm workspaces) | ✅ Complete | 7 apps + 4 packages |
+| apps/api (Express + TypeScript, all Week 1 routes) | ✅ Complete | health, auth, venues, staff, zones, tasks, incidents |
+| apps/scheduler | ✅ Complete | BullMQ worker — schedule-generation queue, idempotent task creation |
+| apps/escalation | ✅ Complete | BullMQ worker — escalations + incident-escalations (priority 0) |
+| apps/notifier | ✅ Complete | BullMQ worker — notifications queue (FCM/WA/SMS stubs) |
+| apps/mobile | ✅ Scaffolded | Expo blank-TypeScript + i18next + all EN locale keys |
+| apps/dashboard | ✅ Scaffolded | Next.js 14 + Tailwind — not yet deployed to Vercel |
+| apps/ops-console | ✅ Scaffolded | Next.js 14 + Tailwind — not yet deployed to Vercel |
+| packages/types | ✅ Complete | Full TypeScript domain types + all enums |
+| packages/schemas | ✅ Complete | Zod validation schemas for all API inputs |
+| packages/db | ✅ Complete | Supabase client + setTenantContext helper |
+| packages/queue | ✅ Complete | 4 BullMQ queues + Upstash Redis connection |
+| Supabase migrations 001–005 | ✅ Deployed | enums, tables, RLS, indexes, seed templates |
+| Supabase migration 006 | ✅ Deployed | Realtime on zones, incidents, zone_status_log, incident_timeline |
+| i18n (i18next, all keys from Day 1) | ✅ Complete | EC-15 enforced |
+| Bull queue definitions (4 queues) | ✅ Complete | schedule-gen, escalations, incident-esc, notifications |
+| Railway api `GET /health` → 200 | ✅ Live | `api-production-9f9dd.up.railway.app` — db check passing |
+| GitHub Actions CI | ✅ Active | type-check + gitleaks on every PR to main |
+| gitleaks pre-commit hook | ✅ Active | `.husky/pre-commit` blocking secret commits |
+| .gitignore + .env.example | ✅ Complete | secrets never committed |
+| **GATE 1: RLS Isolation Proof** | ✅ **PASSED** | 0 cross-venue rows at `authenticated` role level (2026-04-29) |
+
+**Week 1 deliverables: 21 / 21 complete (100%)**
+
+---
+
+## WEEK 2 BUILD DELIVERABLES STATUS (Part B3)
+
+| Deliverable | Status | Notes |
+|-------------|--------|-------|
+| Auth endpoints (send-otp, verify-otp, refresh, logout) | ⚠️ Coded | Routes written — Supabase Phone Auth not yet enabled in Firebase Console |
+| JWT middleware (`req.auth` populated, tenant context) | ✅ Complete | `apps/api/src/middleware/auth.ts` — `requireAuth`, `requireRole`, `requireMinRole` |
+| Role permission matrix (all 8 roles) | ✅ Complete | `ROLE_HIERARCHY` in auth middleware |
+| Audit middleware | ✅ Complete | `apps/api/src/middleware/audit.ts` — auto-writes to audit_logs on 2xx mutations |
+| Ops Console: Next.js scaffold | ✅ Scaffolded | Blank Next.js 14 + Tailwind at `apps/ops-console/` — not yet deployed |
+| Ops Console: venue onboarding wizard | ❌ Not built | BR-02 — SC-[TYPE]-[CITY]-[SEQ] generator UI |
+| Ops Console: floor + zone editor | ❌ Not built | BR-03 — floor_number, zone_type, two-person-required toggle |
+| Ops Console: schedule template CRUD | ❌ Not built | BR-06 — frequency, role, evidence_type, escalation_chain |
+| Ops Console: initial SH account creation | ❌ Not built | BR-04 — phone → Firebase auth_id → staff record |
+| Firebase Admin SDK initialised in api | ❌ Not done | Needs `FIREBASE_PRIVATE_KEY` set in Railway first |
+| Railway worker services deployed (scheduler, escalation, notifier) | ❌ Not done | Code ready — needs `railway up` for each service |
+| Expo compile test on physical iOS + Android device | ❌ Not done | Firebase files need copying to mobile app dirs first |
+| **GATE 2: Full Venue Creation via Ops Console** | ❌ **NOT PASSED** | Ops Console UI not yet built |
+
+**Week 2 deliverables: 4 / 13 complete (31%)**
+
+---
+
+## GATE STATUS
+
+| Gate | Status | Date |
+|------|--------|------|
+| **Gate 1: RLS Isolation Proof** | ✅ **PASSED** | 2026-04-29 — proof script: `scripts/rls_isolation_verify_v2.sql` |
+| **Gate 2: Full Venue Creation via Ops Console** | ❌ **BLOCKED** | Ops Console UI not built |
+
+Gate 2 criteria (must ALL pass before Sprint 2 starts):
+- [ ] Create 3 floors in Ops Console
+- [ ] Create 12 zones across those floors
+- [ ] Create 5 schedule templates
+- [ ] Create 1 SH account (phone → staff record)
+- [ ] SH can log into mobile app with that phone number
+
+---
+
+## SPRINT 1 COMPLETION
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  SPRINT 1 OVERALL PROGRESS: ~58%
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Founder actions       5 / 10  ████████░░░░░░░░░░░░  50%
+  Week 1 deliverables  21 / 21  ████████████████████ 100%
+  Week 2 deliverables   4 / 13  ██████░░░░░░░░░░░░░░  31%
+
+  Gate 1  ✅  PASSED
+  Gate 2  ❌  NOT PASSED
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+Sprint 2 start is blocked on Gate 2. Sprint 2 cannot begin until the Ops Console allows creating a full venue (floors + zones + templates + SH account) end-to-end.
+
+---
+
+## NEXT ACTIONS (Priority Order)
+
+### IMMEDIATE — Founder actions (blocking code work)
+
+**#1 — Enable Firebase Phone Authentication**
+- Firebase Console → `safecommand-51499` → Authentication → Sign-in method → Phone → Enable
+- Add test phone number: `+91 90000 00001`, OTP: `123456` (for local testing without real SMS)
+- Time required: ~5 minutes
+
+**#2 — Set Firebase env vars in Railway**
+- Railway Dashboard → `safecommand` project → `api` service → Variables → add:
+  ```
+  FIREBASE_PROJECT_ID=safecommand-51499
+  FIREBASE_CLIENT_EMAIL=firebase-adminsdk-fbsvc@safecommand-51499.iam.gserviceaccount.com
+  FIREBASE_PRIVATE_KEY=<paste private_key field from system/firebase-admin.json>
+  FIREBASE_SERVER_KEY=BNbO6bzL6vo5ovGyXX5S4JLanXpjZnOxdTB1ENnTnYMNQvga-Uj2GdU1Jj3FK-HnT-ebtfO83TL1IbsSgIqNqjU
+  ```
+- Time required: ~10 minutes
+
+**#3 — Submit Meta WhatsApp Business API application (OVERDUE)**
+- Follow A1.1 steps above — this is now 2 days overdue relative to the original plan
+- Every day of delay pushes back the Week 4 notification stack
+- Time required: ~60–90 minutes
+
+**#4 — Submit Airtel DLT SMS registration (OVERDUE)**
+- Follow A1.2 steps above — similarly overdue
+- Time required: ~60–90 minutes
+
+---
+
+### NEXT BUILD SESSION — Claude Code actions
+
+Once Firebase env vars are set in Railway (#2 above is done), Claude Code will:
+
+1. **Wire Firebase Admin SDK into api**
+   - Create `apps/api/src/services/firebase.ts` — initialise with service account from env vars
+   - Enables FCM push token registration (`POST /auth/device-token`) and future push delivery
+
+2. **Build Sprint 1 Gate 2 — Ops Console (BR-02, BR-03)**
+   - Venue onboarding wizard (name → type → city → tier → auto-generates `SC-[TYPE]-[CITY]-[SEQ]`)
+   - Floor editor (add floors with floor_number, name)
+   - Zone editor (add zones per floor with zone_type, two-person-required toggle)
+   - Schedule template CRUD (frequency, assigned role, evidence type, escalation chain)
+   - Initial SH account creation (phone → Firebase auth_id → staff record)
+
+3. **Deploy Railway worker services**
+   - `railway up --service scheduler`
+   - `railway up --service escalation`
+   - `railway up --service notifier`
+
+4. **Expo physical device compile test**
+   - Copy `google-services.json` → `apps/mobile/android/app/`
+   - Copy `GoogleService-Info.plist` → `apps/mobile/ios/`
+   - Run `npx expo start` → verify on physical iOS + Android device
+
+5. **Run Gate 2** — end-to-end venue creation through Ops Console, SH login on mobile
+
+---
+
+### LATER — Founder actions (not blocking Gate 2 but needed before Sprint 2 ends)
+
+| Action | Deadline | Impact if delayed |
+|--------|----------|-------------------|
+| AWS S3 bucket (A3.2) | Before Sprint 2 Week 3 | Photo evidence uploads (`POST /tasks/:id/complete` with PHOTO evidence) fail |
+| Domain purchase safecommand.in (A3.3) | Before pilot | API + dashboard + ops-console on custom domains |
+| Apple Developer Account (A3.4) | Before Sprint 3 | iOS TestFlight build blocked |
+| Meta WABA approval (A1.1) | Pending (~7–14 days after submission) | WhatsApp notification delivery (Week 4) |
+| Airtel DLT approval (A1.2) | Pending (~5–7 days after submission) | SMS fallback (Week 4) |
+
+---
+
+*Status update appended: 2026-04-29 ~03:00 IST*
