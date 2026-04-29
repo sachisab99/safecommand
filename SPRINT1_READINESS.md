@@ -160,17 +160,14 @@ Hand this URL back to Claude Code — it will add the remote and push.
 5. **Enable PITR:** Project Settings → Add-ons → Point in Time Recovery → Enable (7-day)
 6. Collect these values from Project Settings → API:
    - `SUPABASE_URL` (e.g. `https://exrewpsjrtevsicmullp.supabase.co`) # https://exrewpsjrtevsicmullp.supabase.co
-   - `SUPABASE_ANON_KEY` # <REDACTED-supabase-anon-jwt>
-   - `SUPABASE_SERVICE_ROLE_KEY` (keep secret — never commit) # <REDACTED-supabase-service-role-jwt>
+   - `SUPABASE_ANON_KEY`
+   - `SUPABASE_SERVICE_ROLE_KEY` (keep secret — never commit)
 7. From Project Settings → Database → Connection string (URI mode):
    - `DATABASE_URL` (the direct Postgres connection string with password) # postgresql://postgres:[YOUR-PASSWORD]@db.exrewpsjrtevsicmullp.supabase.co:5432/postgres
 8. Enable Realtime: Database → Replication → enable `supabase_realtime` publication
 
 **What to hand back to Claude Code:** `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `DATABASE_URL`
 - https://exrewpsjrtevsicmullp.supabase.co
-- <REDACTED-supabase-anon-jwt>
-- <REDACTED-supabase-service-role-jwt>
-- postgresql://postgres:[YOUR-PASSWORD]@db.exrewpsjrtevsicmullp.supabase.co:5432/postgres
 
 ---
 
@@ -193,7 +190,7 @@ Hand this URL back to Claude Code — it will add the remote and push.
 8. In Project Settings → collect the **Railway API Token** (needed for CLI deploys)
 
 **What to hand back to Claude Code:** Railway API Token, service names, generated domain for `api` service
-   - Railway API Token: beb68313-4bfa-426e-bed7-cd325afa600c
+   - Railway API Token: XXXX-XXXX-XXX
    - Service 1 name: `api` - api-production-9f9dd.up.railway.app
    - Service 2 name: `scheduler` - scheduler-production-c169.up.railway.app
    - Service 3 name: `escalation` - escalation-production.up.railway.app
@@ -218,7 +215,7 @@ Hand this URL back to Claude Code — it will add the remote and push.
 4. From the database dashboard, collect:
    - `UPSTASH_REDIS_URL` (format: `rediss://default:TOKEN@HOST:PORT`) - REDIS_URL="rediss://default:<REDACTED-upstash-tls-password>@lucky-giraffe-107825.upstash.io:6379"
    - `UPSTASH_REDIS_REST_URL` - https://lucky-giraffe-107825.upstash.io
-   - `UPSTASH_REDIS_REST_TOKEN` - <REDACTED-upstash-tls-password>
+   - `UPSTASH_REDIS_REST_TOKEN` - XXXX-XXXXX-XXXX
 5. In Configuration, confirm **AOF Persistence** is enabled (jobs survive Upstash restarts)
 
 **What to hand back to Claude Code:** `UPSTASH_REDIS_URL`
