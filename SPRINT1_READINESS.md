@@ -579,11 +579,11 @@ Firebase, AWS, Meta, and Airtel credentials will be collected in the relevant bu
 | A2.3 Railway project + 4 services | ✅ Complete | 2026-04-29 |
 | A2.4 Upstash Redis database | ✅ Complete | 2026-04-29 |
 | A3.1 Firebase project + config files + Phone Auth enabled | ✅ Complete | 2026-04-29 — files at `system/`; Phone Auth enabled |
-| A3.2 AWS S3 bucket (ap-south-1) | ❌ Not started | — |
+| A3.2 AWS S3 bucket (ap-south-1) | ✅ Complete | 2026-04-29 — `safecommand-uploads-prod` in `ap-south-1`; IAM user `safecommand-api` created |
 | A3.3 Domain purchase (safecommand.in) | ❌ Not started | — |
 | A3.4 Apple Developer Account | ❌ Not started | — |
 
-**Founder actions: 6 / 10 complete (60%)** *(+1: Firebase Phone Auth enabled 2026-04-29)*
+**Founder actions: 7 / 10 complete (70%)** *(+1: AWS S3 bucket created 2026-04-29)*
 
 ---
 
@@ -659,10 +659,10 @@ Gate 2 criteria (must ALL pass before Sprint 2 starts):
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  SPRINT 1 OVERALL PROGRESS: ~63%
+  SPRINT 1 OVERALL PROGRESS: ~65%
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  Founder actions       6 / 10  ████████████░░░░░░░░  60%
+  Founder actions       7 / 10  ██████████████░░░░░░  70%
   Week 1 deliverables  21 / 21  ████████████████████ 100%
   Week 2 deliverables   5 / 13  ████████░░░░░░░░░░░░  38%
 
@@ -724,7 +724,7 @@ Firebase Admin SDK is now live on Railway. Next Claude Code build session:
 
 | Action | Deadline | Impact if delayed |
 |--------|----------|-------------------|
-| AWS S3 bucket (A3.2) | Before Sprint 2 Week 3 | Photo evidence uploads (`POST /tasks/:id/complete` with PHOTO evidence) fail |
+| ~~AWS S3 bucket (A3.2)~~ | ✅ Done 2026-04-29 | `safecommand-uploads-prod` ap-south-1 — env vars set locally, Railway pending re-auth |
 | Domain purchase safecommand.in (A3.3) | Before pilot | API + dashboard + ops-console on custom domains |
 | Apple Developer Account (A3.4) | Before Sprint 3 | iOS TestFlight build blocked |
 | Meta WABA approval (A1.1) | Pending (~7–14 days after submission) | WhatsApp notification delivery (Week 4) |
@@ -734,3 +734,4 @@ Firebase Admin SDK is now live on Railway. Next Claude Code build session:
 
 *Status update appended: 2026-04-29 ~03:00 IST*
 *Status update appended: 2026-04-29 ~08:00 IST — Firebase Phone Auth ✅, Firebase env vars in Railway ✅, Firebase Admin SDK live on Railway ✅, health endpoint confirmed `{"database":"ok","firebase":"ok"}`*
+*Status update appended: 2026-04-29 — A3.2 AWS S3 ✅ — `safecommand-uploads-prod` in `ap-south-1`; IAM user `safecommand-api`; env vars in local `.env` + Railway (pending re-auth)*
