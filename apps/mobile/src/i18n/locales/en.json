@@ -1,0 +1,107 @@
+{
+  "common": {
+    "ok": "OK",
+    "cancel": "Cancel",
+    "loading": "Loading...",
+    "error": "Something went wrong",
+    "retry": "Retry",
+    "save": "Save",
+    "submit": "Submit",
+    "back": "Back",
+    "logout": "Log Out"
+  },
+  "auth": {
+    "title": "SafeCommand",
+    "subtitle": "Venue Safety Platform",
+    "phone_label": "Mobile Number",
+    "phone_placeholder": "+91XXXXXXXXXX",
+    "send_otp": "Send OTP",
+    "otp_label": "Enter OTP",
+    "otp_placeholder": "6-digit code",
+    "verify": "Verify",
+    "otp_sent": "OTP sent to {{phone}}",
+    "invalid_otp": "Invalid or expired OTP",
+    "no_account": "No active account found for this number"
+  },
+  "tasks": {
+    "title": "My Tasks",
+    "pending": "Pending",
+    "complete": "Complete",
+    "missed": "Missed",
+    "escalated": "Escalated",
+    "no_tasks": "No tasks for today",
+    "due_at": "Due at {{time}}",
+    "complete_task": "Complete Task",
+    "evidence_photo": "Take Photo",
+    "evidence_text": "Enter Notes",
+    "evidence_numeric": "Enter Value",
+    "evidence_checklist": "Complete Checklist",
+    "submit_completion": "Submit",
+    "task_completed": "Task completed"
+  },
+  "incidents": {
+    "declare_title": "Declare Incident",
+    "type_label": "Incident Type",
+    "severity_label": "Severity",
+    "zone_label": "Zone",
+    "description_label": "Description (optional)",
+    "declare_button": "DECLARE INCIDENT",
+    "confirm_title": "Confirm Incident",
+    "confirm_message": "Declare a {{type}} incident? All duty staff will be notified immediately.",
+    "i_am_safe": "I AM SAFE",
+    "types": {
+      "FIRE": "Fire",
+      "MEDICAL": "Medical",
+      "SECURITY": "Security",
+      "EVACUATION": "Evacuation",
+      "STRUCTURAL": "Structural",
+      "OTHER": "Other"
+    },
+    "severity": {
+      "SEV1": "SEV1 — Critical",
+      "SEV2": "SEV2 — High",
+      "SEV3": "SEV3 — Medium"
+    }
+  },
+  "zones": {
+    "title": "Zone Status",
+    "all_clear": "All Clear",
+    "attention": "Attention Required",
+    "incident_active": "Incident Active",
+    "accountability_title": "Zone Accountability Map"
+  },
+  "shifts": {
+    "title": "Current Shift",
+    "no_active_shift": "No active shift",
+    "handover_title": "Shift Handover",
+    "handover_notes": "Handover Notes",
+    "submit_handover": "Submit Handover",
+    "accept_handover": "Accept Handover"
+  },
+  "vms": {
+    "title": "Visitor Check-In",
+    "checkin_mode": "Check-In Mode",
+    "manual": "Manual Entry",
+    "id_photo": "ID Card Photo",
+    "aadhaar_qr": "Aadhaar QR Scan",
+    "pre_registered": "Pre-Registered",
+    "self_service": "Self-Service QR",
+    "visitor_name": "Visitor Name",
+    "visitor_phone": "Visitor Phone",
+    "purpose": "Purpose of Visit",
+    "host_name": "Host Name",
+    "checkin_button": "Check In",
+    "checkout_button": "Check Out",
+    "active_visitors": "Active Visitors"
+  },
+  "roles": {
+    "SH": "Security Head",
+    "DSH": "Deputy Security Head",
+    "SHIFT_COMMANDER": "Shift Commander",
+    "GM": "General Manager",
+    "AUDITOR": "Auditor",
+    "FM": "Facility Manager",
+    "FLOOR_SUPERVISOR": "Floor Supervisor",
+    "GROUND_STAFF": "Ground Staff"
+  }
+}

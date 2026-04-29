@@ -1,0 +1,5 @@
+#!/bin/sh
+# gitleaks: block commits containing secrets
+if command -v gitleaks >/dev/null 2>&1; then
+  gitleaks protect --staged --config .gitleaks.toml
+fi
