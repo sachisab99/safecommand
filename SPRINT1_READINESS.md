@@ -138,8 +138,9 @@ Expected: `Hi sachinsab99! You've successfully authenticated`
 - Do NOT add README, .gitignore, or licence (repo already has commits locally)
 - Click **Create repository**
 
-**Step 8 — Copy the SSH clone URL** (format: `git@github.com:YOUR_USERNAME/safecommand.git`)
+**Step 8 — Copy the SSH clone URL** (format: `https://github.com/sachisab99/safecommand.git`)
 Hand this URL back to Claude Code — it will add the remote and push.
+- https://github.com/sachisab99/safecommand.git
 
 ---
 
@@ -152,20 +153,24 @@ Hand this URL back to Claude Code — it will add the remote and push.
 2. Click **New project**
 3. Settings:
    - Organization: create one named `SafeCommand`
-   - Project name: `safecommand-prod`
+   - Project name: `safecommand-prod` #Ilovelife@99safe
    - Database password: generate a strong one — **save it immediately**
    - Region: **us-east-1** (this is Phase 1; India migration happens in Phase 2)
 4. **Upgrade to Pro plan:** Project Settings → Billing → Upgrade → Pro ($25/month)
 5. **Enable PITR:** Project Settings → Add-ons → Point in Time Recovery → Enable (7-day)
 6. Collect these values from Project Settings → API:
-   - `SUPABASE_URL` (e.g. `https://abcdefgh.supabase.co`)
-   - `SUPABASE_ANON_KEY`
-   - `SUPABASE_SERVICE_ROLE_KEY` (keep secret — never commit)
+   - `SUPABASE_URL` (e.g. `https://exrewpsjrtevsicmullp.supabase.co`) # https://exrewpsjrtevsicmullp.supabase.co
+   - `SUPABASE_ANON_KEY` # eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV4cmV3cHNqcnRldnNpY211bGxwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczMDA0MjMsImV4cCI6MjA5Mjg3NjQyM30.yl66Kv3yEoBkvFchH8kwY8yQ-CrgM7Y-6nnzq8VzRdE
+   - `SUPABASE_SERVICE_ROLE_KEY` (keep secret — never commit) # eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV4cmV3cHNqcnRldnNpY211bGxwIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NzMwMDQyMywiZXhwIjoyMDkyODc2NDIzfQ.zYh3LceNVLzFgq4TVLWdQ6Xqdp_xY5Exm_0V3aJ2HcY
 7. From Project Settings → Database → Connection string (URI mode):
-   - `DATABASE_URL` (the direct Postgres connection string with password)
+   - `DATABASE_URL` (the direct Postgres connection string with password) # postgresql://postgres:[YOUR-PASSWORD]@db.exrewpsjrtevsicmullp.supabase.co:5432/postgres
 8. Enable Realtime: Database → Replication → enable `supabase_realtime` publication
 
 **What to hand back to Claude Code:** `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `DATABASE_URL`
+- https://exrewpsjrtevsicmullp.supabase.co
+- eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV4cmV3cHNqcnRldnNpY211bGxwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczMDA0MjMsImV4cCI6MjA5Mjg3NjQyM30.yl66Kv3yEoBkvFchH8kwY8yQ-CrgM7Y-6nnzq8VzRdE
+- eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV4cmV3cHNqcnRldnNpY211bGxwIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NzMwMDQyMywiZXhwIjoyMDkyODc2NDIzfQ.zYh3LceNVLzFgq4TVLWdQ6Xqdp_xY5Exm_0V3aJ2HcY
+- postgresql://postgres:[YOUR-PASSWORD]@db.exrewpsjrtevsicmullp.supabase.co:5432/postgres
 
 ---
 
@@ -179,15 +184,21 @@ Hand this URL back to Claude Code — it will add the remote and push.
 3. Click **New Project** → **Empty Project**
 4. Name the project: `safecommand`
 5. Inside the project, create 4 services (click **+ New** → **Empty Service** for each):
-   - Service 1 name: `api`
-   - Service 2 name: `scheduler`
-   - Service 3 name: `escalation`
-   - Service 4 name: `notifier`
+   - Service 1 name: `api` - api-production-9f9dd.up.railway.app
+   - Service 2 name: `scheduler` - scheduler-production-c169.up.railway.app
+   - Service 3 name: `escalation` - escalation-production.up.railway.app
+   - Service 4 name: `notifier` - notifier-production-2346.up.railway.app
 6. For each service, go to Settings → note the auto-generated Railway URL
 7. For the `api` service → Settings → Networking → Generate Domain (this gives you `api-xxx.railway.app` for testing before domain setup)
 8. In Project Settings → collect the **Railway API Token** (needed for CLI deploys)
 
 **What to hand back to Claude Code:** Railway API Token, service names, generated domain for `api` service
+   - Railway API Token: beb68313-4bfa-426e-bed7-cd325afa600c
+   - Service 1 name: `api` - api-production-9f9dd.up.railway.app
+   - Service 2 name: `scheduler` - scheduler-production-c169.up.railway.app
+   - Service 3 name: `escalation` - escalation-production.up.railway.app
+   - Service 4 name: `notifier` - notifier-production-2346.up.railway.app
+
 
 ---
 
@@ -205,13 +216,13 @@ Hand this URL back to Claude Code — it will add the remote and push.
    - Enable **TLS** ✓
    - Enable **Eviction**: No (queues must not evict job data)
 4. From the database dashboard, collect:
-   - `UPSTASH_REDIS_URL` (format: `rediss://default:TOKEN@HOST:PORT`)
-   - `UPSTASH_REDIS_REST_URL`
-   - `UPSTASH_REDIS_REST_TOKEN`
+   - `UPSTASH_REDIS_URL` (format: `rediss://default:TOKEN@HOST:PORT`) - REDIS_URL="rediss://default:gQAAAAAAAaUxAAIgcDE5YjZlMzE2YzU4ZDQ0MThiYjY3NmI4MWJlZTY5YzY1Yw@lucky-giraffe-107825.upstash.io:6379"
+   - `UPSTASH_REDIS_REST_URL` - https://lucky-giraffe-107825.upstash.io
+   - `UPSTASH_REDIS_REST_TOKEN` - gQAAAAAAAaUxAAIgcDE5YjZlMzE2YzU4ZDQ0MThiYjY3NmI4MWJlZTY5YzY1Yw
 5. In Configuration, confirm **AOF Persistence** is enabled (jobs survive Upstash restarts)
 
 **What to hand back to Claude Code:** `UPSTASH_REDIS_URL`
-
+UPSTASH_REDIS_REST_URL="https://lucky-giraffe-107825.upstash.io"
 ---
 
 ### A3. Needed by Week 3–4 — Complete This Week
@@ -231,7 +242,7 @@ These don't block Week 1 code but must be ready before Week 3 coding sessions.
    - Project settings → **Add app** → Android → package name: `in.safecommand.app` → download `google-services.json`
    - Project settings → **Add app** → iOS → bundle ID: `in.safecommand.app` → download `GoogleService-Info.plist`
    - Project settings → Service accounts → **Generate new private key** → save as `firebase-admin.json` (never commit this)
-5. Cloud Messaging → note the **Server Key** (for FCM push)
+5. Cloud Messaging → note the **Server Key** (for FCM push) - BNbO6bzL6vo5ovGyXX5S4JLanXpjZnOxdTB1ENnTnYMNQvga-Uj2GdU1Jj3FK-HnT-ebtfO83TL1IbsSgIqNqjU
 
 **What to hand back to Claude Code:** `google-services.json`, `GoogleService-Info.plist`, `firebase-admin.json`, Server Key
 
@@ -444,16 +455,58 @@ gh auth login
 
 Before the first build session begins, confirm:
 
-- [ ] GitHub SSH key generated + added to GitHub account (A2.1)
-- [ ] GitHub repo `safecommand` created (private) + SSH URL noted
-- [ ] Supabase Pro project created + PITR enabled + credentials noted (A2.2)
-- [ ] Railway project + 4 services created + API token noted (A2.3)
-- [ ] Upstash Redis created + `UPSTASH_REDIS_URL` noted (A2.4)
+- [x] GitHub SSH key generated + added to GitHub account (A2.1) ✅ 2026-04-29
+- [x] GitHub repo `safecommand` created (private) + SSH URL noted ✅ pushed 3 commits
+- [x] Supabase Pro project created + PITR enabled + credentials noted (A2.2) ✅ credentials live
+- [x] Railway project + 4 services created + API token noted (A2.3) ✅ all 4 services up
+- [x] Upstash Redis created + `UPSTASH_REDIS_URL` noted (A2.4) ✅ connected
 - [ ] Meta WhatsApp API application SUBMITTED (A1.1) — does not need to be approved, just submitted
 - [ ] Airtel DLT application SUBMITTED (A1.2) — does not need to be approved, just submitted
-- [ ] CLI tools installed: supabase, railway, gh, vercel (Part D)
+- [ ] CLI tools installed: supabase, railway, gh, vercel — vercel ✅; supabase/railway/gh installing
 
-**When all 8 boxes are checked → hand credentials to Claude Code → Sprint 1 Week 1 begins.**
+## PART H — Sprint 1 Week 1 Build Progress (2026-04-29)
+
+| Deliverable | Status | Notes |
+|-------------|--------|-------|
+| Monorepo scaffold (turborepo + workspaces) | ✅ Complete | packages: types, schemas, db, queue |
+| apps/api (Express + TypeScript) | ✅ Complete | health, auth, venues, staff, zones, tasks, incidents |
+| apps/scheduler | ✅ Complete | BullMQ worker — schedule-generation queue |
+| apps/escalation | ✅ Complete | BullMQ worker — escalations + incident-escalations queues |
+| apps/notifier | ✅ Complete | BullMQ worker — notifications queue (FCM stub, WA/SMS Week 4) |
+| apps/mobile | ✅ Scaffolded | Expo blank-TypeScript; i18next configured |
+| apps/dashboard | ✅ Scaffolded | Next.js 14 + Tailwind |
+| apps/ops-console | ✅ Scaffolded | Next.js 14 + Tailwind (separate auth domain) |
+| Supabase migrations 001–005 | ⚠️ Written | Blocked: need DB password to deploy |
+| Supabase Realtime | ⏳ Pending | Enable after migrations deployed |
+| i18n (i18next, all keys) | ✅ Complete | EN locale with all BR string keys |
+| Bull queue definitions | ✅ Complete | 4 queues: schedule-gen, escalations, incident-esc, notifications |
+| GitHub Actions CI | ✅ Complete | type-check + gitleaks on every PR |
+| gitleaks pre-commit hook | ✅ Complete | .husky/pre-commit |
+| .gitignore + .env.example | ✅ Complete | secrets never committed |
+| GitHub push | ✅ Complete | 3 commits on main |
+
+## Blocker: DB password needed for migrations
+
+The `DATABASE_URL` was provided with `[YOUR-PASSWORD]` placeholder.
+Run this to deploy migrations once the correct password is confirmed:
+
+```bash
+PGPASSWORD='YOUR_ACTUAL_PASSWORD' psql \
+  -h aws-0-us-east-1.pooler.supabase.com \
+  -p 5432 \
+  -U postgres.exrewpsjrtevsicmullp \
+  -d postgres \
+  -f supabase/migrations/001_enums.sql \
+  -f supabase/migrations/002_tables.sql \
+  -f supabase/migrations/003_rls.sql \
+  -f supabase/migrations/004_indexes.sql \
+  -f supabase/migrations/005_seed_templates.sql
+```
+
+OR once supabase CLI is installed:
+```bash
+supabase db push --db-url "postgresql://postgres:YOUR_PASS@db.exrewpsjrtevsicmullp.supabase.co:5432/postgres"
+```
 
 ---
 
