@@ -1,0 +1,17 @@
+[phases.setup]
+nixPkgs = ["nodejs_20"]
+
+[phases.install]
+cmds = ["npm ci"]
+
+[phases.build]
+cmds = [
+  "npm run build --workspace=packages/types",
+  "npm run build --workspace=packages/schemas",
+  "npm run build --workspace=packages/db",
+  "npm run build --workspace=packages/queue",
+  "npm run build --workspace=apps/api"
+]
+
+[start]
+cmd = "node apps/api/dist/index.js"
