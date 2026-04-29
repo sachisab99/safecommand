@@ -169,7 +169,7 @@ Hand this URL back to Claude Code — it will add the remote and push.
 **What to hand back to Claude Code:** `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `DATABASE_URL`
 - https://exrewpsjrtevsicmullp.supabase.co
 
-Claude_code Access Token (IMP) - sbp_4dcfd55cc707f6b4d1d87245fcf6add2e18beabd
+Claude_code Access Token (IMP) - 1234test
 ---
 
 #### A2.3 Railway — Create Project + 4 Services
