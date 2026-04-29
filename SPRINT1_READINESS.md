@@ -558,8 +558,8 @@ Firebase, AWS, Meta, and Airtel credentials will be collected in the relevant bu
 | Railway notifier | ⚠️ Code only | Scaffolded in monorepo — NOT deployed to Railway |
 | Upstash Redis | ✅ Live | `lucky-giraffe-107825.upstash.io` — BullMQ connected |
 | Firebase project | ✅ Created | Project ID: `safecommand-51499`, config files saved to `system/` |
-| Firebase Phone Auth | ❌ Not enabled | Must enable in Firebase Console (founder action) |
-| Firebase wired into api | ❌ Not done | Admin SDK not initialised in `apps/api/src/services/` |
+| Firebase Phone Auth | ✅ Enabled | Firebase Console — Phone sign-in enabled 2026-04-29 |
+| Firebase wired into api | ✅ Live | `apps/api/src/services/firebase.ts` — Admin SDK init, `GET /health → {"firebase":"ok"}` |
 | AWS S3 bucket | ❌ Not created | Needed for photo evidence uploads (Week 6) |
 | Meta WhatsApp API | ❌ Not submitted | 7–14 day approval — **OVERDUE — START NOW** |
 | Airtel DLT SMS | ❌ Not submitted | 5–7 day approval — **OVERDUE — START NOW** |
@@ -578,12 +578,12 @@ Firebase, AWS, Meta, and Airtel credentials will be collected in the relevant bu
 | A2.2 Supabase Pro project | ✅ Complete | 2026-04-29 |
 | A2.3 Railway project + 4 services | ✅ Complete | 2026-04-29 |
 | A2.4 Upstash Redis database | ✅ Complete | 2026-04-29 |
-| A3.1 Firebase project + config files | ✅ Complete | 2026-04-29 — files at `system/` |
+| A3.1 Firebase project + config files + Phone Auth enabled | ✅ Complete | 2026-04-29 — files at `system/`; Phone Auth enabled |
 | A3.2 AWS S3 bucket (ap-south-1) | ❌ Not started | — |
 | A3.3 Domain purchase (safecommand.in) | ❌ Not started | — |
 | A3.4 Apple Developer Account | ❌ Not started | — |
 
-**Founder actions: 5 / 10 complete (50%)**
+**Founder actions: 6 / 10 complete (60%)** *(+1: Firebase Phone Auth enabled 2026-04-29)*
 
 ---
 
@@ -607,7 +607,7 @@ Firebase, AWS, Meta, and Airtel credentials will be collected in the relevant bu
 | Supabase migration 006 | ✅ Deployed | Realtime on zones, incidents, zone_status_log, incident_timeline |
 | i18n (i18next, all keys from Day 1) | ✅ Complete | EC-15 enforced |
 | Bull queue definitions (4 queues) | ✅ Complete | schedule-gen, escalations, incident-esc, notifications |
-| Railway api `GET /health` → 200 | ✅ Live | `api-production-9f9dd.up.railway.app` — db check passing |
+| Railway api `GET /health` → 200 | ✅ Live | `api-production-9f9dd.up.railway.app` — `{"database":"ok","firebase":"ok"}` |
 | GitHub Actions CI | ✅ Active | type-check + gitleaks on every PR to main |
 | gitleaks pre-commit hook | ✅ Active | `.husky/pre-commit` blocking secret commits |
 | .gitignore + .env.example | ✅ Complete | secrets never committed |
@@ -630,12 +630,12 @@ Firebase, AWS, Meta, and Airtel credentials will be collected in the relevant bu
 | Ops Console: floor + zone editor | ❌ Not built | BR-03 — floor_number, zone_type, two-person-required toggle |
 | Ops Console: schedule template CRUD | ❌ Not built | BR-06 — frequency, role, evidence_type, escalation_chain |
 | Ops Console: initial SH account creation | ❌ Not built | BR-04 — phone → Firebase auth_id → staff record |
-| Firebase Admin SDK initialised in api | ❌ Not done | Needs `FIREBASE_PRIVATE_KEY` set in Railway first |
+| Firebase Admin SDK initialised in api | ✅ Complete | `apps/api/src/services/firebase.ts` — health reports `firebase:ok` on Railway 2026-04-29 |
 | Railway worker services deployed (scheduler, escalation, notifier) | ❌ Not done | Code ready — needs `railway up` for each service |
 | Expo compile test on physical iOS + Android device | ❌ Not done | Firebase files need copying to mobile app dirs first |
 | **GATE 2: Full Venue Creation via Ops Console** | ❌ **NOT PASSED** | Ops Console UI not yet built |
 
-**Week 2 deliverables: 4 / 13 complete (31%)**
+**Week 2 deliverables: 5 / 13 complete (38%)** *(+1: Firebase Admin SDK live 2026-04-29)*
 
 ---
 
@@ -659,12 +659,12 @@ Gate 2 criteria (must ALL pass before Sprint 2 starts):
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  SPRINT 1 OVERALL PROGRESS: ~58%
+  SPRINT 1 OVERALL PROGRESS: ~63%
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  Founder actions       5 / 10  ████████░░░░░░░░░░░░  50%
+  Founder actions       6 / 10  ████████████░░░░░░░░  60%
   Week 1 deliverables  21 / 21  ████████████████████ 100%
-  Week 2 deliverables   4 / 13  ██████░░░░░░░░░░░░░░  31%
+  Week 2 deliverables   5 / 13  ████████░░░░░░░░░░░░  38%
 
   Gate 1  ✅  PASSED
   Gate 2  ❌  NOT PASSED
@@ -679,20 +679,8 @@ Sprint 2 start is blocked on Gate 2. Sprint 2 cannot begin until the Ops Console
 
 ### IMMEDIATE — Founder actions (blocking code work)
 
-**#1 — Enable Firebase Phone Authentication**
-- Firebase Console → `safecommand-51499` → Authentication → Sign-in method → Phone → Enable
-- Add test phone number: `+91 90000 00001`, OTP: `123456` (for local testing without real SMS)
-- Time required: ~5 minutes
-
-**#2 — Set Firebase env vars in Railway**
-- Railway Dashboard → `safecommand` project → `api` service → Variables → add:
-  ```
-  FIREBASE_PROJECT_ID=safecommand-51499
-  FIREBASE_CLIENT_EMAIL=firebase-adminsdk-fbsvc@safecommand-51499.iam.gserviceaccount.com
-  FIREBASE_PRIVATE_KEY=<paste private_key field from system/firebase-admin.json>
-  FIREBASE_SERVER_KEY=BNbO6bzL6vo5ovGyXX5S4JLanXpjZnOxdTB1ENnTnYMNQvga-Uj2GdU1Jj3FK-HnT-ebtfO83TL1IbsSgIqNqjU
-  ```
-- Time required: ~10 minutes
+**✅ #1 — Firebase Phone Authentication** — DONE 2026-04-29
+**✅ #2 — Firebase env vars set in Railway** — DONE 2026-04-29 (health confirms `firebase:ok`)
 
 **#3 — Submit Meta WhatsApp Business API application (OVERDUE)**
 - Follow A1.1 steps above — this is now 2 days overdue relative to the original plan
@@ -707,13 +695,11 @@ Sprint 2 start is blocked on Gate 2. Sprint 2 cannot begin until the Ops Console
 
 ### NEXT BUILD SESSION — Claude Code actions
 
-Once Firebase env vars are set in Railway (#2 above is done), Claude Code will:
+Firebase Admin SDK is now live on Railway. Next Claude Code build session:
 
-1. **Wire Firebase Admin SDK into api**
-   - Create `apps/api/src/services/firebase.ts` — initialise with service account from env vars
-   - Enables FCM push token registration (`POST /auth/device-token`) and future push delivery
+1. **✅ Firebase Admin SDK wired into api** — DONE 2026-04-29 (`apps/api/src/services/firebase.ts`, health `firebase:ok`)
 
-2. **Build Sprint 1 Gate 2 — Ops Console (BR-02, BR-03)**
+2. **Build Sprint 1 Gate 2 — Ops Console (BR-02, BR-03)** ← CURRENT BLOCKER
    - Venue onboarding wizard (name → type → city → tier → auto-generates `SC-[TYPE]-[CITY]-[SEQ]`)
    - Floor editor (add floors with floor_number, name)
    - Zone editor (add zones per floor with zone_type, two-person-required toggle)
@@ -747,3 +733,4 @@ Once Firebase env vars are set in Railway (#2 above is done), Claude Code will:
 ---
 
 *Status update appended: 2026-04-29 ~03:00 IST*
+*Status update appended: 2026-04-29 ~08:00 IST — Firebase Phone Auth ✅, Firebase env vars in Railway ✅, Firebase Admin SDK live on Railway ✅, health endpoint confirmed `{"database":"ok","firebase":"ok"}`*
