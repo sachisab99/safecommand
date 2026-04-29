@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import cors from 'cors';
 import pinoHttp from 'pino-http';
 import { logger } from './services/logger.js';
+import { getFirebaseApp } from './services/firebase.js';
 import { healthRouter } from './routes/health.js';
 import { authRouter } from './routes/auth.js';
 import { venueRouter } from './routes/venues.js';
@@ -30,6 +31,14 @@ app.use('/v1/tasks', tasksRouter);
 app.use('/v1/incidents', incidentsRouter);
 
 app.use(errorHandler);
+
+// Initialise Firebase Admin SDK at startup — fail fast if credentials are missing/invalid
+try {
+  getFirebaseApp();
+  logger.info({ project: process.env['FIREBASE_PROJECT_ID'] }, 'Firebase Admin SDK initialised');
+} catch (err) {
+  logger.warn({ err }, 'Firebase Admin SDK not initialised — push notifications unavailable');
+}
 
 app.listen(PORT, () => {
   logger.info({ port: PORT, env: process.env['NODE_ENV'] }, 'SafeCommand API started');

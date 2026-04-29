@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { getServiceClient } from '@safecommand/db';
+import { getFirebaseApp } from '../services/firebase.js';
 
 export const healthRouter = Router();
 
@@ -12,12 +13,19 @@ healthRouter.get('/', async (_req, res) => {
     dbStatus = 'error';
   }
 
-  const status = dbStatus === 'ok' ? 200 : 503;
-  res.status(status).json({
-    status: status === 200 ? 'ok' : 'degraded',
+  let firebaseStatus: 'ok' | 'error' = 'ok';
+  try {
+    getFirebaseApp(); // throws if not initialised
+  } catch {
+    firebaseStatus = 'error';
+  }
+
+  const allOk = dbStatus === 'ok' && firebaseStatus === 'ok';
+  res.status(allOk ? 200 : 503).json({
+    status: allOk ? 'ok' : 'degraded',
     service: 'safecommand-api',
     version: '0.1.0',
     timestamp: new Date().toISOString(),
-    checks: { database: dbStatus },
+    checks: { database: dbStatus, firebase: firebaseStatus },
   });
 });

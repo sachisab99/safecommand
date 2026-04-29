@@ -4,6 +4,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { getServiceClient } from '@safecommand/db';
 import { SendOtpSchema, VerifyOtpSchema, RegisterDeviceTokenSchema } from '@safecommand/schemas';
 import { logger } from '../services/logger.js';
+import { getMessaging } from '../services/firebase.js';
 
 export const authRouter = Router();
 
@@ -102,6 +103,15 @@ authRouter.post(
   validate(RegisterDeviceTokenSchema),
   async (req: Request, res: Response): Promise<void> => {
     const { token, platform } = req.body as { token: string; platform: 'ANDROID' | 'IOS' };
+
+    // Validate the FCM token is real by sending a dry-run message
+    try {
+      await getMessaging().send({ token, data: { _ping: '1' } }, /* dryRun */ true);
+    } catch {
+      res.status(400).json({ error: { code: 'INVALID_DEVICE_TOKEN', message: 'FCM device token is invalid or expired' } });
+      return;
+    }
+
     const { error } = await getServiceClient()
       .from('staff')
       .update({ fcm_token: token, updated_at: new Date().toISOString() })
