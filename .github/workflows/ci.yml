@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  type-check:
+    name: Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build packages
+        run: |
+          npm run build --workspace=packages/types
+          npm run build --workspace=packages/schemas
+          npm run build --workspace=packages/db
+          npm run build --workspace=packages/queue
+
+      - name: Type check API
+        run: npm run type-check --workspace=apps/api
+
+      - name: Type check scheduler
+        run: npm run type-check --workspace=apps/scheduler
+
+      - name: Type check escalation
+        run: npm run type-check --workspace=apps/escalation
+
+      - name: Type check notifier
+        run: npm run type-check --workspace=apps/notifier
+
+  secret-scan:
+    name: Secret Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Scan for secrets with gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

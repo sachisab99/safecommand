@@ -1,0 +1,54 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+
+# Expo
+.expo/
+apps/mobile/.expo/
+apps/mobile/dist/
+
+# Environment files — NEVER COMMIT
+.env
+.env.local
+.env.*.local
+
+# Secrets — NEVER COMMIT
+*.pem
+*.key
+*-admin.json
+google-services.json
+GoogleService-Info.plist
+firebase-admin.json
+credentials.csv
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# OS
+.DS_Store
+._*
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Turbo
+.turbo/
+
+# Coverage
+coverage/
+
+# TypeScript
+*.tsbuildinfo

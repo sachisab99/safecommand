@@ -1,0 +1,222 @@
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+export type StaffRole =
+  | 'SH'
+  | 'DSH'
+  | 'SHIFT_COMMANDER'
+  | 'GM'
+  | 'AUDITOR'
+  | 'FM'
+  | 'FLOOR_SUPERVISOR'
+  | 'GROUND_STAFF';
+
+export type SubscriptionTier = 'ESSENTIAL' | 'PROFESSIONAL' | 'ENTERPRISE' | 'CHAIN';
+
+export type TaskStatus =
+  | 'PENDING'
+  | 'IN_PROGRESS'
+  | 'COMPLETE'
+  | 'MISSED'
+  | 'ESCALATED'
+  | 'LATE_COMPLETE';
+
+export type EvidenceType = 'NONE' | 'PHOTO' | 'TEXT' | 'NUMERIC' | 'CHECKLIST';
+
+export type IncidentType = 'FIRE' | 'MEDICAL' | 'SECURITY' | 'EVACUATION' | 'STRUCTURAL' | 'OTHER';
+
+export type IncidentSeverity = 'SEV1' | 'SEV2' | 'SEV3';
+
+export type DeliveryChannel = 'APP_PUSH' | 'WHATSAPP' | 'SMS';
+
+export type FrequencyType =
+  | 'HOURLY'
+  | 'EVERY_2H'
+  | 'EVERY_4H'
+  | 'EVERY_6H'
+  | 'EVERY_8H'
+  | 'DAILY'
+  | 'WEEKLY'
+  | 'MONTHLY'
+  | 'QUARTERLY'
+  | 'ANNUAL'
+  | 'CUSTOM';
+
+export type VmsCheckinMode =
+  | 'MANUAL'
+  | 'ID_PHOTO'
+  | 'AADHAAR_QR'
+  | 'PRE_REGISTERED'
+  | 'SELF_SERVICE_QR';
+
+export type VmsVisitorStatus =
+  | 'CHECKED_IN'
+  | 'CHECKED_OUT'
+  | 'OVERSTAY'
+  | 'DENIED'
+  | 'BLACKLISTED_ATTEMPT';
+
+export type ZoneStatus = 'ALL_CLEAR' | 'ATTENTION' | 'INCIDENT_ACTIVE';
+
+export type VenueType = 'HOSPITAL' | 'MALL' | 'HOTEL' | 'CORPORATE';
+
+export type IncidentStatus = 'ACTIVE' | 'CONTAINED' | 'RESOLVED' | 'CLOSED';
+
+export type DeliveryStatus = 'PENDING' | 'SENT' | 'DELIVERED' | 'FAILED' | 'ACKNOWLEDGED';
+
+// ─── Core Domain Types ─────────────────────────────────────────────────────────
+
+export interface Venue {
+  id: string;
+  venue_code: string;
+  name: string;
+  type: VenueType;
+  city: string;
+  address: string | null;
+  subscription_tier: SubscriptionTier;
+  is_active: boolean;
+  festival_mode: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Floor {
+  id: string;
+  venue_id: string;
+  name: string;
+  floor_number: number;
+  created_at: string;
+}
+
+export interface Zone {
+  id: string;
+  venue_id: string;
+  floor_id: string;
+  name: string;
+  zone_type: string;
+  two_person_required: boolean;
+  current_status: ZoneStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Staff {
+  id: string;
+  venue_id: string;
+  firebase_auth_id: string | null;
+  phone: string;
+  name: string;
+  role: StaffRole;
+  is_active: boolean;
+  fcm_token: string | null;
+  whatsapp_number: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ScheduleTemplate {
+  id: string;
+  venue_id: string;
+  title: string;
+  description: string | null;
+  frequency: FrequencyType;
+  assigned_role: StaffRole;
+  evidence_type: EvidenceType;
+  escalation_chain: StaffRole[];
+  escalation_interval_minutes: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TaskInstance {
+  id: string;
+  venue_id: string;
+  template_id: string;
+  assigned_staff_id: string | null;
+  status: TaskStatus;
+  due_at: string;
+  window_expires_at: string;
+  idempotency_key: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Incident {
+  id: string;
+  venue_id: string;
+  incident_type: IncidentType;
+  severity: IncidentSeverity;
+  zone_id: string | null;
+  description: string | null;
+  status: IncidentStatus;
+  declared_by_staff_id: string;
+  declared_at: string;
+  resolved_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// ─── API Request/Response Types ────────────────────────────────────────────────
+
+export interface ApiError {
+  error: {
+    code: string;
+    message: string;
+  };
+}
+
+export interface PaginatedResponse<T> {
+  data: T[];
+  count: number;
+  page: number;
+  per_page: number;
+}
+
+// ─── Auth Types ───────────────────────────────────────────────────────────────
+
+export interface AuthTokenPayload {
+  sub: string;
+  venue_id: string;
+  staff_id: string;
+  role: StaffRole;
+  iat: number;
+  exp: number;
+}
+
+export interface AuthContext {
+  firebase_uid: string;
+  venue_id: string;
+  staff_id: string;
+  role: StaffRole;
+}
+
+// ─── Queue Job Types ──────────────────────────────────────────────────────────
+
+export interface ScheduleGenerationJob {
+  venue_id: string;
+  template_id: string;
+  tick_at: string;
+}
+
+export interface EscalationJob {
+  task_instance_id: string;
+  venue_id: string;
+  level: number;
+  escalation_chain: StaffRole[];
+}
+
+export interface NotificationJob {
+  venue_id: string;
+  staff_id: string;
+  channel: DeliveryChannel;
+  template_key: string;
+  variables: Record<string, string>;
+  comm_delivery_id: string;
+  fallback_after_ms?: number;
+}
+
+export interface IncidentEscalationJob {
+  incident_id: string;
+  venue_id: string;
+  priority: 0;
+}
