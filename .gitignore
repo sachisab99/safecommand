@@ -1,3 +1,6 @@
+# Session reports — local only, never pushed to GitHub
+report-gen/
+
 # Dependencies
 node_modules/
 .pnp
@@ -52,3 +55,19 @@ coverage/
 
 # TypeScript
 *.tsbuildinfo
+
+
+
+#{
+#  "type": "service_account",
+#  "project_id": "safecommand-51499",
+#  "private_key_id": "06b9053dd876614bb7dd643f055946dd5547c027",
+#  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvwIBADANBgkqhkiG9w0BAQEFAASCBKkwggSlAgEAAoIBAQC6RLk23aBy49ks\nhWyS3e4+AmnVanD3SyXno0oQNfcGr29H3q2LASAqV9ub4Fmzz4ohMzqHUalC4e3l\nVJl+texaOmOVLwHH9DCspluGlfphvak/0uSVOuNE9AreY7EdAE5adWW9tQfXBWNO\nlJn2hkOYY7HhIw9KEzm/UbSKRBVpRe/SMFCt/lXk2dvCXJdi5PumOz/Nn9LBq17w\neJPgudJj1pih9S9RjZX/uA1A7xG5SUvQxAnAofO7BI+VmeVAtyYYr1viXv4M17l6\nt/NA3btYnIJ5auvRBttAB2y87ebm8xE7UlXm52WQVwFKSheKyd7MOxEcKtAYmx/z\nM11qxUWfAgMBAAECggEAEglZjfCD+twJSYBZ9Ra8XRDKwrmd2rRSJU3wfAVduC4A\nrornbxBa1v7O6xccWIb+LxzQzA2iQDG0YYKBon1nN41z2xxEJeKFXBJ3xl57cj91\nRhLbw3+CRkkDTGmG2vIOpD+97FK9QZrp9M/64J47qWPt84j7kAawjtAQlVrmX90V\nWjKNtOwxs+Oyl7UDeRZdfxqVFYyB8Itju483+G0LplKBKqu6ppOhQFEZ1BxOdEVa\nVb/hoXgNX0jAryaxxIzYS23Jq1fvoiwJowFlJLC9n9ortRy450yiliqdDjt1TItD\n4flpQX/sQz25ttfsyBY+tBUmkCXsryby9RsgpNBsAQKBgQDuT2MYsiz6abxhroNu\nBYSovKNHRtZbxVOYUOy1kz4SmeWXOGbsNbQ+j5PN+3/q8IncdUFoQQEPCY+KCg51\nKyy4ih8CQSAGO1kyquIHZaDWIXzNN+3h3O/gN/j1EoSjkTW0GgCOS1rKul1Otxu0\npef8K3N66vLjm/FlHBwGrYaRAQKBgQDIGGM1QvtyjV+I8mG025FGBmS7H4g29qRA\nAmwuB5Ko0gDW7UVvTzs22F3tks0z1Mbp8p3YYz3dN3Z5pgh0tqKtxIk0to/FTs4B\nPj72LhoHUcG7k+1D4aHq3Oyxj3FuQcnuyiHORHJ5Tm6lZqj0ml9kgsW0ec+7OnBc\nha5Ndps2nwKBgQCSfLAgdR3ay/YlYV2e2ruB8Xq4jJ2libVqEox+zMTCMGGFxADY\nP+bM8frcCjXGWBeWMWmESTj6YlkedDIQ6foycYzAGQIzcnXRBGOuQlVMawdJKpEK\nXoIBJMbe9oQb+120mKswzLdBmK9UfJAGSllAlAEHVLb7HFeVXGMJ486tAQKBgQCO\n9uXDQ1V29k2hAlUPLKXyW1UTYacoZjbaySBUDvMZjdotth+bNQgA2rzZpr7Y3pk0\nxDVFSzsDWMJcjmWSRn+bGkZSFHJKrlCAEOJZcH0GZ8K87CdlDcxri2fOQcfw2C6Y\nX3Gh98O2qnRh1yS2h6nKnaj2luX2Rv3LDXSJQkoJzwKBgQDMMX8xFGMtQdTStVSQ\npxD/WaoKt3bBZHXXWm6nnbUqJ+2OtXx6Lf3GuEJ72YM8U7Lg9CLxmBG69KwPXBtg\nH3Odr6+12ehxiUc4LnN7L68rKe0mgptjdFLsMmkkEHQa1v8QsA5g43PiD7Sw+KQB\nfdpYJ0Mx2NXwSaLGopG6I4aX0g==\n-----END PRIVATE KEY-----\n",
+#  "client_email": "firebase-adminsdk-fbsvc@safecommand-51499.iam.gserviceaccount.com",
+#  "client_id": "108605873202574429709",
+#  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+#  "token_uri": "https://oauth2.googleapis.com/token",
+#  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+#  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-fbsvc%40safecommand-51499.iam.gserviceaccount.com",
+#  "universe_domain": "googleapis.com"
+#}
