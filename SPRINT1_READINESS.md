@@ -167,6 +167,7 @@ Hand this URL back to Claude Code — it will add the remote and push.
 8. Enable Realtime: Database → Replication → enable `supabase_realtime` publication
 
 **What to hand back to Claude Code:** `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `DATABASE_URL`
+- https://exrewpsjrtevsicmullp.supabase.co
 
 Claude_code Access Token (IMP) - sbp_4dcfd55cc707f6b4d1d87245fcf6add2e18beabd
 ---
@@ -190,7 +191,7 @@ Claude_code Access Token (IMP) - sbp_4dcfd55cc707f6b4d1d87245fcf6add2e18beabd
 8. In Project Settings → collect the **Railway API Token** (needed for CLI deploys)
 
 **What to hand back to Claude Code:** Railway API Token, service names, generated domain for `api` service
-   - Railway API Token: XXXX-XXXX-XXXXX
+   - Railway API Token: XXXX-XXXX-XXX
    - Service 1 name: `api` - api-production-9f9dd.up.railway.app
    - Service 2 name: `scheduler` - scheduler-production-c169.up.railway.app
    - Service 3 name: `escalation` - escalation-production.up.railway.app
@@ -215,7 +216,7 @@ Claude_code Access Token (IMP) - sbp_4dcfd55cc707f6b4d1d87245fcf6add2e18beabd
 4. From the database dashboard, collect:
    - `UPSTASH_REDIS_URL` (format: `rediss://default:TOKEN@HOST:PORT`)
    - `UPSTASH_REDIS_REST_URL` - https://lucky-giraffe-107825.upstash.io
-   - `UPSTASH_REDIS_REST_TOKEN`
+   - `UPSTASH_REDIS_REST_TOKEN` - XXXX-XXXXX-XXXX
 5. In Configuration, confirm **AOF Persistence** is enabled (jobs survive Upstash restarts)
 
 **What to hand back to Claude Code:** `UPSTASH_REDIS_URL`
