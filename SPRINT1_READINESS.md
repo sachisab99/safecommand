@@ -737,3 +737,10 @@ Firebase Admin SDK is now live on Railway. Next Claude Code build session:
 *Status update appended: 2026-04-30 — Railway workers deployed ✅ — scheduler, escalation, notifier all `railway up` with correct env vars; Week 2 10/13 (77%); Sprint 1 ~78%*
 *Status update appended: 2026-04-30 — Session report filed: `report-gen/2026-04-30-08:00_build.md` — full infra state, BR status, Gate results, next session guide*
 *Status update appended: 2026-04-30 — Full status audit: Current State Summary updated (workers ✅, S3 ✅, Ops Console ✅), stale duplicate progress bar removed, duplicate step removed. Sprint 1 ~78%, Gate 2 in progress.*
+*Status update appended: 2026-04-30 — Gate 2 ✅ PASSED — Ops Console View/Edit/Remove complete; tsc clean; Supabase write paths verified (all 4 update actions: floors, zones, templates, staff)*
+*Status update appended: 2026-04-30 — Expo mobile login flow built ✅ — PhoneScreen → OtpScreen → HomeScreen; expo-secure-store token persistence; API-based OTP (no native Firebase needed for Sprint 1); Week 2 13/13 (100%)*
+*Status update appended: 2026-04-30 — SPRINT 2 KICKED OFF — commit 02b6d9f pushed and deployed to Railway:*
+*  · apps/scheduler: compute.ts (computeCurrentSlot, all 10 freq types, Intl timezone) + full master-tick architecture (Bull repeatable 60s singleton → template-tick worker → task_instance + escalation delay + FCM notification enqueue)*
+*  · apps/notifier: real FCM via firebase-admin (was stub); auto-clears stale tokens; buildPushMessage for task_assigned/escalation_alert/incident_alert*
+*  · apps/api: GET /tasks/my (role-filtered, schedule_templates!inner join, task_completions included)*
+*  Sprint 2 progress: BR-06 ✅, BR-09 ✅ (FCM live), BR-07 in progress (mobile task complete screen next)*
