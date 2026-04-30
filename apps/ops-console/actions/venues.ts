@@ -82,11 +82,30 @@ export async function createTemplateAction(formData: FormData) {
     (formData.get('escalation_interval_minutes') as string) || '30',
     10,
   );
-  const raw = (formData.get('escalation_chain') as string) || '';
-  const escalation_chain = raw
-    .split(',')
-    .map((r) => r.trim())
+
+  // Build primary escalation chain from individual level selects
+  const escalation_chain = [1, 2, 3, 4, 5]
+    .map((i) => (formData.get(`escalation_chain_${i}`) as string) || '')
     .filter(Boolean);
+
+  // Build secondary escalation chain
+  const secondary_escalation_chain = [1, 2, 3, 4, 5]
+    .map((i) => (formData.get(`secondary_chain_${i}`) as string) || '')
+    .filter(Boolean);
+
+  // Build start_time (24h HH:MM) from hour + minute + ampm
+  let start_time: string | null = null;
+  const startHour = formData.get('start_hour') as string;
+  const startMinute = formData.get('start_minute') as string;
+  const startAmpm = formData.get('start_ampm') as string;
+  if (startHour && startMinute && startAmpm) {
+    let h = parseInt(startHour, 10);
+    if (startAmpm === 'PM' && h !== 12) h += 12;
+    if (startAmpm === 'AM' && h === 12) h = 0;
+    start_time = `${h.toString().padStart(2, '0')}:${startMinute}`;
+  }
+
+  const timezone = (formData.get('start_timezone') as string) || 'Asia/Kolkata';
 
   const { error } = await getAdminClient()
     .from('schedule_templates')
@@ -99,6 +118,9 @@ export async function createTemplateAction(formData: FormData) {
       evidence_type,
       escalation_chain,
       escalation_interval_minutes,
+      start_time,
+      timezone,
+      secondary_escalation_chain,
     });
 
   if (error) throw new Error(error.message);

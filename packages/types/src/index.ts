@@ -123,6 +123,9 @@ export interface ScheduleTemplate {
   evidence_type: EvidenceType;
   escalation_chain: StaffRole[];
   escalation_interval_minutes: number;
+  start_time: string | null;
+  timezone: string;
+  secondary_escalation_chain: StaffRole[];
   is_active: boolean;
   created_at: string;
   updated_at: string;
