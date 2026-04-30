@@ -631,11 +631,11 @@ Firebase, AWS, Meta, and Airtel credentials will be collected in the relevant bu
 | Ops Console: schedule template CRUD | ✅ Complete | BR-06 — frequency, role, evidence_type, escalation_chain, interval |
 | Ops Console: initial SH account creation | ✅ Complete | BR-04 — phone + name + role → staff record; Firebase auth_id links on first OTP login |
 | Firebase Admin SDK initialised in api | ✅ Complete | `apps/api/src/services/firebase.ts` — health reports `firebase:ok` on Railway 2026-04-29 |
-| Railway worker services deployed (scheduler, escalation, notifier) | ❌ Not done | Code ready — needs `railway up` for each service |
+| Railway worker services deployed (scheduler, escalation, notifier) | ✅ Deployed | `railway up` done for all 3; env vars set; building on Railway 2026-04-30 |
 | Expo compile test on physical iOS + Android device | ❌ Not done | Firebase files need copying to mobile app dirs first |
 | **GATE 2: Full Venue Creation via Ops Console** | ⏳ **READY TO RUN** | Ops Console built — run end-to-end Gate 2 at `localhost:3001` |
 
-**Week 2 deliverables: 9 / 13 complete (69%)** *(+4: Ops Console fully built 2026-04-30)*
+**Week 2 deliverables: 10 / 13 complete (77%)** *(+1: Railway workers deployed 2026-04-30)*
 
 ---
 
@@ -659,12 +659,12 @@ Gate 2 criteria (must ALL pass before Sprint 2 starts):
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  SPRINT 1 OVERALL PROGRESS: ~75%
+  SPRINT 1 OVERALL PROGRESS: ~78%
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   Founder actions       7 / 10  ██████████████░░░░░░  70%
   Week 1 deliverables  21 / 21  ████████████████████ 100%
-  Week 2 deliverables   9 / 13  ██████████████░░░░░░  69%
+  Week 2 deliverables  10 / 13  ████████████████░░░░  77%
 
   Gate 1  ✅  PASSED
   Gate 2  ⏳  READY TO RUN
@@ -707,7 +707,7 @@ Firebase Admin SDK is now live on Railway. Next Claude Code build session:
    - Schedule template CRUD (frequency, assigned role, evidence type, escalation chain)
    - Initial SH account creation (phone → Firebase auth_id → staff record)
 
-4. **Deploy Railway worker services** (`railway up` for scheduler, escalation, notifier)
+4. **✅ Railway worker services deployed** — DONE 2026-04-30 (scheduler, escalation, notifier building on Railway)
 
 5. **Expo physical device compile test**
    - Copy `google-services.json` → `apps/mobile/android/app/`
@@ -738,3 +738,4 @@ Week 2 deliverables   5 / 13  ████████░░░░░░░░�
 *Status update appended: 2026-04-29 ~08:00 IST — Firebase Phone Auth ✅, Firebase env vars in Railway ✅, Firebase Admin SDK live on Railway ✅, health endpoint confirmed `{"database":"ok","firebase":"ok"}`*
 *Status update appended: 2026-04-29 — A3.2 AWS S3 ✅ — `safecommand-uploads-prod` in `ap-south-1`; IAM user `safecommand-api`; env vars in local `.env` + Railway*
 *Status update appended: 2026-04-30 — Ops Console fully built ✅ — BR-02/03/04/06 complete; proxy.ts auth guard; venue wizard → auto venue code; floors/zones/templates/staff tabs; Week 2 9/13 (69%); Sprint 1 ~75%; Gate 2 ready to run*
+*Status update appended: 2026-04-30 — Railway workers deployed ✅ — scheduler, escalation, notifier all `railway up` with correct env vars; Week 2 10/13 (77%); Sprint 1 ~78%*
