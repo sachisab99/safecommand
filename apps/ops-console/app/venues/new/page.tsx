@@ -1,9 +1,15 @@
 import Link from 'next/link';
 import { createVenueAction } from '@/actions/venues';
 
+const inputCls =
+  'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white';
+
+const selectCls =
+  'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white';
+
 export default function NewVenuePage() {
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b border-gray-200">
         <div className="max-w-2xl mx-auto px-6 py-4 flex items-center gap-3">
           <Link href="/venues" className="text-sm text-gray-500 hover:text-gray-900">
@@ -24,22 +30,13 @@ export default function NewVenuePage() {
           <form action={createVenueAction} className="space-y-5">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Venue name *</label>
-              <input
-                name="name"
-                required
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="e.g. Nexus Mall Hyderabad"
-              />
+              <input name="name" required className={inputCls} placeholder="e.g. Nexus Mall Hyderabad" />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Venue type *</label>
-                <select
-                  name="type"
-                  required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                >
+                <select name="type" required className={selectCls}>
                   <option value="">Select type</option>
                   <option value="MALL">Mall</option>
                   <option value="HOSPITAL">Hospital</option>
@@ -47,25 +44,15 @@ export default function NewVenuePage() {
                   <option value="CORPORATE">Corporate</option>
                 </select>
               </div>
-
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">City *</label>
-                <input
-                  name="city"
-                  required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="e.g. Hyderabad"
-                />
+                <input name="city" required className={inputCls} placeholder="e.g. Hyderabad" />
               </div>
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Subscription tier *</label>
-              <select
-                name="subscription_tier"
-                required
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-              >
+              <select name="subscription_tier" required className={selectCls}>
                 <option value="ESSENTIAL">Essential</option>
                 <option value="PROFESSIONAL">Professional</option>
                 <option value="ENTERPRISE">Enterprise</option>
@@ -78,7 +65,7 @@ export default function NewVenuePage() {
               <textarea
                 name="address"
                 rows={2}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                className={`${inputCls} resize-none`}
                 placeholder="Full address (optional)"
               />
             </div>
