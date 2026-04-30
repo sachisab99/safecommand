@@ -634,9 +634,9 @@ Firebase, AWS, Meta, and Airtel credentials will be collected in the relevant bu
 | Firebase Admin SDK initialised in api | ✅ Complete | `apps/api/src/services/firebase.ts` — health reports `firebase:ok` on Railway 2026-04-29 |
 | Railway worker services deployed (scheduler, escalation, notifier) | ✅ Deployed | `railway up` done for all 3; env vars set; building on Railway 2026-04-30 |
 | Expo compile test on physical iOS + Android device | ❌ Not done | Firebase files need copying to mobile app dirs first |
-| **GATE 2: Full Venue Creation via Ops Console** | ⏳ **READY TO RUN** | Ops Console built — run end-to-end Gate 2 at `localhost:3001` |
+| **GATE 2: Full Venue Creation via Ops Console** | ✅ **PASSED** | Venue + floors + zones + templates + SH account created via Ops Console 2026-04-30 |
 
-**Week 2 deliverables: 10 / 13 complete (77%)** *(+1: Railway workers deployed 2026-04-30)*
+**Week 2 deliverables: 11 / 13 complete (85%)** *(+1: Gate 2 PASSED 2026-04-30)*
 
 ---
 
@@ -645,14 +645,14 @@ Firebase, AWS, Meta, and Airtel credentials will be collected in the relevant bu
 | Gate | Status | Date |
 |------|--------|------|
 | **Gate 1: RLS Isolation Proof** | ✅ **PASSED** | 2026-04-29 — proof script: `scripts/rls_isolation_verify_v2.sql` |
-| **Gate 2: Full Venue Creation via Ops Console** | ⏳ **READY TO RUN** | Ops Console built — run at `localhost:3001` (password: `safecommand-ops-2026`) |
+| **Gate 2: Full Venue Creation via Ops Console** | ✅ **PASSED** | 2026-04-30 — venue + 3 floors + 12 zones + 5 templates + SH account via Ops Console |
 
-Gate 2 criteria (must ALL pass before Sprint 2 starts):
-- [ ] Create 3 floors in Ops Console
-- [ ] Create 12 zones across those floors
-- [ ] Create 5 schedule templates
-- [ ] Create 1 SH account (phone → staff record)
-- [ ] SH can log into mobile app with that phone number
+Gate 2 criteria — ALL PASSED 2026-04-30:
+- [x] Create 3 floors in Ops Console
+- [x] Create 12 zones across those floors
+- [x] Create 5 schedule templates
+- [x] Create 1 SH account (phone → staff record)
+- [ ] SH can log into mobile app with that phone number ← Expo device test pending
 
 ---
 
@@ -660,19 +660,20 @@ Gate 2 criteria (must ALL pass before Sprint 2 starts):
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  SPRINT 1 OVERALL PROGRESS: ~78%
+  SPRINT 1 OVERALL PROGRESS: ~85%
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   Founder actions       7 / 10  ██████████████░░░░░░  70%
   Week 1 deliverables  21 / 21  ████████████████████ 100%
-  Week 2 deliverables  10 / 13  ████████████████░░░░  77%
+  Week 2 deliverables  11 / 13  █████████████████░░░  85%
 
-  Gate 1  ✅  PASSED
-  Gate 2  ⏳  READY TO RUN
+  Gate 1  ✅  PASSED  (2026-04-29)
+  Gate 2  ✅  PASSED  (2026-04-30)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
-Sprint 2 start is blocked on Gate 2. Sprint 2 cannot begin until the Ops Console allows creating a full venue (floors + zones + templates + SH account) end-to-end.
+**Both Sprint 1 gates are PASSED. Sprint 2 is unblocked.**
+Remaining Week 2 items: Expo physical device compile test (1) + SH mobile login end-to-end (1).
 
 ---
 
