@@ -10,8 +10,10 @@
   },
   "dependencies": {
     "expo": "~54.0.33",
+    "expo-image-picker": "^55.0.19",
     "expo-localization": "^55.0.13",
     "expo-secure-store": "~14.0.0",
+    "expo-sqlite": "^55.0.15",
     "expo-status-bar": "~3.0.9",
     "i18next": "^26.0.8",
     "react": "19.1.0",

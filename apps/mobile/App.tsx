@@ -3,11 +3,14 @@ import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { PhoneScreen } from './src/screens/PhoneScreen';
 import { OtpScreen } from './src/screens/OtpScreen';
-import { HomeScreen } from './src/screens/HomeScreen';
+import { TasksScreen } from './src/screens/TasksScreen';
 import { getStoredSession, clearSession } from './src/services/auth';
+import { initDb, syncPending } from './src/services/tasks';
 import type { AuthSession } from './src/services/auth';
 
-type Screen = 'loading' | 'phone' | 'otp' | 'home';
+type Screen = 'loading' | 'phone' | 'otp' | 'tasks';
+
+initDb(); // initialise SQLite tables at module load
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>('loading');
@@ -17,7 +20,8 @@ export default function App() {
   useEffect(() => {
     getStoredSession().then((s) => {
       setSession(s);
-      setScreen(s ? 'home' : 'phone');
+      setScreen(s ? 'tasks' : 'phone');
+      if (s) syncPending(); // flush any offline-queued completions on resume
     });
   }, []);
 
@@ -28,7 +32,7 @@ export default function App() {
 
   const handleVerified = (s: AuthSession) => {
     setSession(s);
-    setScreen('home');
+    setScreen('tasks');
   };
 
   const handleLogout = async () => {
@@ -57,8 +61,8 @@ export default function App() {
           onBack={() => setScreen('phone')}
         />
       )}
-      {screen === 'home' && session && (
-        <HomeScreen staff={session.staff} onLogout={handleLogout} />
+      {screen === 'tasks' && session && (
+        <TasksScreen staff={session.staff} onLogout={handleLogout} />
       )}
     </>
   );
