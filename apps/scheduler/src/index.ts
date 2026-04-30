@@ -1,32 +1,80 @@
 import 'dotenv/config';
 import pino from 'pino';
-import { Worker, Job } from 'bullmq';
-import { getRedisConnection, QUEUE_NAMES, notificationsQueue } from '@safecommand/queue';
+import { Worker, Queue, Job } from 'bullmq';
+import {
+  getRedisConnection,
+  QUEUE_NAMES,
+  scheduleGenerationQueue,
+  escalationsQueue,
+  notificationsQueue,
+} from '@safecommand/queue';
 import { getServiceClient } from '@safecommand/db';
-import type { ScheduleGenerationJob } from '@safecommand/types';
+import type { ScheduleGenerationJob, EscalationJob, StaffRole } from '@safecommand/types';
+import { computeCurrentSlot, FREQUENCY_WINDOW_MS } from './compute.js';
 
 const logger = pino({ level: process.env['LOG_LEVEL'] ?? 'info' });
 
-const FREQUENCY_WINDOW_MINUTES: Record<string, number> = {
-  HOURLY: 60,
-  EVERY_2H: 120,
-  EVERY_4H: 240,
-  EVERY_6H: 360,
-  EVERY_8H: 480,
-  DAILY: 1440,
-  WEEKLY: 10080,
-  MONTHLY: 43200,
-  QUARTERLY: 129600,
-  ANNUAL: 525600,
-};
+/* ─── Master tick ─────────────────────────────────────────────────────────────
+   Runs every 60s as a Bull repeatable singleton job.
+   Scans all active templates across all venues, computes the current slot for
+   each, and enqueues an individual ScheduleGenerationJob if the slot is due.
+   The individual worker below creates the task_instance with idempotency.
+────────────────────────────────────────────────────────────────────────────── */
+async function processMasterTick(): Promise<void> {
+  const db = getServiceClient();
+  const now = new Date();
 
-async function processScheduleTick(job: Job<ScheduleGenerationJob>): Promise<void> {
+  const { data: templates, error } = await db
+    .from('schedule_templates')
+    .select('id, venue_id, frequency, start_time, timezone, escalation_interval_minutes, assigned_role, escalation_chain')
+    .eq('is_active', true);
+
+  if (error) {
+    logger.error({ error }, 'Failed to fetch active templates');
+    return;
+  }
+
+  if (!templates || templates.length === 0) {
+    logger.debug('No active templates found');
+    return;
+  }
+
+  let enqueued = 0;
+  for (const tpl of templates) {
+    const slot = computeCurrentSlot(tpl.frequency, tpl.start_time ?? null, tpl.timezone ?? 'Asia/Kolkata', now);
+    if (!slot) continue;
+
+    // Skip stale slots: if the slot is older than 2× the window, don't backfill.
+    const windowMs = FREQUENCY_WINDOW_MS[tpl.frequency] ?? 60 * 60_000;
+    if (now.getTime() - slot.getTime() > 2 * windowMs) continue;
+
+    // Skip future slots: slot hasn't started yet.
+    if (slot.getTime() > now.getTime()) continue;
+
+    const jobId = `tpl-tick::${tpl.id}::${slot.toISOString()}`;
+    await scheduleGenerationQueue.add(
+      'schedule-template-tick',
+      { venue_id: tpl.venue_id, template_id: tpl.id, tick_at: slot.toISOString() } satisfies ScheduleGenerationJob,
+      { jobId, deduplication: { id: jobId } },
+    );
+    enqueued++;
+  }
+
+  logger.info({ templates: templates.length, enqueued, tick: now.toISOString() }, 'Master tick complete');
+}
+
+/* ─── Template tick: create task_instance ────────────────────────────────────
+   Processes individual ScheduleGenerationJob items.
+   Creates the task_instance, skips on idempotency conflict (23505),
+   then enqueues a delayed escalation job and push notifications.
+────────────────────────────────────────────────────────────────────────────── */
+async function processTemplateTick(job: Job<ScheduleGenerationJob>): Promise<void> {
   const { venue_id, template_id, tick_at } = job.data;
   const db = getServiceClient();
 
   const { data: template, error: tError } = await db
     .from('schedule_templates')
-    .select('id, frequency, assigned_role, escalation_interval_minutes')
+    .select('id, frequency, assigned_role, escalation_chain, escalation_interval_minutes')
     .eq('id', template_id)
     .eq('venue_id', venue_id)
     .eq('is_active', true)
@@ -38,18 +86,22 @@ async function processScheduleTick(job: Job<ScheduleGenerationJob>): Promise<voi
   }
 
   const dueAt = new Date(tick_at);
-  const windowMinutes = FREQUENCY_WINDOW_MINUTES[template.frequency] ?? 60;
-  const expiresAt = new Date(dueAt.getTime() + windowMinutes * 60 * 1000);
+  const windowMs = FREQUENCY_WINDOW_MS[template.frequency] ?? 60 * 60_000;
+  const expiresAt = new Date(dueAt.getTime() + windowMs);
   const idempotencyKey = `${template_id}::${tick_at}`;
 
-  const { error: insertError } = await db.from('task_instances').insert({
-    venue_id,
-    template_id,
-    status: 'PENDING',
-    due_at: dueAt.toISOString(),
-    window_expires_at: expiresAt.toISOString(),
-    idempotency_key: idempotencyKey,
-  });
+  const { data: inserted, error: insertError } = await db
+    .from('task_instances')
+    .insert({
+      venue_id,
+      template_id,
+      status: 'PENDING',
+      due_at: dueAt.toISOString(),
+      window_expires_at: expiresAt.toISOString(),
+      idempotency_key: idempotencyKey,
+    })
+    .select('id')
+    .single();
 
   if (insertError) {
     if (insertError.code === '23505') {
@@ -59,20 +111,103 @@ async function processScheduleTick(job: Job<ScheduleGenerationJob>): Promise<voi
     throw new Error(`Failed to insert task_instance: ${insertError.message}`);
   }
 
-  logger.info({ venue_id, template_id, due_at: dueAt }, 'Task instance created');
+  const taskId = inserted.id;
+  logger.info({ venue_id, template_id, task_id: taskId, due_at: dueAt }, 'Task instance created');
+
+  // Enqueue escalation delayed job — fires if task is still PENDING/IN_PROGRESS
+  // at window_expires_at. Delay = time until window expires.
+  const escalationChain = (template.escalation_chain ?? []) as StaffRole[];
+  if (escalationChain.length > 0) {
+    const delayMs = Math.max(0, expiresAt.getTime() - Date.now());
+    await escalationsQueue.add(
+      'task-escalation',
+      {
+        task_instance_id: taskId,
+        venue_id,
+        level: 0,
+        escalation_chain: escalationChain,
+      } satisfies EscalationJob,
+      {
+        delay: delayMs,
+        jobId: `esc::${taskId}::0`,
+      },
+    );
+  }
+
+  // Push notification to all active staff with the assigned role
+  const { data: staffList } = await db
+    .from('staff')
+    .select('id, fcm_token, name')
+    .eq('venue_id', venue_id)
+    .eq('role', template.assigned_role)
+    .eq('is_active', true);
+
+  for (const staff of staffList ?? []) {
+    if (!staff.fcm_token) continue;
+    await notificationsQueue.add(
+      `task-assigned-${taskId}-${staff.id}`,
+      {
+        venue_id,
+        staff_id: staff.id,
+        channel: 'APP_PUSH',
+        template_key: 'task_assigned',
+        variables: { task_id: taskId, role: template.assigned_role },
+        comm_delivery_id: '',
+      },
+      { jobId: `notify-assign::${taskId}::${staff.id}` },
+    );
+  }
 }
 
-const worker = new Worker<ScheduleGenerationJob>(
+/* ─── Worker ─────────────────────────────────────────────────────────────── */
+
+const connection = getRedisConnection();
+
+const worker = new Worker(
   QUEUE_NAMES.SCHEDULE_GENERATION,
-  processScheduleTick,
-  {
-    connection: getRedisConnection(),
-    concurrency: 20,
+  async (job) => {
+    if (job.name === 'master-tick') return processMasterTick();
+    return processTemplateTick(job as Job<ScheduleGenerationJob>);
   },
+  { connection, concurrency: 20 },
 );
 
 worker.on('failed', (job, err) => {
-  logger.error({ job: job?.id, err }, 'Schedule job failed');
+  logger.error({ job: job?.id, jobName: job?.name, err }, 'Schedule job failed');
 });
 
-logger.info('Scheduler worker started');
+worker.on('completed', (job) => {
+  if (job.name !== 'master-tick') {
+    logger.debug({ job: job.id }, 'Schedule job completed');
+  }
+});
+
+/* ─── Repeatable master tick registration ────────────────────────────────── */
+
+async function registerMasterTick(): Promise<void> {
+  // Remove any stale repeatable tick definitions first (handles redeploys)
+  const repeatables = await scheduleGenerationQueue.getRepeatableJobs();
+  for (const r of repeatables) {
+    if (r.name === 'master-tick') {
+      await scheduleGenerationQueue.removeRepeatableByKey(r.key);
+      logger.info({ key: r.key }, 'Removed stale repeatable tick');
+    }
+  }
+
+  await (scheduleGenerationQueue as Queue).add(
+    'master-tick',
+    {} as ScheduleGenerationJob,
+    {
+      repeat: { every: 60_000 }, // every 60 seconds
+      jobId: 'master-tick-singleton',
+    },
+  );
+  logger.info('Master tick registered — every 60s');
+}
+
+registerMasterTick()
+  .then(() => logger.info('Scheduler worker started'))
+  .catch((err) => {
+    logger.error({ err }, 'Failed to register master tick — exiting');
+    process.exit(1);
+  });
