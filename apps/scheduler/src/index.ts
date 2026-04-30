@@ -144,6 +144,23 @@ async function processTemplateTick(job: Job<ScheduleGenerationJob>): Promise<voi
 
   for (const staff of staffList ?? []) {
     if (!staff.fcm_token) continue;
+
+    const { data: delivery, error: deliveryErr } = await db
+      .from('comm_deliveries')
+      .insert({
+        venue_id,
+        source_type: 'TASK_INSTANCE',
+        source_id: taskId,
+        recipient_staff_id: staff.id,
+        channel: 'APP_PUSH',
+        status: 'PENDING',
+      })
+      .select('id')
+      .single();
+    if (deliveryErr) {
+      logger.warn({ staff_id: staff.id, task_id: taskId, err: deliveryErr.message }, 'comm_deliveries insert failed — notification still fires');
+    }
+
     await notificationsQueue.add(
       `task-assigned-${taskId}-${staff.id}`,
       {
@@ -152,7 +169,7 @@ async function processTemplateTick(job: Job<ScheduleGenerationJob>): Promise<voi
         channel: 'APP_PUSH',
         template_key: 'task_assigned',
         variables: { task_id: taskId, role: template.assigned_role },
-        comm_delivery_id: '',
+        comm_delivery_id: delivery?.id,
       },
       { jobId: `notify-assign::${taskId}::${staff.id}` },
     );

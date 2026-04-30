@@ -214,7 +214,7 @@ export interface NotificationJob {
   channel: DeliveryChannel;
   template_key: string;
   variables: Record<string, string>;
-  comm_delivery_id: string;
+  comm_delivery_id?: string;
   fallback_after_ms?: number;
 }
 

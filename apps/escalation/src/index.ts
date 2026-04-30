@@ -45,13 +45,29 @@ async function processEscalation(job: Job<EscalationJob>): Promise<void> {
     .eq('is_active', true);
 
   for (const staff of staffList ?? []) {
+    const { data: delivery, error: deliveryErr } = await db
+      .from('comm_deliveries')
+      .insert({
+        venue_id,
+        source_type: 'ESCALATION',
+        source_id: task_instance_id,
+        recipient_staff_id: staff.id,
+        channel: 'APP_PUSH',
+        status: 'PENDING',
+      })
+      .select('id')
+      .single();
+    if (deliveryErr) {
+      logger.warn({ staff_id: staff.id, task_id: task_instance_id, err: deliveryErr.message }, 'comm_deliveries insert failed — notification still fires');
+    }
+
     await notificationsQueue.add(`notify-${task_instance_id}-l${level}`, {
       venue_id,
       staff_id: staff.id,
       channel: 'APP_PUSH',
       template_key: 'escalation_alert',
       variables: { task_id: task_instance_id, level: String(level), role: escalateToRole },
-      comm_delivery_id: '',
+      comm_delivery_id: delivery?.id,
     });
   }
 
@@ -69,13 +85,29 @@ async function processIncidentEscalation(job: Job<IncidentEscalationJob>): Promi
     .eq('is_active', true);
 
   for (const staff of onDutyStaff ?? []) {
+    const { data: delivery, error: deliveryErr } = await db
+      .from('comm_deliveries')
+      .insert({
+        venue_id,
+        source_type: 'INCIDENT',
+        source_id: incident_id,
+        recipient_staff_id: staff.id,
+        channel: 'APP_PUSH',
+        status: 'PENDING',
+      })
+      .select('id')
+      .single();
+    if (deliveryErr) {
+      logger.warn({ staff_id: staff.id, incident_id, err: deliveryErr.message }, 'comm_deliveries insert failed — notification still fires');
+    }
+
     await notificationsQueue.add(`incident-notify-${incident_id}-${staff.id}`, {
       venue_id,
       staff_id: staff.id,
       channel: 'APP_PUSH',
       template_key: 'incident_alert',
       variables: { incident_id },
-      comm_delivery_id: '',
+      comm_delivery_id: delivery?.id,
       fallback_after_ms: 90_000,
     }, { priority: 0 });
   }
