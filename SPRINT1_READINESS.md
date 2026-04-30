@@ -547,20 +547,21 @@ Firebase, AWS, Meta, and Airtel credentials will be collected in the relevant bu
 
 | Area | Status | Detail |
 |------|--------|--------|
-| GitHub repo | ✅ Live | `github.com/sachisab99/safecommand` (private) — 6 commits on main |
+| GitHub repo | ✅ Live | `github.com/sachisab99/safecommand` (private) — 9 commits on main |
 | GitHub SSH auth | ✅ Working | SSH key configured, push/pull operational |
 | Supabase project | ✅ Live | `exrewpsjrtevsicmullp.supabase.co` — Pro plan |
 | Supabase migrations | ✅ All 6 deployed | 001_enums → 006_realtime |
 | Supabase Realtime | ✅ Enabled | zones, incidents, zone_status_log, incident_timeline |
-| Railway api service | ✅ LIVE | `GET https://api-production-9f9dd.up.railway.app/health → 200` |
-| Railway scheduler | ⚠️ Code only | Scaffolded in monorepo — NOT deployed to Railway |
-| Railway escalation | ⚠️ Code only | Scaffolded in monorepo — NOT deployed to Railway |
-| Railway notifier | ⚠️ Code only | Scaffolded in monorepo — NOT deployed to Railway |
+| Railway api service | ✅ LIVE | `GET /health → {"database":"ok","firebase":"ok"}` — 2 replicas |
+| Railway scheduler | ✅ Deployed | `railway up` 2026-04-30 — env vars set, building |
+| Railway escalation | ✅ Deployed | `railway up` 2026-04-30 — env vars set, building |
+| Railway notifier | ✅ Deployed | `railway up` 2026-04-30 — env vars set (Firebase included), building |
 | Upstash Redis | ✅ Live | `lucky-giraffe-107825.upstash.io` — BullMQ connected |
-| Firebase project | ✅ Created | Project ID: `safecommand-51499`, config files saved to `system/` |
+| Firebase project | ✅ Live | `safecommand-51499` — Phone Auth enabled, Admin SDK wired into api |
 | Firebase Phone Auth | ✅ Enabled | Firebase Console — Phone sign-in enabled 2026-04-29 |
-| Firebase wired into api | ✅ Live | `apps/api/src/services/firebase.ts` — Admin SDK init, `GET /health → {"firebase":"ok"}` |
-| AWS S3 bucket | ❌ Not created | Needed for photo evidence uploads (Week 6) |
+| Firebase wired into api | ✅ Live | `apps/api/src/services/firebase.ts` — health confirms `firebase:ok` |
+| AWS S3 bucket | ✅ Live | `safecommand-uploads-prod` ap-south-1 — India data residency Day 1 |
+| Ops Console | ✅ Built | `localhost:3001` — venue wizard, floors/zones, templates, staff (BR-02/03/04/06) |
 | Meta WhatsApp API | ❌ Not submitted | 7–14 day approval — **OVERDUE — START NOW** |
 | Airtel DLT SMS | ❌ Not submitted | 5–7 day approval — **OVERDUE — START NOW** |
 | Domain (safecommand.in) | ❌ Not purchased | Needed before pilot go-live |
@@ -709,12 +710,10 @@ Firebase Admin SDK is now live on Railway. Next Claude Code build session:
 
 4. **✅ Railway worker services deployed** — DONE 2026-04-30 (scheduler, escalation, notifier building on Railway)
 
-5. **Expo physical device compile test**
+5. **Expo physical device compile test** ← next after Gate 2
    - Copy `google-services.json` → `apps/mobile/android/app/`
    - Copy `GoogleService-Info.plist` → `apps/mobile/ios/`
    - Run `npx expo start` → verify on physical iOS + Android device
-
-5. **Run Gate 2** — end-to-end venue creation through Ops Console, SH login on mobile
 
 ---
 
@@ -722,7 +721,7 @@ Firebase Admin SDK is now live on Railway. Next Claude Code build session:
 
 | Action | Deadline | Impact if delayed |
 |--------|----------|-------------------|
-| ~~AWS S3 bucket (A3.2)~~ | ✅ Done 2026-04-29 | `safecommand-uploads-prod` ap-south-1 — env vars set locally, Railway pending re-auth |
+| ~~AWS S3 bucket (A3.2)~~ | ✅ Done 2026-04-29 | `safecommand-uploads-prod` ap-south-1 — env vars live in Railway api |
 | Domain purchase safecommand.in (A3.3) | Before pilot | API + dashboard + ops-console on custom domains |
 | Apple Developer Account (A3.4) | Before Sprint 3 | iOS TestFlight build blocked |
 | Meta WABA approval (A1.1) | Pending (~7–14 days after submission) | WhatsApp notification delivery (Week 4) |
@@ -730,13 +729,10 @@ Firebase Admin SDK is now live on Railway. Next Claude Code build session:
 
 ---
 
-Founder actions       7 / 10  ██████████████░░░░░░  70%                                                                       
-Week 1 deliverables  21 / 21  ████████████████████ 100%
-Week 2 deliverables   5 / 13  ████████░░░░░░░░░░░░  38%
-
 *Status update appended: 2026-04-29 ~03:00 IST*
 *Status update appended: 2026-04-29 ~08:00 IST — Firebase Phone Auth ✅, Firebase env vars in Railway ✅, Firebase Admin SDK live on Railway ✅, health endpoint confirmed `{"database":"ok","firebase":"ok"}`*
 *Status update appended: 2026-04-29 — A3.2 AWS S3 ✅ — `safecommand-uploads-prod` in `ap-south-1`; IAM user `safecommand-api`; env vars in local `.env` + Railway*
 *Status update appended: 2026-04-30 — Ops Console fully built ✅ — BR-02/03/04/06 complete; proxy.ts auth guard; venue wizard → auto venue code; floors/zones/templates/staff tabs; Week 2 9/13 (69%); Sprint 1 ~75%; Gate 2 ready to run*
 *Status update appended: 2026-04-30 — Railway workers deployed ✅ — scheduler, escalation, notifier all `railway up` with correct env vars; Week 2 10/13 (77%); Sprint 1 ~78%*
 *Status update appended: 2026-04-30 — Session report filed: `report-gen/2026-04-30-08:00_build.md` — full infra state, BR status, Gate results, next session guide*
+*Status update appended: 2026-04-30 — Full status audit: Current State Summary updated (workers ✅, S3 ✅, Ops Console ✅), stale duplicate progress bar removed, duplicate step removed. Sprint 1 ~78%, Gate 2 in progress.*
