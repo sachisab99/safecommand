@@ -13,6 +13,7 @@ import { zonesRouter } from './routes/zones.js';
 import { tasksRouter } from './routes/tasks.js';
 import { incidentsRouter } from './routes/incidents.js';
 import { uploadRouter } from './routes/upload.js';
+import { analyticsRouter } from './routes/analytics.js';
 import { errorHandler } from './middleware/error-handler.js';
 
 const app = express();
@@ -31,6 +32,7 @@ app.use('/v1/zones', zonesRouter);
 app.use('/v1/tasks', tasksRouter);
 app.use('/v1/incidents', incidentsRouter);
 app.use('/v1/upload', uploadRouter);
+app.use('/v1/analytics', analyticsRouter);
 
 app.use(errorHandler);
 
