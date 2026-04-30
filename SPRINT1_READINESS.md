@@ -621,7 +621,7 @@ Firebase, AWS, Meta, and Airtel credentials will be collected in the relevant bu
 
 | Deliverable | Status | Notes |
 |-------------|--------|-------|
-| Auth endpoints (send-otp, verify-otp, refresh, logout) | ⚠️ Coded | Routes written — Supabase Phone Auth not yet enabled in Firebase Console |
+| Auth endpoints (send-otp, verify-otp, refresh, logout) | ✅ Ready | Routes written + Firebase Phone Auth enabled — smoke test pending |
 | JWT middleware (`req.auth` populated, tenant context) | ✅ Complete | `apps/api/src/middleware/auth.ts` — `requireAuth`, `requireRole`, `requireMinRole` |
 | Role permission matrix (all 8 roles) | ✅ Complete | `ROLE_HIERARCHY` in auth middleware |
 | Audit middleware | ✅ Complete | `apps/api/src/middleware/audit.ts` — auto-writes to audit_logs on 2xx mutations |
@@ -739,3 +739,4 @@ Week 2 deliverables   5 / 13  ████████░░░░░░░░�
 *Status update appended: 2026-04-29 — A3.2 AWS S3 ✅ — `safecommand-uploads-prod` in `ap-south-1`; IAM user `safecommand-api`; env vars in local `.env` + Railway*
 *Status update appended: 2026-04-30 — Ops Console fully built ✅ — BR-02/03/04/06 complete; proxy.ts auth guard; venue wizard → auto venue code; floors/zones/templates/staff tabs; Week 2 9/13 (69%); Sprint 1 ~75%; Gate 2 ready to run*
 *Status update appended: 2026-04-30 — Railway workers deployed ✅ — scheduler, escalation, notifier all `railway up` with correct env vars; Week 2 10/13 (77%); Sprint 1 ~78%*
+*Status update appended: 2026-04-30 — Session report filed: `report-gen/2026-04-30-08:00_build.md` — full infra state, BR status, Gate results, next session guide*
