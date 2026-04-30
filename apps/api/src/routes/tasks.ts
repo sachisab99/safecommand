@@ -9,6 +9,35 @@ import { CompleteTaskSchema } from '@safecommand/schemas';
 export const tasksRouter = Router();
 tasksRouter.use(requireAuth, setTenantContext);
 
+// Role-based task list — primary mobile endpoint.
+// Returns today's tasks where the template assigned_role matches caller's role.
+// Optional ?date=YYYY-MM-DD (defaults to today UTC).
+tasksRouter.get('/my', async (req: Request, res: Response): Promise<void> => {
+  const date = (req.query['date'] as string) ?? new Date().toISOString().slice(0, 10);
+  const startOfDay = `${date}T00:00:00.000Z`;
+  const endOfDay   = `${date}T23:59:59.999Z`;
+
+  const { data, error } = await getServiceClient()
+    .from('task_instances')
+    .select(`
+      id, status, due_at, window_expires_at, created_at, updated_at,
+      schedule_templates!inner(title, description, evidence_type, frequency, assigned_role),
+      task_completions(id, evidence_type, evidence_url, evidence_text, evidence_numeric, completed_at)
+    `)
+    .eq('venue_id', req.auth.venue_id)
+    .eq('schedule_templates.assigned_role', req.auth.role)
+    .gte('due_at', startOfDay)
+    .lte('due_at', endOfDay)
+    .order('due_at');
+
+  if (error) {
+    res.status(500).json({ error: { code: 'QUERY_FAILED', message: 'Could not fetch tasks' } });
+    return;
+  }
+  res.json(data ?? []);
+});
+
+// Date-scoped task list (all tasks for venue — dashboard/ops view).
 tasksRouter.get('/', async (req: Request, res: Response): Promise<void> => {
   const date = (req.query['date'] as string) ?? new Date().toISOString().slice(0, 10);
   const startOfDay = `${date}T00:00:00.000Z`;
@@ -18,7 +47,6 @@ tasksRouter.get('/', async (req: Request, res: Response): Promise<void> => {
     .from('task_instances')
     .select('*, schedule_templates(title, evidence_type, frequency)')
     .eq('venue_id', req.auth.venue_id)
-    .eq('assigned_staff_id', req.auth.staff_id)
     .gte('due_at', startOfDay)
     .lte('due_at', endOfDay)
     .order('due_at');
