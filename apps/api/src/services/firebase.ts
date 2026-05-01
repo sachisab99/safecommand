@@ -5,6 +5,12 @@ let _app: admin.app.App | null = null;
 export function getFirebaseApp(): admin.app.App {
   if (_app) return _app;
 
+  // Recover if app was already registered (e.g. rolling deploy kept module registry)
+  if (admin.apps.length > 0 && admin.apps[0]) {
+    _app = admin.apps[0];
+    return _app;
+  }
+
   const projectId = process.env['FIREBASE_PROJECT_ID'];
   const clientEmail = process.env['FIREBASE_CLIENT_EMAIL'];
   const privateKey = process.env['FIREBASE_PRIVATE_KEY'];
