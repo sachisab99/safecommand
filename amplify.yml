@@ -5,18 +5,15 @@ applications:
       phases:
         preBuild:
           commands:
-            - cd ../..
-            - npm ci --prefer-offline --no-audit --no-fund
+            - npm install --no-audit --no-fund --no-package-lock
         build:
           commands:
-            - npm run build --workspace=packages/types --workspace=packages/schemas --workspace=packages/db --workspace=packages/queue
-            - cd apps/dashboard
             - npm run build
       artifacts:
-        baseDirectory: apps/dashboard/.next
+        baseDirectory: .next
         files:
           - '**/*'
       cache:
         paths:
           - node_modules/**/*
-          - apps/dashboard/.next/cache/**/*
+          - .next/cache/**/*
