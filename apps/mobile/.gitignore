@@ -40,6 +40,6 @@ yarn-error.*
 /ios
 /android
 
-# Firebase credentials — copy from /system/ at build time, never commit
-google-services.json
-GoogleService-Info.plist
+# Firebase credentials — safe to commit (values are embedded in compiled APK/IPA anyway)
+# google-services.json
+# GoogleService-Info.plist
