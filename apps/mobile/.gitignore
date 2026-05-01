@@ -39,3 +39,7 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Firebase credentials — copy from /system/ at build time, never commit
+google-services.json
+GoogleService-Info.plist

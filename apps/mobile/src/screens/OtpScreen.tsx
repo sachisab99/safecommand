@@ -11,16 +11,16 @@ import {
   Platform,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import { verifyOtp } from '../services/auth';
-import type { AuthSession } from '../services/auth';
+import { verifyFirebaseOtp, type OtpConfirmation, type AuthSession } from '../services/auth';
 
 interface Props {
   phone: string;
+  confirmation: OtpConfirmation;
   onVerified: (session: AuthSession) => void;
   onBack: () => void;
 }
 
-export function OtpScreen({ phone, onVerified, onBack }: Props) {
+export function OtpScreen({ phone, confirmation, onVerified, onBack }: Props) {
   const { t } = useTranslation();
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
@@ -38,7 +38,7 @@ export function OtpScreen({ phone, onVerified, onBack }: Props) {
     }
     setError(null);
     setLoading(true);
-    const { session, error: err } = await verifyOtp(phone, otp);
+    const { session, error: err } = await verifyFirebaseOtp(confirmation, otp);
     setLoading(false);
     if (err || !session) {
       setError(err ?? t('auth.invalid_otp'));

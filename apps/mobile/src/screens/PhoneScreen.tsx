@@ -11,10 +11,10 @@ import {
   SafeAreaView,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import { sendOtp } from '../services/auth';
+import { sendFirebaseOtp, type OtpConfirmation } from '../services/auth';
 
 interface Props {
-  onOtpSent: (phone: string) => void;
+  onOtpSent: (phone: string, confirmation: OtpConfirmation) => void;
 }
 
 export function PhoneScreen({ onOtpSent }: Props) {
@@ -31,13 +31,13 @@ export function PhoneScreen({ onOtpSent }: Props) {
     }
     setError(null);
     setLoading(true);
-    const err = await sendOtp(trimmed);
+    const { confirmation, error: err } = await sendFirebaseOtp(trimmed);
     setLoading(false);
-    if (err) {
-      setError(err);
+    if (err || !confirmation) {
+      setError(err ?? 'Failed to send OTP');
       return;
     }
-    onOtpSent(trimmed);
+    onOtpSent(trimmed, confirmation);
   };
 
   return (
