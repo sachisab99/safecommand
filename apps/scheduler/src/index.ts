@@ -51,7 +51,7 @@ async function processMasterTick(): Promise<void> {
     // Skip future slots: slot hasn't started yet.
     if (slot.getTime() > now.getTime()) continue;
 
-    const jobId = `tpl-tick::${tpl.id}::${slot.toISOString()}`;
+    const jobId = `tpl-tick__${tpl.id}__${slot.toISOString().replace(/[:.]/g, '-')}`;
     await scheduleGenerationQueue.add(
       'schedule-template-tick',
       { venue_id: tpl.venue_id, template_id: tpl.id, tick_at: slot.toISOString() } satisfies ScheduleGenerationJob,
@@ -129,7 +129,7 @@ async function processTemplateTick(job: Job<ScheduleGenerationJob>): Promise<voi
       } satisfies EscalationJob,
       {
         delay: delayMs,
-        jobId: `esc::${taskId}::0`,
+        jobId: `esc__${taskId}__0`,
       },
     );
   }
@@ -171,7 +171,7 @@ async function processTemplateTick(job: Job<ScheduleGenerationJob>): Promise<voi
         variables: { task_id: taskId, role: template.assigned_role },
         comm_delivery_id: delivery?.id,
       },
-      { jobId: `notify-assign::${taskId}::${staff.id}` },
+      { jobId: `notify-assign__${taskId}__${staff.id}` },
     );
   }
 }
