@@ -18,8 +18,8 @@ let _redis: Redis | null = null;
 
 export function getRedisConnection(): Redis {
   if (!_redis) {
-    const url = process.env['REDIS_URL'];
-    if (!url) throw new Error('REDIS_URL must be set');
+    const url = process.env['SC_REDIS_URL'] ?? process.env['REDIS_URL'];
+    if (!url) throw new Error('SC_REDIS_URL must be set');
     _redis = new Redis(url, {
       maxRetriesPerRequest: null,
       tls: url.startsWith('rediss://') ? {} : undefined,
