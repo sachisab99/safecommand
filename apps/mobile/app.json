@@ -6,7 +6,6 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -23,7 +22,6 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "googleServicesFile": "./google-services.json"
     },
@@ -32,12 +30,16 @@
     },
     "plugins": [
       "@react-native-firebase/app",
-      "@react-native-firebase/auth"
+      "@react-native-firebase/auth",
+      "expo-localization",
+      "expo-secure-store",
+      "expo-sqlite"
     ],
     "extra": {
       "eas": {
-        "projectId": "safecommand"
+        "projectId": "cbb35f84-03be-4bab-8e5a-1590147c18be"
       }
-    }
+    },
+    "owner": "sachisab99"
   }
 }
