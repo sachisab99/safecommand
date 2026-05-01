@@ -1,0 +1,22 @@
+version: 1
+applications:
+  - appRoot: apps/dashboard
+    frontend:
+      phases:
+        preBuild:
+          commands:
+            - cd ../..
+            - npm ci --prefer-offline --no-audit --no-fund
+        build:
+          commands:
+            - npm run build --workspace=packages/types --workspace=packages/schemas --workspace=packages/db --workspace=packages/queue
+            - cd apps/dashboard
+            - npm run build
+      artifacts:
+        baseDirectory: apps/dashboard/.next
+        files:
+          - '**/*'
+      cache:
+        paths:
+          - node_modules/**/*
+          - apps/dashboard/.next/cache/**/*
