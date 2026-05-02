@@ -725,22 +725,96 @@ If any fails → see section 6.3 diagnostic order.
 4. Plan next month's cost-discipline adjustments
 5. Update [Decision log](#12-decision-log) if major decisions made
 
-### 11.4 Pause workers (cost discipline)
+### 11.4 Pause / resume workers (cost discipline runbook)
 
+Three executable scripts live at `scripts/`:
+
+| Script | Purpose | Effect |
+|--------|---------|--------|
+| `./scripts/pause-workers.sh` | End-of-day shutdown | scheduler + escalation + notifier → 0 replicas |
+| `./scripts/resume-workers.sh` | Start-of-day wake-up | All 3 workers → 1 replica + waits for API health |
+| `./scripts/worker-status.sh` | State check | Shows current replicas + deployment status for all 4 services |
+
+#### Daily flow
+
+**Morning, before building/testing (~30 sec):**
 ```bash
-# Scale workers to 0 (run when not actively testing)
-TOKEN=$(cat ~/.railway/config.json | python3 -c "import json,sys;print(json.load(sys.stdin)['user']['accessToken'])")
-ENV="bd7d4903-0756-4dd0-8b55-33fc40a36f3d"
-for svc in 19df0688-609d-4226-9c13-1072f4adb571 899ad603-48cc-4c06-b536-14f51dff99e5 29fdd57b-90fe-41bb-a450-95999f4b3624; do
-  curl -s -X POST https://backboard.railway.com/graphql/v2 \
-    -H "Authorization: Bearer $TOKEN" \
-    -H "Content-Type: application/json" \
-    -d "{\"query\":\"mutation { serviceInstanceUpdate(serviceId: \\\"$svc\\\", environmentId: \\\"$ENV\\\", input: { numReplicas: 0 } ) }\"}"
-done
-
-# Resume:
-# Same command with numReplicas: 1
+cd "/Volumes/Crucial X9/claude_code/NEXUS_system/products/Safecommand"
+./scripts/resume-workers.sh
 ```
+Output confirms each worker scaled to 1, then polls API health until ready (60-90s typical). When you see `✓ API healthy`, start working.
+
+**End of day, weekend, or vacation (~10 sec):**
+```bash
+cd "/Volumes/Crucial X9/claude_code/NEXUS_system/products/Safecommand"
+./scripts/pause-workers.sh
+```
+Output confirms each worker scaled to 0. Workers stop within ~30 sec.
+
+**Anytime — quick status check:**
+```bash
+./scripts/worker-status.sh
+```
+
+#### What's affected when paused
+
+✅ **Still works (API stays running):**
+- Mobile login, OTP verification, JWT issuance
+- Mobile viewing tasks, completing tasks (writes to DB)
+- Dashboard browsing, Zone Board, Incidents page
+- Direct DB queries via Supabase
+- File uploads to S3
+
+🛑 **Stops working until resumed:**
+- Scheduled task generation (no new task instances created)
+- Push notifications (FCM/WhatsApp/SMS won't fire)
+- Escalation chain firing on missed tasks
+- Incident notifications (incident gets recorded in DB but no push fires)
+
+🔒 **Preserved (no data loss):**
+- All DB rows
+- Existing queue contents in Upstash Redis
+- On resume, queued jobs flush in order
+
+#### Cost impact
+
+| State | Burn/hour | Burn/day | Burn/week |
+|-------|-----------|----------|-----------|
+| All 3 workers running | ~2,400 cmd | ~57K | ~400K |
+| All 3 workers paused | ~0 cmd | ~0 | ~0 |
+| 8 hr/day pause × 7 days | savings = ~135K/week | | |
+| 16 hr/day pause × 7 days | savings = ~270K/week | | |
+
+At PAYG rates ($0.20 / 100K cmd), pausing 16 hours daily saves ~$0.50/week. Small in absolute terms but the bigger value is **discipline** — keeps you below the 500K/month free-tier line during light testing weeks, lets the free quota cover all of next month.
+
+#### When NOT to pause
+
+- During an active demo/pilot
+- When testing escalation timing (escalation worker must be live to fire delayed jobs)
+- When awaiting a scheduled task to fire (need scheduler running)
+- During a multi-day soak test
+- If the team is geographically distributed and someone might test at any hour
+
+#### Edge cases
+
+**Pause script fails partially** (1 of 3 workers not paused):
+- Re-run the script — it's idempotent
+- If still failing, run `./scripts/worker-status.sh` to see which one
+- Fall back to Railway dashboard manual scale-down
+
+**Resume script reports API health timeout**:
+- Workers might still be coming up — wait 2-3 min, then `curl https://api-production-9f9dd.up.railway.app/health`
+- If still failing, check Railway logs: `railway service api && railway logs --deployment | tail -30`
+
+**Forgot to resume before testing**:
+- Mobile shows "no tasks" indefinitely
+- Push notifications never arrive
+- Solution: just run `./scripts/resume-workers.sh` — auto-recovers
+
+**Token expired** (Railway login session expired):
+- Scripts fail with auth error
+- Re-authenticate: `railway login`
+- Then retry the script
 
 ### 11.5 Emergency contacts & links
 
