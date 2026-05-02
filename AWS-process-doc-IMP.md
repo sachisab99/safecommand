@@ -40,6 +40,7 @@ This document supersedes any conflicting information in CLAUDE.md or session not
 
 ### Companion documents (same folder)
 
+- [`DAILY-OPS.md`](./DAILY-OPS.md) — **Read first.** Daily start-of-day / end-of-day routine. Pause/resume worker commands, scenarios, quick fixes. The day-to-day reference.
 - [`upstash_redis.md`](./upstash_redis.md) — Scheduler master-tick frequency analysis + Upstash command-quota reset behavior + cost calculator (extracted from this doc 2026-05-02 to keep main reference under 1K lines)
 
 ---
