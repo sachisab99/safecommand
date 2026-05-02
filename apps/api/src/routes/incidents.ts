@@ -73,6 +73,15 @@ incidentsRouter.post(
       return;
     }
 
+    // Mark the zone as INCIDENT_ACTIVE so Zone Board reflects it (BR-18)
+    if (zone_id) {
+      await getServiceClient()
+        .from('zones')
+        .update({ current_status: 'INCIDENT_ACTIVE', updated_at: new Date().toISOString() })
+        .eq('id', zone_id)
+        .eq('venue_id', req.auth.venue_id);
+    }
+
     // Return 201 immediately — notification fires async (NFR-02: ≤5 seconds)
     res.status(201).json(data);
 
@@ -109,6 +118,25 @@ incidentsRouter.put(
     if (error || !data) {
       res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Incident not found' } });
       return;
+    }
+
+    // If incident resolved/closed and had a zone, revert zone to ALL_CLEAR — but only
+    // when no OTHER active incident still references this zone (avoid clearing a zone
+    // that has multiple concurrent incidents).
+    if ((status === 'RESOLVED' || status === 'CLOSED') && data.zone_id) {
+      const { count } = await getServiceClient()
+        .from('incidents')
+        .select('id', { count: 'exact', head: true })
+        .eq('zone_id', data.zone_id)
+        .eq('venue_id', req.auth.venue_id)
+        .in('status', ['ACTIVE', 'CONTAINED']);
+      if ((count ?? 0) === 0) {
+        await getServiceClient()
+          .from('zones')
+          .update({ current_status: 'ALL_CLEAR', updated_at: now })
+          .eq('id', data.zone_id)
+          .eq('venue_id', req.auth.venue_id);
+      }
     }
     res.json(data);
   },
