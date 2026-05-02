@@ -29,9 +29,9 @@ The rates below represent different tick intervals. Note that "cmd/min" includes
 | **60 cmd/min** | ~1 second | <1 second | ~2.6M | None for humans — overkill |
 | **40 cmd/min** | ~1.5 seconds | <1.5 seconds | ~1.7M | None — same as 60 cmd/min in practice |
 | **6 cmd/min** | ~60 seconds | <60 seconds | ~260K | None — adequate for all venue safety NFRs (production target) |
-| **3 cmd/min (current)** | **~2 minutes** | **<2 minutes** | **~130K** | Set 2026-05-02 — build-phase cost discipline on PAYG; bump to 60s before any pilot or live demo |
+| **3 cmd/min** | ~2 minutes | <2 minutes | ~130K | Build-phase moderate; tested 2026-05-02 |
 | **1 cmd/min** | ~5–6 minutes | <6 minutes | ~43K | Noticeable for hourly tasks + demo loops |
-| **0.6 cmd/min (deep pause)** | 10 minutes | <10 minutes | ~26K | Almost-paused; only when no testing happening at all |
+| **0.5 cmd/min (current)** | **~12 minutes** | **<12 minutes** | **~22K** | Set 2026-05-02 — minimum master-tick burn while keeping scheduler alive; bump to 60s before any pilot or live demo |
 
 ### 13.3 Detailed scenario impact
 
@@ -94,9 +94,9 @@ SH declares a fire incident at 14:33:12.
 |------|----------------|--------|
 | **60 cmd/min** | Live customer demos, investor pitches | Immediate visual feedback impresses; cost is negligible during demo windows |
 | **6 cmd/min** | Production at any scale | Meets all venue safety NFRs; baseline burn |
-| **3 cmd/min (current — 2-min tick)** | Active dev/test cycles (build phase) | 50% Redis burn reduction vs production; 2-min lag tolerable for build phase |
-| **1 cmd/min** | Off-hours dev / weekend pause / aggressive cost mode | Minimum tick that still keeps service "alive"; suitable when nobody is testing |
-| **0.6 cmd/min (10-min tick — deep pause)** | Build phase + cost discipline + no active venue testing | Almost-paused; demo experience is broken; hourly tasks lag up to 10 min |
+| **3 cmd/min (2-min tick)** | Active dev/test cycles | 50% Redis burn reduction vs production; 2-min lag tolerable |
+| **1 cmd/min** | Off-hours dev / aggressive cost mode | Minimum tick that still keeps service "alive" with reasonable lag |
+| **0.5 cmd/min (current — 12-min tick)** | Build phase minimum-burn / awaiting pilot | Scheduler stays alive but barely; tasks lag up to 12 min — unsuitable for any live testing |
 | **0 (paused)** | Truly idle (no testing, no traffic) | Use the pause-workers runbook in section 11.4 |
 
 ### 13.5 Cost impact at venue scale

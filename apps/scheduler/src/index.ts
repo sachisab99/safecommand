@@ -211,9 +211,9 @@ async function registerMasterTick(): Promise<void> {
     }
   }
 
-  // Build-phase cost-disciplined cadence — see upstash_redis.md
+  // Minimum-burn build-phase cadence — see upstash_redis.md
   // Production target: 60_000 ms. Bump back before any pilot or live demo.
-  const TICK_MS = 120_000; // 2 minutes (3 cmd/min)
+  const TICK_MS = 720_000; // 12 minutes (~0.5 cmd/min from master-tick)
   await (scheduleGenerationQueue as Queue).add(
     'master-tick',
     {} as ScheduleGenerationJob,
