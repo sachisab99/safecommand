@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { AppShell } from '../../components/AppShell';
 import { apiFetch } from '../../lib/api';
-import { supabase } from '../../lib/supabase';
 import { getSession } from '../../lib/auth';
 
 interface ZoneAssignment {
@@ -38,22 +37,8 @@ export default function ZonesPage() {
 
   useEffect(() => {
     fetchZones();
-
-    // Realtime subscription — update individual zone in state when DB changes
-    const channel = supabase
-      .channel('zones-realtime')
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'zones',
-          filter: session ? `venue_id=eq.${session.staff.venue_id}` : undefined },
-        (payload) => {
-          const updated = payload.new as Zone;
-          setZones(prev => prev.map(z => z.id === updated.id ? { ...z, current_status: updated.current_status } : z));
-        },
-      )
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
+    const interval = setInterval(fetchZones, 5000);
+    return () => clearInterval(interval);
   }, [session?.staff.venue_id]);
 
   const displayed = filter === 'ALL' ? zones : zones.filter(z => z.current_status === filter);
@@ -69,7 +54,7 @@ export default function ZonesPage() {
       <div className="p-8 max-w-5xl mx-auto">
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-slate-900">Zone Status Board</h1>
-          <p className="text-slate-500 text-sm mt-1">Live · updates in real-time via Supabase Realtime</p>
+          <p className="text-slate-500 text-sm mt-1">Auto-refreshes every 5 seconds</p>
         </div>
 
         {/* Filter pills */}
