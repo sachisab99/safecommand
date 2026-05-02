@@ -6,6 +6,7 @@ applications:
         preBuild:
           commands:
             - npm install --no-audit --no-fund --no-package-lock
+            - env | grep -e NEXT_PUBLIC_ >> .env.production || true
         build:
           commands:
             - npm run build
