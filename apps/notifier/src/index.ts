@@ -155,7 +155,12 @@ async function processNotification(job: Job<NotificationJob>): Promise<void> {
 const worker = new Worker<NotificationJob>(
   QUEUE_NAMES.NOTIFICATIONS,
   processNotification,
-  { connection: getRedisConnection(), concurrency: 30 },
+  {
+    connection: getRedisConnection(),
+    concurrency: 30,
+    drainDelay: 300,           // block 5 min on empty queue — see upstash_redis.md
+    stalledInterval: 300_000,  // 5 min stalled check
+  },
 );
 
 worker.on('failed', (job, err) => {
