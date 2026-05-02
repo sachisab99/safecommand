@@ -118,13 +118,23 @@ async function processIncidentEscalation(job: Job<IncidentEscalationJob>): Promi
 const taskEscalationWorker = new Worker<EscalationJob>(
   QUEUE_NAMES.ESCALATIONS,
   processEscalation,
-  { connection: getRedisConnection(), concurrency: 10 },
+  {
+    connection: getRedisConnection(),
+    concurrency: 10,
+    drainDelay: 300,           // block 5 min on empty queue — see upstash_redis.md
+    stalledInterval: 300_000,  // 5 min stalled check
+  },
 );
 
 const incidentWorker = new Worker<IncidentEscalationJob>(
   QUEUE_NAMES.INCIDENT_ESCALATIONS,
   processIncidentEscalation,
-  { connection: getRedisConnection(), concurrency: 5 },
+  {
+    connection: getRedisConnection(),
+    concurrency: 5,
+    drainDelay: 300,
+    stalledInterval: 300_000,
+  },
 );
 
 taskEscalationWorker.on('failed', (job, err) => {

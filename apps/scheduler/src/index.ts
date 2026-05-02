@@ -186,7 +186,12 @@ const worker = new Worker(
     if (job.name === 'master-tick') return processMasterTick();
     return processTemplateTick(job as Job<ScheduleGenerationJob>);
   },
-  { connection, concurrency: 20 },
+  {
+    connection,
+    concurrency: 20,
+    drainDelay: 300,           // block 5 min on empty queue (was 5s default) — see upstash_redis.md
+    stalledInterval: 300_000,  // check stalled jobs every 5 min (was 30s default)
+  },
 );
 
 worker.on('failed', (job, err) => {
