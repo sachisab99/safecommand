@@ -211,15 +211,18 @@ async function registerMasterTick(): Promise<void> {
     }
   }
 
+  // Deep-pause mode (build-phase Redis cost discipline) — see AWS-process-doc-IMP.md §13
+  // Production target: 60_000 ms (1 min). Bump back before any pilot or live demo.
+  const TICK_MS = 600_000; // 10 minutes
   await (scheduleGenerationQueue as Queue).add(
     'master-tick',
     {} as ScheduleGenerationJob,
     {
-      repeat: { every: 60_000 }, // every 60 seconds
+      repeat: { every: TICK_MS },
       jobId: 'master-tick-singleton',
     },
   );
-  logger.info('Master tick registered — every 60s');
+  logger.info({ tick_ms: TICK_MS }, 'Master tick registered');
 }
 
 registerMasterTick()
