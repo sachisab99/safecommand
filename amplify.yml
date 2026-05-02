@@ -5,18 +5,8 @@ applications:
       phases:
         preBuild:
           commands:
-            - echo "=== ENV DIAGNOSTIC START ==="
-            - echo "NEXT_PUBLIC count in env shell:"
-            - env | grep -c NEXT_PUBLIC || echo "ZERO"
-            - echo "Variable names visible (values redacted):"
-            - env | grep NEXT_PUBLIC | sed 's/=.*/=<redacted>/' || echo "NONE_VISIBLE"
-            - echo "=== ENV DIAGNOSTIC END ==="
             - npm install --no-audit --no-fund --no-package-lock
             - env | grep -e NEXT_PUBLIC_ >> .env.production || true
-            - echo "=== .env.production check ==="
-            - ls -la .env.production || echo "FILE_DOES_NOT_EXIST"
-            - cat .env.production | sed 's/=.*/=<redacted>/' || echo "FILE_EMPTY"
-            - echo "=== END FILE CHECK ==="
         build:
           commands:
             - npm run build
