@@ -31,7 +31,8 @@ The rates below represent different tick intervals. Note that "cmd/min" includes
 | **6 cmd/min** | ~60 seconds | <60 seconds | ~260K | None — adequate for all venue safety NFRs (production target) |
 | **3 cmd/min** | ~2 minutes | <2 minutes | ~130K | Build-phase moderate; tested 2026-05-02 |
 | **1 cmd/min** | ~5–6 minutes | <6 minutes | ~43K | Noticeable for hourly tasks + demo loops |
-| **0.5 cmd/min (current)** | **~12 minutes** | **<12 minutes** | **~22K** | Set 2026-05-02 — minimum master-tick burn while keeping scheduler alive; bump to 60s before any pilot or live demo |
+| **0.5 cmd/min** | ~12 minutes | <12 minutes | ~22K | Set 2026-05-02 — minimum master-tick burn while keeping scheduler alive |
+| **0.025 cmd/min (current — hibernation)** | **~4 hours** | **<4 hours** | **~1K** | Set 2026-05-03 — May budget freeze; scheduler effectively inert. Bump to 60s before ANY testing session |
 
 ### 13.3 Detailed scenario impact
 
@@ -96,7 +97,8 @@ SH declares a fire incident at 14:33:12.
 | **6 cmd/min** | Production at any scale | Meets all venue safety NFRs; baseline burn |
 | **3 cmd/min (2-min tick)** | Active dev/test cycles | 50% Redis burn reduction vs production; 2-min lag tolerable |
 | **1 cmd/min** | Off-hours dev / aggressive cost mode | Minimum tick that still keeps service "alive" with reasonable lag |
-| **0.5 cmd/min (current — 12-min tick)** | Build phase minimum-burn / awaiting pilot | Scheduler stays alive but barely; tasks lag up to 12 min — unsuitable for any live testing |
+| **0.5 cmd/min (12-min tick)** | Build phase minimum-burn / awaiting pilot | Scheduler stays alive but barely; tasks lag up to 12 min — unsuitable for any live testing |
+| **0.025 cmd/min (current — 4-hour tick — hibernation)** | May 2026 budget freeze | Scheduler effectively dormant; tasks lag up to 4 hours; equivalent to "paused without auth-token hassle" |
 | **0 (paused)** | Truly idle (no testing, no traffic) | Use the pause-workers runbook in section 11.4 |
 
 ### 13.5 Cost impact at venue scale

@@ -216,9 +216,10 @@ async function registerMasterTick(): Promise<void> {
     }
   }
 
-  // Minimum-burn build-phase cadence — see upstash_redis.md
-  // Production target: 60_000 ms. Bump back before any pilot or live demo.
-  const TICK_MS = 720_000; // 12 minutes (~0.5 cmd/min from master-tick)
+  // Hibernation-grade cadence — May 2026 budget freeze. Effectively dormant.
+  // Production target: 60_000 ms. Bump back before any pilot, demo, or testing session.
+  // Implication: scheduled tasks lag up to 4 hours — unfit for any user-facing testing.
+  const TICK_MS = 14_400_000; // 4 hours (~0.025 cmd/min from master-tick — near-zero burn)
   await (scheduleGenerationQueue as Queue).add(
     'master-tick',
     {} as ScheduleGenerationJob,
