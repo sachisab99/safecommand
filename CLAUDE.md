@@ -1,5 +1,23 @@
 # SafeCommand — Claude Code Context
 
+## 🔴 Critical operational controls — read before any infra/cost work
+
+| Control | Where | What it does |
+|---------|-------|--------------|
+| **`WORKERS_PAUSED` env var** | Railway Console → service → Variables tab (per worker) | When `=true`, scheduler/escalation/notifier idle without crash. **First thing to check if "system seems broken"** — pushed/scheduled/escalated jobs all stop until resumed. See `reference_workers_paused_kill_switch.md` memory file or `AWS-process-doc-IMP.md` §11.4.0. |
+| **Scheduler master-tick interval** | `apps/scheduler/src/index.ts` `TICK_MS` constant | Currently 4 hours (hibernation, May 2026 budget freeze). Production target = 60_000 ms. Change before any pilot/demo. |
+| **JUNE-2026 review required** | `JUNE-2026-REVIEW-REQUIRED.md` at product root | Mandatory checklist on first June 2026 work session. Verifies May spend, decides whether to keep workers paused/hibernated. |
+| **Deferred work in May 2026** | `UX-DESIGN-DECISIONS.md` Phases 1-5 | Mobile responsive dashboard redesign — fully analyzed, awaiting June 2026 budget unfreeze. |
+
+**Companion docs at this folder root:**
+- `AWS-process-doc-IMP.md` — full infra reference + decision log
+- `UX-DESIGN-DECISIONS.md` — UX architecture + 5-phase responsive plan
+- `DAILY-OPS.md` — daily start/end-of-day routine
+- `upstash_redis.md` — Redis cost analysis + tick-rate tiers
+- `JUNE-2026-REVIEW-REQUIRED.md` — time-sensitive review marker (delete after 2026-06-02 review)
+
+---
+
 ## What this is
 
 SafeCommand is a managed venue safety infrastructure platform that replaces paper checklists, WhatsApp groups, verbal procedures, and paper visitor registers at Indian hospitals, malls, and hotels with a configured, audited, and compliant system — operated daily so that when an emergency occurs, the team responds in seconds.

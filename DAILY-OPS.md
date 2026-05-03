@@ -7,30 +7,43 @@
 
 ---
 
-## At a glance — copy these three commands
+## At a glance
+
+### 🔴 PRIMARY method (added 2026-05-03) — `WORKERS_PAUSED` env var via Railway Console
+
+For each worker service (`scheduler`, `escalation`, `notifier`):
+1. Open https://railway.app/project/3e27e7ad-f120-4958-b8f6-c1be42032914
+2. Click the service → **Variables** tab → **+ New Variable**
+3. **Pause:** Name=`WORKERS_PAUSED`, Value=`true` → Save
+4. **Resume:** Edit value to `false` or delete the variable → Save
+
+Auto-redeploys after each save (~2 min). API service is never paused.
+
+### Legacy script method (script needs fix — see section "When scripts itself break")
 
 ```bash
-# Morning — wake up workers
-cd "/Volumes/Crucial X9/claude_code/NEXUS_system/products/Safecommand"
-./scripts/resume-workers.sh
-
-# Evening — pause workers
-cd "/Volumes/Crucial X9/claude_code/NEXUS_system/products/Safecommand"
-./scripts/pause-workers.sh
-
 # Anytime — check current state
 ./scripts/worker-status.sh
 ```
+
+The `pause-workers.sh` and `resume-workers.sh` scripts use `numReplicas: 0` which Railway rejects. **Use the env-var method above instead.** Scripts will be updated in June 2026.
 
 ---
 
 ## 🌅 Start of day routine
 
-### Step 1 — Resume workers (~90 sec)
+### Step 1 — Resume workers (~3 min)
 
+**Recommended (env var):**
+1. Open https://railway.app/project/3e27e7ad-f120-4958-b8f6-c1be42032914
+2. For each of `scheduler`, `escalation`, `notifier`: open service → **Variables** → set `WORKERS_PAUSED=false` (or delete the variable) → Save
+3. Wait ~3 min for all 3 to auto-redeploy
+4. Verify: `curl -s https://api-production-9f9dd.up.railway.app/health` should still return `status: ok`
+
+**Legacy script (currently broken — `numReplicas: 0` rejected by Railway):**
 ```bash
 cd "/Volumes/Crucial X9/claude_code/NEXUS_system/products/Safecommand"
-./scripts/resume-workers.sh
+./scripts/resume-workers.sh   # ⚠ broken — fix in June 2026
 ```
 
 **Expected output:**
@@ -92,11 +105,16 @@ You're cleared to:
 
 In the terminal running `npx expo start`, press **Ctrl+C**. Metro stops; phone dev app will lose connection (expected).
 
-### Step 2 — Pause workers (~30 sec)
+### Step 2 — Pause workers (~3 min)
 
+**Recommended (env var):**
+1. Open https://railway.app/project/3e27e7ad-f120-4958-b8f6-c1be42032914
+2. For each of `scheduler`, `escalation`, `notifier`: open service → **Variables** → add `WORKERS_PAUSED=true` → Save
+3. Auto-redeploys; logs will show "WORKERS_PAUSED=true — <name> idle"
+
+**Legacy script (currently broken):**
 ```bash
-cd "/Volumes/Crucial X9/claude_code/NEXUS_system/products/Safecommand"
-./scripts/pause-workers.sh
+./scripts/pause-workers.sh   # ⚠ broken — fix in June 2026
 ```
 
 **Expected output:**

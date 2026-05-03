@@ -919,6 +919,14 @@ Append entries here as architectural decisions are made. Format: date, decision,
 **Rationale:** Industry standard in hospital control rooms. Green creates false comfort; slate is neutral — focuses attention on actual issues.
 **Reversibility:** Medium — easy code change if customer feedback rejects it.
 
+### 2026-05-03 — `WORKERS_PAUSED` env var as primary kill switch (CRITICAL CONTROL)
+
+**Decision:** Add `WORKERS_PAUSED` env var check at startup of all 3 worker services (scheduler, escalation, notifier). When `=true`, service stays alive but skips Worker creation, master-tick registration, and Redis polling. Default unset/false = normal operation.
+**Rationale:** Previous pause approach via Railway CLI mutation (`numReplicas: 0`) is rejected by Railway API. The `sleepApplication: true` alternative requires CLI auth-token refresh that expires every ~12 hours, creating ongoing operational friction. Env-var approach has zero auth friction (toggleable from Railway Console UI), zero crash-loop risk (process stays alive), zero code-change overhead (default unset = backwards-compatible).
+**Reversibility:** High — change is additive; remove env var or set to `false` to restore normal operation. Code is simple if/else guard.
+**How to use:** Railway Console → service → Variables tab → add `WORKERS_PAUSED=true` per service. Auto-redeploys.
+**Documented in:** Section 11.4.0; `DAILY-OPS.md`; `JUNE-2026-REVIEW-REQUIRED.md`; memory file `reference_workers_paused_kill_switch.md`.
+
 ---
 
 ## How to use this document
