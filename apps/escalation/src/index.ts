@@ -115,34 +115,43 @@ async function processIncidentEscalation(job: Job<IncidentEscalationJob>): Promi
   logger.info({ incident_id, venue_id, staff_count: onDutyStaff?.length ?? 0 }, 'Incident notifications enqueued');
 }
 
-const taskEscalationWorker = new Worker<EscalationJob>(
-  QUEUE_NAMES.ESCALATIONS,
-  processEscalation,
-  {
-    connection: getRedisConnection(),
-    concurrency: 10,
-    drainDelay: 300,           // block 5 min on empty queue — see upstash_redis.md
-    stalledInterval: 300_000,  // 5 min stalled check
-  },
-);
+/* ─── Pause control ──────────────────────────────────────────────────────── */
+// Set WORKERS_PAUSED=true in Railway env to idle this service. See AWS-process-doc-IMP.md §11.4.
+const WORKERS_PAUSED = process.env['WORKERS_PAUSED'] === 'true';
 
-const incidentWorker = new Worker<IncidentEscalationJob>(
-  QUEUE_NAMES.INCIDENT_ESCALATIONS,
-  processIncidentEscalation,
-  {
-    connection: getRedisConnection(),
-    concurrency: 5,
-    drainDelay: 300,
-    stalledInterval: 300_000,
-  },
-);
+if (WORKERS_PAUSED) {
+  logger.warn('WORKERS_PAUSED=true — escalation idle. Set to false (or unset) and redeploy to resume.');
+  setInterval(() => logger.info('escalation paused'), 3_600_000);
+} else {
+  const taskEscalationWorker = new Worker<EscalationJob>(
+    QUEUE_NAMES.ESCALATIONS,
+    processEscalation,
+    {
+      connection: getRedisConnection(),
+      concurrency: 10,
+      drainDelay: 300,           // block 5 min on empty queue — see upstash_redis.md
+      stalledInterval: 300_000,  // 5 min stalled check
+    },
+  );
 
-taskEscalationWorker.on('failed', (job, err) => {
-  logger.error({ job: job?.id, err }, 'Escalation job failed');
-});
+  const incidentWorker = new Worker<IncidentEscalationJob>(
+    QUEUE_NAMES.INCIDENT_ESCALATIONS,
+    processIncidentEscalation,
+    {
+      connection: getRedisConnection(),
+      concurrency: 5,
+      drainDelay: 300,
+      stalledInterval: 300_000,
+    },
+  );
 
-incidentWorker.on('failed', (job, err) => {
-  logger.error({ job: job?.id, err }, 'Incident escalation job failed');
-});
+  taskEscalationWorker.on('failed', (job, err) => {
+    logger.error({ job: job?.id, err }, 'Escalation job failed');
+  });
 
-logger.info('Escalation worker started');
+  incidentWorker.on('failed', (job, err) => {
+    logger.error({ job: job?.id, err }, 'Incident escalation job failed');
+  });
+
+  logger.info('Escalation worker started');
+}
