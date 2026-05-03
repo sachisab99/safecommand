@@ -40,8 +40,10 @@ This document supersedes any conflicting information in CLAUDE.md or session not
 
 ### Companion documents (same folder)
 
-- [`DAILY-OPS.md`](./DAILY-OPS.md) — **Read first.** Daily start-of-day / end-of-day routine. Pause/resume worker commands, scenarios, quick fixes. The day-to-day reference.
-- [`upstash_redis.md`](./upstash_redis.md) — Scheduler master-tick frequency analysis + Upstash command-quota reset behavior + cost calculator (extracted from this doc 2026-05-02 to keep main reference under 1K lines)
+- [`DAILY-OPS.md`](./DAILY-OPS.md) — **Read first for ops.** Daily start-of-day / end-of-day routine. Pause/resume worker commands, scenarios, quick fixes.
+- [`UX-DESIGN-DECISIONS.md`](./UX-DESIGN-DECISIONS.md) — **Read first for UI/UX work.** Design principles, navigation architecture, Zone Board patterns, color/severity language, phasing plan with human-in-the-loop gates.
+- [`upstash_redis.md`](./upstash_redis.md) — Scheduler master-tick frequency analysis + Upstash command-quota reset behavior + cost calculator.
+- [`JUNE-2026-REVIEW-REQUIRED.md`](./JUNE-2026-REVIEW-REQUIRED.md) — ⚠ Time-sensitive review marker; delete after 2-June-2026 review is complete.
 
 ---
 
