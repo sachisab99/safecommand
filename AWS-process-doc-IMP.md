@@ -728,7 +728,42 @@ If any fails → see section 6.3 diagnostic order.
 4. Plan next month's cost-discipline adjustments
 5. Update [Decision log](#12-decision-log) if major decisions made
 
-### 11.4 Pause / resume workers (cost discipline runbook)
+### 11.4.0 Quick pause via env var (recommended — added 2026-05-03)
+
+Each worker (scheduler, escalation, notifier) checks `WORKERS_PAUSED` at startup. When set to `"true"`, the worker process stays alive but doesn't create BullMQ Workers, doesn't poll Redis, doesn't fire master-tick. Default = unset = normal operation.
+
+**To pause a worker:**
+1. Open https://railway.app/project/3e27e7ad-f120-4958-b8f6-c1be42032914
+2. Click the service (e.g. `scheduler`)
+3. **Variables** tab → **+ New Variable** → `WORKERS_PAUSED` = `true` → Save
+4. Railway auto-redeploys (~2 min) → service shows "WORKERS_PAUSED=true — idle" in logs
+5. Repeat for `escalation` and `notifier` if pausing all three
+
+**To resume:**
+- Same steps, set value to `false` OR delete the variable entirely. Auto-redeploys.
+
+**Why this beats the previous `numReplicas: 0` script:**
+- Works via Railway Console UI (no CLI auth-token expiry friction)
+- Process stays running (no crash-loop concerns)
+- Granular per-service control (pause one, leave others running)
+- Default behavior unchanged (no `WORKERS_PAUSED` env var set = normal)
+- Type-checked at compile time (env var name is in the codebase)
+
+**What's preserved when paused:**
+- All Postgres data
+- Existing Redis queue contents (jobs added by API while paused queue up; will process when resumed unless retention has expired them)
+- Mobile sessions, dashboard sessions, all read paths
+- API service unchanged (always running)
+
+**What stops when paused:**
+- Scheduled task generation (scheduler skips master-tick + worker)
+- Push notifications (notifier doesn't dequeue)
+- Escalation chain firing (escalation worker doesn't dequeue)
+- Incident notifications (notifications get queued but not sent)
+
+---
+
+### 11.4 Pause / resume workers (legacy script-based runbook)
 
 Three executable scripts live at `scripts/`:
 

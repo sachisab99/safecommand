@@ -176,33 +176,43 @@ async function processTemplateTick(job: Job<ScheduleGenerationJob>): Promise<voi
   }
 }
 
-/* ─── Worker ─────────────────────────────────────────────────────────────── */
+/* ─── Pause control ──────────────────────────────────────────────────────── */
+// Set WORKERS_PAUSED=true in Railway env to idle this service without code changes.
+// Default = unset/false = normal operation. See AWS-process-doc-IMP.md §11.4.
+const WORKERS_PAUSED = process.env['WORKERS_PAUSED'] === 'true';
 
-const connection = getRedisConnection();
+if (WORKERS_PAUSED) {
+  logger.warn('WORKERS_PAUSED=true — scheduler idle. Set to false (or unset) and redeploy to resume.');
+  // Keep process alive so Railway doesn't crash-loop. Heartbeat log every hour.
+  setInterval(() => logger.info('scheduler paused'), 3_600_000);
+} else {
+  /* ─── Worker ───────────────────────────────────────────────────────────── */
 
-const worker = new Worker(
-  QUEUE_NAMES.SCHEDULE_GENERATION,
-  async (job) => {
-    if (job.name === 'master-tick') return processMasterTick();
-    return processTemplateTick(job as Job<ScheduleGenerationJob>);
-  },
-  {
-    connection,
-    concurrency: 20,
-    drainDelay: 300,           // block 5 min on empty queue (was 5s default) — see upstash_redis.md
-    stalledInterval: 300_000,  // check stalled jobs every 5 min (was 30s default)
-  },
-);
+  const connection = getRedisConnection();
 
-worker.on('failed', (job, err) => {
-  logger.error({ job: job?.id, jobName: job?.name, err }, 'Schedule job failed');
-});
+  const worker = new Worker(
+    QUEUE_NAMES.SCHEDULE_GENERATION,
+    async (job) => {
+      if (job.name === 'master-tick') return processMasterTick();
+      return processTemplateTick(job as Job<ScheduleGenerationJob>);
+    },
+    {
+      connection,
+      concurrency: 20,
+      drainDelay: 300,           // block 5 min on empty queue (was 5s default) — see upstash_redis.md
+      stalledInterval: 300_000,  // check stalled jobs every 5 min (was 30s default)
+    },
+  );
 
-worker.on('completed', (job) => {
-  if (job.name !== 'master-tick') {
-    logger.debug({ job: job.id }, 'Schedule job completed');
-  }
-});
+  worker.on('failed', (job, err) => {
+    logger.error({ job: job?.id, jobName: job?.name, err }, 'Schedule job failed');
+  });
+
+  worker.on('completed', (job) => {
+    if (job.name !== 'master-tick') {
+      logger.debug({ job: job.id }, 'Schedule job completed');
+    }
+  });
 
 /* ─── Repeatable master tick registration ────────────────────────────────── */
 
@@ -231,9 +241,10 @@ async function registerMasterTick(): Promise<void> {
   logger.info({ tick_ms: TICK_MS }, 'Master tick registered');
 }
 
-registerMasterTick()
-  .then(() => logger.info('Scheduler worker started'))
-  .catch((err) => {
-    logger.error({ err }, 'Failed to register master tick — exiting');
-    process.exit(1);
-  });
+  registerMasterTick()
+    .then(() => logger.info('Scheduler worker started'))
+    .catch((err) => {
+      logger.error({ err }, 'Failed to register master tick — exiting');
+      process.exit(1);
+    });
+} // end of WORKERS_PAUSED else block

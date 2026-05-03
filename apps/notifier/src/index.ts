@@ -150,21 +150,30 @@ async function processNotification(job: Job<NotificationJob>): Promise<void> {
   logger.info({ staff_id, channel, template_key, success, venue_id }, 'Notification processed');
 }
 
-/* ─── Worker ─────────────────────────────────────────────────────────────── */
+/* ─── Pause control ──────────────────────────────────────────────────────── */
+// Set WORKERS_PAUSED=true in Railway env to idle this service. See AWS-process-doc-IMP.md §11.4.
+const WORKERS_PAUSED = process.env['WORKERS_PAUSED'] === 'true';
 
-const worker = new Worker<NotificationJob>(
-  QUEUE_NAMES.NOTIFICATIONS,
-  processNotification,
-  {
-    connection: getRedisConnection(),
-    concurrency: 30,
-    drainDelay: 300,           // block 5 min on empty queue — see upstash_redis.md
-    stalledInterval: 300_000,  // 5 min stalled check
-  },
-);
+if (WORKERS_PAUSED) {
+  logger.warn('WORKERS_PAUSED=true — notifier idle. Set to false (or unset) and redeploy to resume.');
+  setInterval(() => logger.info('notifier paused'), 3_600_000);
+} else {
+  /* ─── Worker ───────────────────────────────────────────────────────────── */
 
-worker.on('failed', (job, err) => {
-  logger.error({ job: job?.id, err }, 'Notification job failed');
-});
+  const worker = new Worker<NotificationJob>(
+    QUEUE_NAMES.NOTIFICATIONS,
+    processNotification,
+    {
+      connection: getRedisConnection(),
+      concurrency: 30,
+      drainDelay: 300,           // block 5 min on empty queue — see upstash_redis.md
+      stalledInterval: 300_000,  // 5 min stalled check
+    },
+  );
 
-logger.info('Notifier worker started');
+  worker.on('failed', (job, err) => {
+    logger.error({ job: job?.id, err }, 'Notification job failed');
+  });
+
+  logger.info('Notifier worker started');
+}
