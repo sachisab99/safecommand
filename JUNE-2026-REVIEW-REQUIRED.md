@@ -19,21 +19,31 @@ Open https://console.upstash.com/redis/f39ea940-98ea-41ea-9ccf-1f1e971b1404 → 
 | 500K–2M commands | Modest PAYG cost (~$1–4). Reasonable; consider if pause routine still warranted. |
 | >2M commands | Pause routine clearly justified; fix scripts and adopt daily pause. |
 
-### 2. Check current worker state
+### 2. Check current worker state — TWO LAYERS
+
+**A. Env-var pause control (added 2026-05-03 — primary kill switch)**
+1. Open https://railway.app/project/3e27e7ad-f120-4958-b8f6-c1be42032914
+2. For each of `scheduler`, `escalation`, `notifier`: open service → **Variables** tab
+3. Look for `WORKERS_PAUSED`:
+   - If `=true` → service is paused via env var. Set to `false` or delete to resume.
+   - If absent or `=false` → service is in normal mode.
+
+**B. Service replica state (fallback check)**
 ```bash
 cd "/Volumes/Crucial X9/claude_code/NEXUS_system/products/Safecommand"
 ./scripts/worker-status.sh
 ```
-- All RUNNING → workers were never paused, the May 3 attempt expired with auth token. Burn ran full month.
-- Some PAUSED/FAILED → workers got paused at some point. Verify when.
+- All RUNNING + no `WORKERS_PAUSED` → workers were never paused; full burn ran for May.
+- All RUNNING + `WORKERS_PAUSED=true` set on services → workers were paused via env var (silent on the deploy state). Check Upstash usage to confirm low burn.
+- Some PAUSED/FAILED → workers got paused via the (broken) script or manual numReplicas change at some point.
 
 ### 3. Read the session log
 `report-gen/2026-05-03-22:00_config.md` — full context for the May 3 decision.
 
-### 4. Fix the broken scripts (if needed)
-`scripts/pause-workers.sh` and `scripts/resume-workers.sh` use `numReplicas: 0` which Railway rejects.
-Working alternative tested 2026-05-02: `sleepApplication: true` mutation.
-Update both scripts to use the working mutation, push, document.
+### 4. Fix the broken scripts (if still wanted — env-var method may have replaced need)
+The `WORKERS_PAUSED` env var added 2026-05-03 is now the primary kill switch (no auth-token friction). The legacy scripts in `scripts/pause-workers.sh` and `scripts/resume-workers.sh` use `numReplicas: 0` which Railway rejects. **You may not need the scripts anymore** — the env-var method covers all the use cases without script maintenance.
+
+If you still want CLI scripts: update them to either set `WORKERS_PAUSED` env var via GraphQL, OR use `sleepApplication: true` mutation.
 
 ### 5. Resume deferred work
 Sprint 3 work was paused mid-stream. Priority order when budget freeze lifts:
