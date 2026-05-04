@@ -673,6 +673,7 @@ Supabase Dashboard → SQL Editor → paste migration → Run. Verify success vi
 | 13 | Workspace package.json changes need root lockfile refresh | "Missing from lock file" cascade |
 | 14 | Hardcoded fallbacks for non-secret public config (Supabase anon key) is fine | Saves env var debugging hours |
 | 15 | Polling at 5s is acceptable per NFR-10; Realtime is not always required | 1-day vs week of debugging |
+| 16 | Always grep schema migrations to confirm column names before adding to Supabase select queries — TypeScript can't catch SQL column name typos | "No data returned" empty states from silent 500 errors |
 
 ### 10.2 Architectural anti-patterns to avoid
 
