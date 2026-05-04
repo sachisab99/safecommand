@@ -1,0 +1,8 @@
+[build]
+builder = "nixpacks"
+buildCommand = "npm ci && npm run build --workspace=packages/types --workspace=packages/schemas --workspace=packages/db --workspace=packages/queue --workspace=apps/notifier"
+
+[deploy]
+startCommand = "node apps/notifier/dist/index.js"
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 10
