@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, RefreshControl,
-  StyleSheet, SafeAreaView, ActivityIndicator,
+  StyleSheet, SafeAreaView, ActivityIndicator, Alert,
 } from 'react-native';
 import { fetchMyTasks, syncPending, type TaskItem } from '../services/tasks';
+import { fetchActiveIncidents, markSafe, resolveIncident, type ActiveIncident } from '../services/incidents';
 import type { StaffProfile } from '../services/auth';
 import { TaskDetailScreen } from './TaskDetailScreen';
 
@@ -38,28 +39,75 @@ function formatTime(iso: string): string {
 interface Props {
   staff: StaffProfile;
   onLogout: () => void;
+  onDeclareIncident: () => void;
 }
 
-export function TasksScreen({ staff, onLogout }: Props) {
-  const [tasks, setTasks]           = useState<TaskItem[]>([]);
-  const [loading, setLoading]       = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [fromCache, setFromCache]   = useState(false);
-  const [selectedTask, setSelectedTask] = useState<TaskItem | null>(null);
+const SEV_COLOR: Record<string, string> = { SEV1: '#DC2626', SEV2: '#EA580C', SEV3: '#D97706' };
+const TYPE_ICON: Record<string, string>  = { FIRE: '🔥', MEDICAL: '🏥', SECURITY: '🔒', EVACUATION: '🚨', STRUCTURAL: '🏗️', OTHER: '⚠️' };
+
+export function TasksScreen({ staff, onLogout, onDeclareIncident }: Props) {
+  const [tasks, setTasks]                   = useState<TaskItem[]>([]);
+  const [loading, setLoading]               = useState(true);
+  const [refreshing, setRefreshing]         = useState(false);
+  const [fromCache, setFromCache]           = useState(false);
+  const [selectedTask, setSelectedTask]     = useState<TaskItem | null>(null);
+  const [incidents, setIncidents]           = useState<ActiveIncident[]>([]);
+  const [markingSafe, setMarkingSafe]       = useState<string | null>(null);
+  const [resolving, setResolving]           = useState<string | null>(null);
 
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
-    const { tasks: t, fromCache: fc } = await fetchMyTasks();
+    const [{ tasks: t, fromCache: fc }, activeIncidents] = await Promise.all([
+      fetchMyTasks(),
+      fetchActiveIncidents(),
+    ]);
     setTasks(t);
     setFromCache(fc);
+    setIncidents(activeIncidents);
     setLoading(false);
     setRefreshing(false);
   }, []);
 
   useEffect(() => {
     load();
-    syncPending(); // flush any offline completions
+    syncPending();
   }, [load]);
+
+  const handleMarkSafe = useCallback(async (incident: ActiveIncident) => {
+    setMarkingSafe(incident.id);
+    const ok = await markSafe(incident.id);
+    setMarkingSafe(null);
+    if (ok) {
+      Alert.alert('Confirmed', 'Your safe status has been recorded.');
+    } else {
+      Alert.alert('Error', 'Could not record safe status. Try again.');
+    }
+  }, []);
+
+  const handleResolve = useCallback((incident: ActiveIncident) => {
+    Alert.alert(
+      'Resolve Incident',
+      `Mark this ${incident.incident_type.toLowerCase()} incident as resolved?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Resolve',
+          style: 'destructive',
+          onPress: async () => {
+            setResolving(incident.id);
+            const ok = await resolveIncident(incident.id);
+            setResolving(null);
+            if (ok) {
+              // Optimistic: remove from local state immediately
+              setIncidents(prev => prev.filter(i => i.id !== incident.id));
+            } else {
+              Alert.alert('Error', 'Could not resolve incident. Try again.');
+            }
+          },
+        },
+      ],
+    );
+  }, []);
 
   const handleComplete = useCallback(() => {
     setSelectedTask(null);
@@ -116,6 +164,18 @@ export function TasksScreen({ staff, onLogout }: Props) {
         </View>
       </View>
 
+      {/* Active incident banner — shown whenever an ACTIVE or CONTAINED incident exists */}
+      {incidents.map(incident => (
+        <IncidentBanner
+          key={incident.id}
+          incident={incident}
+          markingSafe={markingSafe === incident.id}
+          resolving={resolving === incident.id}
+          onMarkSafe={() => handleMarkSafe(incident)}
+          onResolve={() => handleResolve(incident)}
+        />
+      ))}
+
       {loading ? (
         <View style={s.center}><ActivityIndicator size="large" color="#1E3A5F" /></View>
       ) : tasks.length === 0 ? (
@@ -151,7 +211,73 @@ export function TasksScreen({ staff, onLogout }: Props) {
           }}
         />
       )}
+
+      {/* Incident declaration FAB — always visible regardless of scroll */}
+      <TouchableOpacity style={s.fab} onPress={onDeclareIncident} activeOpacity={0.85}>
+        <Text style={s.fabText}>⚠ Incident</Text>
+      </TouchableOpacity>
     </SafeAreaView>
+  );
+}
+
+function IncidentBanner({
+  incident, markingSafe, resolving, onMarkSafe, onResolve,
+}: {
+  incident: ActiveIncident;
+  markingSafe: boolean;
+  resolving: boolean;
+  onMarkSafe: () => void;
+  onResolve: () => void;
+}) {
+  const sevColor   = SEV_COLOR[incident.severity] ?? '#DC2626';
+  const icon       = TYPE_ICON[incident.incident_type] ?? '⚠️';
+  const elapsed    = Math.floor((Date.now() - new Date(incident.declared_at).getTime()) / 60_000);
+  const elapsedStr = elapsed < 1 ? 'Just now' : elapsed === 1 ? '1 min ago' : `${elapsed} min ago`;
+
+  return (
+    <View style={[bs.banner, { borderLeftColor: sevColor }]}>
+      <View style={bs.bannerTop}>
+        <View style={[bs.sevDot, { backgroundColor: sevColor }]} />
+        <Text style={bs.bannerAlert}>INCIDENT ACTIVE</Text>
+        <View style={[bs.sevPill, { backgroundColor: sevColor + '22' }]}>
+          <Text style={[bs.sevPillText, { color: sevColor }]}>{incident.severity}</Text>
+        </View>
+      </View>
+      <View style={bs.bannerMid}>
+        <Text style={bs.bannerIcon}>{icon}</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={bs.bannerType}>
+            {incident.incident_type.charAt(0) + incident.incident_type.slice(1).toLowerCase()}
+            {incident.zones ? ` · ${incident.zones.name}` : ''}
+          </Text>
+          <Text style={bs.bannerTime}>{elapsedStr}</Text>
+        </View>
+      </View>
+      <View style={bs.bannerActions}>
+        <TouchableOpacity
+          style={[bs.safeBtn, markingSafe && bs.safeBtnDisabled]}
+          onPress={onMarkSafe}
+          disabled={markingSafe || resolving}
+          activeOpacity={0.8}
+        >
+          {markingSafe
+            ? <ActivityIndicator color="#15803D" size="small" />
+            : <Text style={bs.safeBtnText}>✓  I AM SAFE</Text>
+          }
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[bs.resolveBtn, resolving && bs.safeBtnDisabled]}
+          onPress={onResolve}
+          disabled={markingSafe || resolving}
+          activeOpacity={0.8}
+        >
+          {resolving
+            ? <ActivityIndicator color="#64748B" size="small" />
+            : <Text style={bs.resolveBtnText}>Resolve</Text>
+          }
+        </TouchableOpacity>
+      </View>
+    </View>
   );
 }
 
@@ -220,4 +346,25 @@ const s = StyleSheet.create({
   metaDot:      { fontSize: 12, color: '#CBD5E1' },
   statusPill:   { marginRight: 12, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
   statusPillText:{ fontSize: 11, fontWeight: '700' },
+  fab:           { position: 'absolute', bottom: 28, right: 20, backgroundColor: '#DC2626', borderRadius: 28, paddingHorizontal: 20, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', shadowColor: '#DC2626', shadowOpacity: 0.45, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 8 },
+  fabText:       { color: '#fff', fontSize: 14, fontWeight: '800', letterSpacing: 0.5 },
+});
+
+const bs = StyleSheet.create({
+  banner:        { backgroundColor: '#FFF1F2', borderLeftWidth: 4, marginHorizontal: 0, paddingHorizontal: 16, paddingVertical: 12, gap: 10 },
+  bannerTop:     { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  sevDot:        { width: 8, height: 8, borderRadius: 4 },
+  bannerAlert:   { fontSize: 11, fontWeight: '800', color: '#9F1239', letterSpacing: 1, flex: 1 },
+  sevPill:       { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
+  sevPillText:   { fontSize: 11, fontWeight: '700' },
+  bannerMid:     { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  bannerIcon:    { fontSize: 26 },
+  bannerType:    { fontSize: 14, fontWeight: '700', color: '#1E293B' },
+  bannerTime:    { fontSize: 12, color: '#64748B', marginTop: 2 },
+  bannerActions: { flexDirection: 'row', gap: 10 },
+  safeBtn:       { flex: 1, height: 40, backgroundColor: '#F0FDF4', borderWidth: 1.5, borderColor: '#86EFAC', borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  safeBtnDisabled:{ opacity: 0.6 },
+  safeBtnText:   { fontSize: 14, fontWeight: '700', color: '#15803D' },
+  resolveBtn:    { height: 40, paddingHorizontal: 16, backgroundColor: '#F8FAFC', borderWidth: 1.5, borderColor: '#CBD5E1', borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  resolveBtnText:{ fontSize: 14, fontWeight: '600', color: '#475569' },
 });
