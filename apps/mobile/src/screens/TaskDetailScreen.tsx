@@ -155,9 +155,9 @@ export function TaskDetailScreen({ task, onBack, onCompleted }: Props) {
           {isAlreadyDone && (
             <View style={s.doneCard}>
               <Text style={s.doneText}>✓ This task has been completed.</Text>
-              {task.task_completions[0] && (
+              {task.task_completions && (
                 <Text style={s.doneSub}>
-                  Completed at {new Date(task.task_completions[0].completed_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                  Completed at {new Date(task.task_completions.completed_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
                 </Text>
               )}
             </View>

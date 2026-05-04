@@ -45,7 +45,7 @@ export interface TaskItem {
   due_at: string;
   window_expires_at: string;
   schedule_templates: TaskTemplate;
-  task_completions: TaskCompletion[];
+  task_completions: TaskCompletion | null;
 }
 
 export async function fetchMyTasks(date?: string): Promise<{ tasks: TaskItem[]; fromCache: boolean }> {
