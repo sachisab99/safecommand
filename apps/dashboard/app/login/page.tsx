@@ -48,8 +48,8 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-900">
-      <div className="w-full max-w-sm px-6">
+    <div className="min-h-screen flex items-center justify-center bg-slate-900 px-4 py-8" style={{ paddingBottom: 'max(2rem, env(safe-area-inset-bottom))' }}>
+      <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="text-center mb-10">
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-red-600 mb-4 shadow-lg shadow-red-900/40">
@@ -88,7 +88,7 @@ export default function LoginPage() {
             <>
               <button
                 onClick={() => { setStep('phone'); setOtp(''); setError(''); }}
-                className="text-slate-400 text-sm mb-4 hover:text-white transition-colors"
+                className="text-slate-400 text-sm mb-4 hover:text-white transition-colors min-h-[44px] flex items-center"
               >
                 ← Back
               </button>
