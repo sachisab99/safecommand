@@ -26,7 +26,7 @@ zonesRouter.get('/', async (req: Request, res: Response): Promise<void> => {
 zonesRouter.get('/accountability', async (req: Request, res: Response): Promise<void> => {
   const { data, error } = await getServiceClient()
     .from('zones')
-    .select('id, name, zone_type, current_status, two_person_required, floor_id, floors(id, name, level_number), staff_zone_assignments(staff(id, name, role))')
+    .select('id, name, zone_type, current_status, two_person_required, floor_id, floors(id, name, floor_number), staff_zone_assignments(staff(id, name, role))')
     .eq('venue_id', req.auth.venue_id)
     .order('name');
 
