@@ -9,10 +9,24 @@ import { UpdateZoneStatusSchema } from '@safecommand/schemas';
 export const zonesRouter = Router();
 zonesRouter.use(requireAuth, setTenantContext);
 
+zonesRouter.get('/', async (req: Request, res: Response): Promise<void> => {
+  const { data, error } = await getServiceClient()
+    .from('zones')
+    .select('id, name, zone_type')
+    .eq('venue_id', req.auth.venue_id)
+    .order('name');
+
+  if (error) {
+    res.status(500).json({ error: { code: 'QUERY_FAILED', message: 'Could not fetch zones' } });
+    return;
+  }
+  res.json(data ?? []);
+});
+
 zonesRouter.get('/accountability', async (req: Request, res: Response): Promise<void> => {
   const { data, error } = await getServiceClient()
     .from('zones')
-    .select('id, name, zone_type, current_status, two_person_required, staff_zone_assignments(staff(id, name, role))')
+    .select('id, name, zone_type, current_status, two_person_required, floor_id, floors(id, name, level_number), staff_zone_assignments(staff(id, name, role))')
     .eq('venue_id', req.auth.venue_id)
     .order('name');
 
