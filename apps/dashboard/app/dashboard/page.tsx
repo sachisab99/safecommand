@@ -70,9 +70,9 @@ export default function DashboardPage() {
 
   return (
     <AppShell>
-      <div className="p-8 max-w-5xl mx-auto">
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
+      <div className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
+        <div className="mb-6 lg:mb-8">
+          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">Dashboard</h1>
           <p className="text-slate-500 text-sm mt-1">Live venue safety overview · refreshes every 30s</p>
         </div>
 
@@ -87,21 +87,21 @@ export default function DashboardPage() {
           <>
             {/* Active incident alert banner */}
             {data.active_incidents > 0 && (
-              <div className="mb-6 bg-red-600 rounded-2xl p-4 flex items-center gap-3 shadow-lg shadow-red-900/20">
-                <span className="text-2xl">🚨</span>
-                <div>
-                  <div className="text-white font-bold">
+              <div className="mb-4 sm:mb-6 bg-red-600 rounded-2xl p-4 flex items-center gap-3 shadow-lg shadow-red-900/20">
+                <span className="text-2xl shrink-0">🚨</span>
+                <div className="min-w-0 flex-1">
+                  <div className="text-white font-bold truncate">
                     {data.active_incidents} Active Incident{data.active_incidents > 1 ? 's' : ''}
                   </div>
-                  <div className="text-red-200 text-sm">Go to Incidents tab for full detail</div>
+                  <div className="text-red-200 text-sm">Tap Incidents in menu for detail</div>
                 </div>
               </div>
             )}
 
-            {/* KPI row */}
-            <div className="grid grid-cols-2 gap-4 mb-6 lg:grid-cols-4">
-              {/* Health score */}
-              <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex flex-col items-center col-span-2 lg:col-span-1">
+            {/* KPI row — vertical stack on tiny phones, 2-col tablet, 4-col desktop */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-4 sm:mb-6 lg:grid-cols-4">
+              {/* Health score — full width on tiny phones, full row on tablet, single tile on desktop */}
+              <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex flex-col items-center sm:col-span-2 lg:col-span-1">
                 <div className="relative">
                   <HealthRing score={data.health_score} />
                   <div className="absolute inset-0 flex flex-col items-center justify-center">
@@ -159,18 +159,18 @@ export default function DashboardPage() {
             {/* Active incident list */}
             {data.active_incident_list.length > 0 && (
               <div className="bg-white rounded-2xl shadow-sm border border-slate-100">
-                <div className="px-6 py-4 border-b border-slate-100">
+                <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-100">
                   <h2 className="font-bold text-slate-900">Active Incidents</h2>
                 </div>
                 <div className="divide-y divide-slate-50">
                   {data.active_incident_list.map(inc => (
-                    <div key={inc.id} className="px-6 py-4 flex items-center gap-4">
-                      <span className="text-2xl">{TYPE_ICON[inc.incident_type] ?? '⚠️'}</span>
-                      <div className="flex-1">
-                        <div className="font-semibold text-slate-900">{inc.incident_type}</div>
-                        <div className="text-slate-500 text-sm">{inc.zones?.name ?? 'Unspecified zone'} · {elapsed(inc.declared_at)}</div>
+                    <div key={inc.id} className="px-4 sm:px-6 py-3 sm:py-4 flex items-center gap-3 sm:gap-4">
+                      <span className="text-2xl shrink-0" aria-hidden="true">{TYPE_ICON[inc.incident_type] ?? '⚠️'}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-slate-900 truncate">{inc.incident_type}</div>
+                        <div className="text-slate-500 text-xs sm:text-sm truncate">{inc.zones?.name ?? 'Unspecified zone'} · {elapsed(inc.declared_at)}</div>
                       </div>
-                      <span className={`px-3 py-1 rounded-full text-xs font-bold border ${SEV_BG[inc.severity] ?? ''}`}>
+                      <span className={`px-2 py-1 sm:px-3 rounded-full text-[10px] sm:text-xs font-bold border shrink-0 ${SEV_BG[inc.severity] ?? ''}`}>
                         {inc.severity}
                       </span>
                     </div>
