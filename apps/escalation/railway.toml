@@ -1,0 +1,8 @@
+[build]
+builder = "nixpacks"
+buildCommand = "npm ci && npm run build --workspace=packages/types --workspace=packages/schemas --workspace=packages/db --workspace=packages/queue --workspace=apps/escalation"
+
+[deploy]
+startCommand = "node apps/escalation/dist/index.js"
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 10
