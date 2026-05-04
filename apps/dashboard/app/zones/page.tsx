@@ -14,7 +14,7 @@ interface ZoneAssignment {
 interface Floor {
   id: string;
   name: string;
-  level_number: number;
+  floor_number: number;
 }
 interface Zone {
   id: string;
@@ -139,11 +139,11 @@ function bucketByFloor(zones: Zone[], incidents: Incident[]): FloorBucket[] {
     bucket.staffCount = staffSet.size;
   }
 
-  // Sort: floors by level_number ascending; "no floor" bucket last
+  // Sort: floors by floor_number ascending; "no floor" bucket last
   return Array.from(buckets.values()).sort((a, b) => {
     if (a.key === NO_FLOOR_KEY) return 1;
     if (b.key === NO_FLOOR_KEY) return -1;
-    return (a.floor?.level_number ?? 0) - (b.floor?.level_number ?? 0);
+    return (a.floor?.floor_number ?? 0) - (b.floor?.floor_number ?? 0);
   });
 }
 
@@ -378,7 +378,7 @@ function FloorList({
                   {bucket.floor?.name ?? 'Unassigned'}
                 </div>
                 <div className="text-slate-500 text-xs">
-                  {bucket.floor ? `Level ${bucket.floor.level_number}` : 'No floor assigned'} · {totalZones} zone{totalZones !== 1 ? 's' : ''}
+                  {bucket.floor ? `Level ${bucket.floor.floor_number}` : 'No floor assigned'} · {totalZones} zone{totalZones !== 1 ? 's' : ''}
                 </div>
               </div>
               <div className="flex items-center gap-1 shrink-0">
@@ -455,7 +455,7 @@ function FloorZonesView({
           {bucket.floor?.name ?? 'Unassigned zones'}
         </h2>
         {bucket.floor && (
-          <p className="text-slate-500 text-sm">Level {bucket.floor.level_number}</p>
+          <p className="text-slate-500 text-sm">Level {bucket.floor.floor_number}</p>
         )}
       </div>
 
@@ -571,7 +571,7 @@ function BuildingView({ buckets }: { buckets: FloorBucket[] }) {
   const ordered = [...buckets].sort((a, b) => {
     if (a.key === NO_FLOOR_KEY) return 1;
     if (b.key === NO_FLOOR_KEY) return -1;
-    return (b.floor?.level_number ?? 0) - (a.floor?.level_number ?? 0);
+    return (b.floor?.floor_number ?? 0) - (a.floor?.floor_number ?? 0);
   });
 
   const [selectedZone, setSelectedZone] = useState<{ zone: Zone; state: DisplayState; zoneIncidents: Incident[]; assignees: { id: string; name: string; role: string }[] } | null>(null);
@@ -587,7 +587,7 @@ function BuildingView({ buckets }: { buckets: FloorBucket[] }) {
                   {bucket.floor?.name ?? 'Other'}
                 </div>
                 {bucket.floor && (
-                  <div className="text-[10px] text-slate-400">L{bucket.floor.level_number}</div>
+                  <div className="text-[10px] text-slate-400">L{bucket.floor.floor_number}</div>
                 )}
               </div>
               <div className="flex flex-1 gap-1 flex-wrap min-w-0">
