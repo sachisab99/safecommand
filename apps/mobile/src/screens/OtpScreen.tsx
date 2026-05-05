@@ -6,12 +6,23 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   StyleSheet,
-  SafeAreaView,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { verifyFirebaseOtp, type OtpConfirmation, type AuthSession } from '../services/auth';
+import {
+  Screen,
+  useColours,
+  useBrand,
+  spacing,
+  fontSize,
+  fontWeight,
+  letterSpacing,
+  radius,
+  borderWidth,
+  touch,
+} from '../theme';
 
 interface Props {
   phone: string;
@@ -20,18 +31,21 @@ interface Props {
   onBack: () => void;
 }
 
-export function OtpScreen({ phone, confirmation, onVerified, onBack }: Props) {
+export function OtpScreen({ phone, confirmation, onVerified, onBack }: Props): React.JSX.Element {
   const { t } = useTranslation();
+  const c = useColours();
+  const brand = useBrand();
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<TextInput>(null);
 
   useEffect(() => {
-    setTimeout(() => inputRef.current?.focus(), 200);
+    const timer = setTimeout(() => inputRef.current?.focus(), 200);
+    return () => clearTimeout(timer);
   }, []);
 
-  const handleVerify = async () => {
+  const handleVerify = async (): Promise<void> => {
     if (otp.length !== 6) {
       setError('Enter the 6-digit OTP');
       return;
@@ -48,79 +62,107 @@ export function OtpScreen({ phone, confirmation, onVerified, onBack }: Props) {
   };
 
   return (
-    <SafeAreaView style={s.safe}>
+    <Screen background={c.surface}>
       <KeyboardAvoidingView style={s.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <View style={s.container}>
-          <TouchableOpacity style={s.back} onPress={onBack}>
-            <Text style={s.backText}>← {t('common.back')}</Text>
+          <TouchableOpacity style={s.back} onPress={onBack} hitSlop={touch.hitSlop}>
+            <Text style={[s.backText, { color: c.status.pending }]}>← {t('common.back')}</Text>
           </TouchableOpacity>
 
           <View style={s.header}>
-            <Text style={s.title}>{t('auth.otp_label')}</Text>
-            <Text style={s.hint}>{t('auth.otp_sent', { phone })}</Text>
+            <Text style={[s.title, { color: c.textPrimary }]}>{t('auth.otp_label')}</Text>
+            <Text style={[s.hint, { color: c.textMuted }]}>{t('auth.otp_sent', { phone })}</Text>
           </View>
 
-          <View style={s.form}>
+          <View>
             <TextInput
               ref={inputRef}
-              style={s.otpInput}
+              style={[
+                s.otpInput,
+                {
+                  borderColor: c.borderStrong,
+                  backgroundColor: c.background,
+                  color: c.textPrimary,
+                },
+              ]}
               value={otp}
               onChangeText={(v) => setOtp(v.replace(/\D/g, '').slice(0, 6))}
-              placeholder={t('auth.otp_placeholder')}
-              placeholderTextColor="#94A3B8"
+              placeholder={t('auth.otp_placeholder') ?? ''}
+              placeholderTextColor={c.textMuted}
               keyboardType="number-pad"
               maxLength={6}
               textAlign="center"
             />
-            {error ? <Text style={s.error}>{error}</Text> : null}
+            {error !== null && (
+              <Text style={[s.error, { color: c.severity.SEV1 }]}>{error}</Text>
+            )}
             <TouchableOpacity
-              style={[s.btn, loading && s.btnDisabled]}
+              style={[
+                s.btn,
+                { backgroundColor: brand.primary_colour },
+                loading && s.btnDisabled,
+              ]}
               onPress={handleVerify}
               disabled={loading}
+              hitSlop={touch.hitSlop}
             >
               {loading ? (
-                <ActivityIndicator color="#fff" />
+                <ActivityIndicator color={c.textOnPrimary} />
               ) : (
-                <Text style={s.btnText}>{t('auth.verify')}</Text>
+                <Text style={[s.btnText, { color: c.textOnPrimary }]}>{t('auth.verify')}</Text>
               )}
             </TouchableOpacity>
           </View>
         </View>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </Screen>
   );
 }
 
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F8FAFC' },
   flex: { flex: 1 },
-  container: { flex: 1, paddingHorizontal: 24, paddingTop: 24, paddingBottom: 48 },
-  back: { marginBottom: 32 },
-  backText: { fontSize: 15, color: '#2563EB', fontWeight: '500' },
-  header: { marginBottom: 40 },
-  title: { fontSize: 24, fontWeight: '700', color: '#1E293B', marginBottom: 8 },
-  hint: { fontSize: 14, color: '#64748B' },
-  form: {},
+  container: {
+    flex: 1,
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.xl,
+    paddingBottom: spacing['3xl'],
+  },
+  back: { marginBottom: spacing['2xl'] },
+  backText: {
+    fontSize: fontSize.body + 1,
+    fontWeight: fontWeight.medium,
+  },
+  header: { marginBottom: spacing['3xl'] - spacing.sm },
+  title: {
+    fontSize: fontSize.h4 + 2,
+    fontWeight: fontWeight.bold,
+    marginBottom: spacing.sm,
+  },
+  hint: { fontSize: fontSize.body },
   otpInput: {
     height: 60,
-    borderWidth: 2,
-    borderColor: '#CBD5E1',
-    borderRadius: 12,
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#1E293B',
-    backgroundColor: '#fff',
-    marginBottom: 16,
-    letterSpacing: 8,
+    borderWidth: borderWidth.medium,
+    borderRadius: radius.lg,
+    fontSize: fontSize.h2,
+    fontWeight: fontWeight.bold,
+    marginBottom: spacing.lg,
+    letterSpacing: letterSpacing.widest * 5,
   },
-  error: { fontSize: 13, color: '#DC2626', marginBottom: 12, textAlign: 'center' },
+  error: {
+    fontSize: fontSize.small,
+    marginBottom: spacing.md,
+    textAlign: 'center',
+  },
   btn: {
     height: 52,
-    backgroundColor: '#1E3A5F',
-    borderRadius: 10,
+    borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
+    minHeight: touch.minTarget,
   },
   btnDisabled: { opacity: 0.6 },
-  btnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  btnText: {
+    fontSize: fontSize.bodyLarge,
+    fontWeight: fontWeight.semibold,
+  },
 });

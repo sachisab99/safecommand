@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, ActivityIndicator, StyleSheet, Alert } from 'react-native';
-import { StatusBar } from 'expo-status-bar';
+import { Alert } from 'react-native';
 import { PhoneScreen } from './src/screens/PhoneScreen';
 import { OtpScreen } from './src/screens/OtpScreen';
 import { TasksScreen } from './src/screens/TasksScreen';
@@ -8,17 +7,28 @@ import { IncidentScreen } from './src/screens/IncidentScreen';
 import { getStoredSession, clearSession } from './src/services/auth';
 import { initDb, syncPending } from './src/services/tasks';
 import type { AuthSession, OtpConfirmation } from './src/services/auth';
+import { ThemeProvider, Screen, Stack, useColours } from './src/theme';
+import { ActivityIndicator } from 'react-native';
 
-type Screen = 'loading' | 'phone' | 'otp' | 'tasks' | 'incident';
+type ScreenName = 'loading' | 'phone' | 'otp' | 'tasks' | 'incident';
 
 initDb(); // initialise SQLite tables at module load
 
-export default function App() {
-  const [screen, setScreen] = useState<Screen>('loading');
+export default function App(): React.JSX.Element {
+  return (
+    <ThemeProvider>
+      <AppRouter />
+    </ThemeProvider>
+  );
+}
+
+function AppRouter(): React.JSX.Element {
+  const c = useColours();
+  const [screen, setScreen] = useState<ScreenName>('loading');
   const [phone, setPhone] = useState('');
   const [confirmation, setConfirmation] = useState<OtpConfirmation | null>(null);
   const [session, setSession] = useState<AuthSession | null>(null);
-  const [lastIncidentId, setLastIncidentId] = useState<string | null>(null);
+  const [, setLastIncidentId] = useState<string | null>(null);
 
   useEffect(() => {
     getStoredSession().then((s) => {
@@ -28,18 +38,18 @@ export default function App() {
     });
   }, []);
 
-  const handleOtpSent = (p: string, conf: OtpConfirmation) => {
+  const handleOtpSent = (p: string, conf: OtpConfirmation): void => {
     setPhone(p);
     setConfirmation(conf);
     setScreen('otp');
   };
 
-  const handleVerified = (s: AuthSession) => {
+  const handleVerified = (s: AuthSession): void => {
     setSession(s);
     setScreen('tasks');
   };
 
-  const handleLogout = async () => {
+  const handleLogout = async (): Promise<void> => {
     await clearSession();
     setSession(null);
     setPhone('');
@@ -48,15 +58,16 @@ export default function App() {
 
   if (screen === 'loading') {
     return (
-      <View style={s.loader}>
-        <ActivityIndicator size="large" color="#1E3A5F" />
-      </View>
+      <Screen>
+        <Stack flex align="center" justify="center">
+          <ActivityIndicator size="large" color={c.primary} />
+        </Stack>
+      </Screen>
     );
   }
 
   return (
     <>
-      <StatusBar style="dark" />
       {screen === 'phone' && <PhoneScreen onOtpSent={handleOtpSent} />}
       {screen === 'otp' && confirmation && (
         <OtpScreen
@@ -89,7 +100,3 @@ export default function App() {
     </>
   );
 }
-
-const s = StyleSheet.create({
-  loader: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F8FAFC' },
-});

@@ -8,22 +8,35 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { sendFirebaseOtp, type OtpConfirmation } from '../services/auth';
+import {
+  Screen,
+  useColours,
+  useBrand,
+  spacing,
+  fontSize,
+  fontWeight,
+  letterSpacing,
+  radius,
+  borderWidth,
+  touch,
+} from '../theme';
 
 interface Props {
   onOtpSent: (phone: string, confirmation: OtpConfirmation) => void;
 }
 
-export function PhoneScreen({ onOtpSent }: Props) {
+export function PhoneScreen({ onOtpSent }: Props): React.JSX.Element {
   const { t } = useTranslation();
+  const c = useColours();
+  const brand = useBrand();
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleSend = async () => {
+  const handleSend = async (): Promise<void> => {
     const trimmed = phone.trim();
     if (!trimmed.match(/^\+\d{10,15}$/)) {
       setError('Enter a valid phone number in +91XXXXXXXXXX format');
@@ -41,86 +54,115 @@ export function PhoneScreen({ onOtpSent }: Props) {
   };
 
   return (
-    <SafeAreaView style={s.safe}>
+    <Screen background={c.surface}>
       <KeyboardAvoidingView style={s.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <View style={s.container}>
           <View style={s.brand}>
-            <View style={s.badge}>
-              <Text style={s.badgeText}>SC</Text>
+            <View style={[s.badge, { backgroundColor: brand.primary_colour }]}>
+              <Text style={[s.badgeText, { color: c.textOnPrimary }]}>SC</Text>
             </View>
-            <Text style={s.title}>{t('auth.title')}</Text>
-            <Text style={s.subtitle}>{t('auth.subtitle')}</Text>
+            <Text style={[s.title, { color: c.textPrimary }]}>{t('auth.title')}</Text>
+            <Text style={[s.subtitle, { color: c.textMuted }]}>{t('auth.subtitle')}</Text>
           </View>
 
-          <View style={s.form}>
-            <Text style={s.label}>{t('auth.phone_label')}</Text>
+          <View>
+            <Text style={[s.label, { color: c.textSecondary }]}>{t('auth.phone_label')}</Text>
             <TextInput
-              style={s.input}
+              style={[
+                s.input,
+                {
+                  borderColor: c.borderStrong,
+                  backgroundColor: c.background,
+                  color: c.textPrimary,
+                },
+              ]}
               value={phone}
               onChangeText={setPhone}
-              placeholder={t('auth.phone_placeholder')}
-              placeholderTextColor="#94A3B8"
+              placeholder={t('auth.phone_placeholder') ?? ''}
+              placeholderTextColor={c.textMuted}
               keyboardType="phone-pad"
               autoComplete="tel"
               autoFocus
             />
-            {error ? <Text style={s.error}>{error}</Text> : null}
+            {error !== null && <Text style={[s.error, { color: c.severity.SEV1 }]}>{error}</Text>}
             <TouchableOpacity
-              style={[s.btn, loading && s.btnDisabled]}
+              style={[
+                s.btn,
+                { backgroundColor: brand.primary_colour },
+                loading && s.btnDisabled,
+              ]}
               onPress={handleSend}
               disabled={loading}
+              hitSlop={touch.hitSlop}
             >
               {loading ? (
-                <ActivityIndicator color="#fff" />
+                <ActivityIndicator color={c.textOnPrimary} />
               ) : (
-                <Text style={s.btnText}>{t('auth.send_otp')}</Text>
+                <Text style={[s.btnText, { color: c.textOnPrimary }]}>{t('auth.send_otp')}</Text>
               )}
             </TouchableOpacity>
           </View>
         </View>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </Screen>
   );
 }
 
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F8FAFC' },
   flex: { flex: 1 },
-  container: { flex: 1, justifyContent: 'center', paddingHorizontal: 24, paddingBottom: 48 },
-  brand: { alignItems: 'center', marginBottom: 48 },
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing['3xl'],
+  },
+  brand: { alignItems: 'center', marginBottom: spacing['3xl'] },
   badge: {
     width: 64,
     height: 64,
-    borderRadius: 16,
-    backgroundColor: '#1E3A5F',
+    borderRadius: radius.xl,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: spacing.lg,
   },
-  badgeText: { color: '#fff', fontSize: 22, fontWeight: '700', letterSpacing: 1 },
-  title: { fontSize: 26, fontWeight: '700', color: '#1E293B', marginBottom: 4 },
-  subtitle: { fontSize: 14, color: '#64748B' },
-  form: {},
-  label: { fontSize: 14, fontWeight: '600', color: '#374151', marginBottom: 8 },
+  badgeText: {
+    fontSize: fontSize.h4,
+    fontWeight: fontWeight.bold,
+    letterSpacing: letterSpacing.wider,
+  },
+  title: {
+    fontSize: fontSize.h3,
+    fontWeight: fontWeight.bold,
+    marginBottom: spacing.xs,
+  },
+  subtitle: { fontSize: fontSize.body },
+  label: {
+    fontSize: fontSize.body,
+    fontWeight: fontWeight.semibold,
+    marginBottom: spacing.sm,
+  },
   input: {
     height: 52,
-    borderWidth: 1.5,
-    borderColor: '#CBD5E1',
-    borderRadius: 10,
-    paddingHorizontal: 16,
-    fontSize: 16,
-    color: '#1E293B',
-    backgroundColor: '#fff',
-    marginBottom: 16,
+    borderWidth: borderWidth.medium - 0.5,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.lg,
+    fontSize: fontSize.bodyLarge,
+    marginBottom: spacing.lg,
   },
-  error: { fontSize: 13, color: '#DC2626', marginBottom: 12 },
+  error: {
+    fontSize: fontSize.small,
+    marginBottom: spacing.md,
+  },
   btn: {
     height: 52,
-    backgroundColor: '#1E3A5F',
-    borderRadius: 10,
+    borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
+    minHeight: touch.minTarget,
   },
   btnDisabled: { opacity: 0.6 },
-  btnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  btnText: {
+    fontSize: fontSize.bodyLarge,
+    fontWeight: fontWeight.semibold,
+  },
 });
