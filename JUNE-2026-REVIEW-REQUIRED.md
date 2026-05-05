@@ -1,7 +1,7 @@
 # ⚠️ MANDATORY REVIEW — JUNE 2026 UNFREEZE
 
 **Created:** 2026-05-03 (budget freeze trigger)
-**Last updated:** 2026-05-05 (Phase A complete + Phase B pre-writes pushed)
+**Last updated:** 2026-05-05 (evening — Phase A complete + iteration + Phase B pre-writes + validation kit)
 **Trigger date:** 2026-06-02 (first work session of June 2026)
 **Status:** OPEN — must be processed and this file deleted by end of June 2026
 **Companion plan:** `report-gen/2026-05-04-22:30_plan.md` (gitignored — local copy only)
@@ -10,19 +10,28 @@
 
 ## ⭐ TL;DR — what changed since this file was first written
 
-**Massive Phase A scaffold work landed on `safecommand_v7` branch in May 2026** (19 commits, ~5000 lines). All pre-emptive work for v7 transition is now done. June work is mostly **deploy + integrate**, not write-from-scratch. Estimated June engineering time: ~5–6 hours (was originally ~10–12).
+**Phase A + post-handoff iteration landed on `safecommand_v7` branch in May 2026 — 29 commits, ~7000 lines.** All pre-emptive work for v7 transition is now done. June work is mostly **deploy + integrate**, not write-from-scratch. Estimated June engineering time: ~5–6 hours (was originally ~10–12).
 
-**Branch status:** `origin/safecommand_v7` — 19 commits ahead of `main`. Work covers:
+**Branch status:** `origin/safecommand_v7` — **29 commits ahead of `main` (HEAD `3af6c7b`)**. Work covers:
 - v7 spec authority (CLAUDE.md rewritten, ADRs 0001/0002/0003 captured)
 - Mobile + Dashboard + Ops Console ThemeProvider scaffold (EC-17/Rule 19 satisfied; default SafeCommand brand baked in)
 - 6 mobile screens retrofit to theme tokens (zero hardcoded `color: '#xxx'`)
-- Drawer wired into TasksScreen with 5-group categorisation per UX-DESIGN-DECISIONS.md
+- Drawer wired into TasksScreen with 5-group categorisation per UX-DESIGN-DECISIONS.md (4 device-test bugfixes applied — including z-index inversion root cause)
+- **NEW:** SH/DSH-facing **Manage Staff** mobile flow (BR-04/BR-13) — Create + role allow-list (DSH/SC/FS/GS/FM); industry-leading keyboard handling (auto-focus, tab order, real-time validation, drag handle)
+- **NEW:** **Zone Accountability Map** (BR-19) mobile screen — THE hero demo per Plan §22 Rec #1
+- **NEW:** Ops Console **Enable** button on inactive staff rows (polymorphic action slot)
+- **NEW:** API L1 governance baseline (`docs/api/conventions.md` 19 sections; new-endpoint 14-item checklist)
 - Apollo mockup spec (Path C) + 3-slide deck spec
-- Migrations 009 (MBV) + 010 (Brand+Roaming+Drill) **pre-written but NOT deployed**
+- **Validation conversation kit** (`docs/sales/validation-script.md` + `validation-tracker.md`) — 5-question framework + scoring + GO/NO-GO decision tree per Plan §22
+- Migrations 009 (MBV) + 010 (Brand+Roaming+Drill) + **011 (Staff lifecycle)** — **pre-written but NOT deployed**
 - apollo-demo seed SQL **pre-written but NOT applied**
 - `scripts/seed-test-tasks.sh` for May testing without unpausing workers
 
 **Workers paused as of 2026-05-05:** all 4 services have `WORKERS_PAUSED=true`. Hibernation through the rest of May.
+
+**Test venues created during May:**
+- `Hyderabad Demo Supermall` (`SC-MAL-HYD-…` / `096a3701-…`) — 4 floors, 12 zones, 1 schedule template, 3 staff. Tower-prefixed naming convention ready for migration 009 retrofit.
+- `CA Firm TEST-CA` — used to validate mobile staff add E2E.
 
 ---
 
@@ -97,8 +106,9 @@ Per `~/.claude/projects/.../memory/reference_aws_activate_safecommand.md`:
 ⚠️ **Coupled with code change** — see step 5. Apply both together in one session.
 
 Migration files (already on `main` after step A merge):
-- `supabase/migrations/009_mbv.sql` — Spec Migration 007 (MBV)
-- `supabase/migrations/010_brand_roaming_drill.sql` — Spec Migration 008 (Brand + Roaming + Drill)
+- `supabase/migrations/009_mbv.sql` — Spec Migration 007 (MBV — buildings + building_visible() + 4-param set_tenant_context)
+- `supabase/migrations/010_brand_roaming_drill.sql` — Spec Migration 008 (Brand + Roaming + Drill — corporate_brand_configs with CHECK constraint, roaming_staff_assignments with 10-venue trigger, drill_sessions)
+- `supabase/migrations/011_staff_lifecycle.sql` — Staff lifecycle 4-state enum (ACTIVE/SUSPENDED/ON_LEAVE/TERMINATED) + status_reason + planned_return_date + `is_active` becomes generated column for backward compat + `enforce_terminated_oneway` trigger (compliance)
 
 **Pre-deploy validation:**
 ```bash
@@ -142,6 +152,21 @@ The migration 009 makes `set_tenant_context` 4-param with `p_building_id DEFAULT
 - JWT issuance in `apps/api/src/routes/auth.ts` should embed `building_id` from `staff.primary_building_id`
 
 This is optional Phase B — the migration alone is functionally complete; the explicit building_id pass is a refinement.
+
+### 5b. Staff lifecycle endpoint refactor (paired with migration 011)
+
+After migration 011 deploys, replace the binary `deactivateStaff` / `reactivateStaff` Ops Console actions with the 4-endpoint api surface per `docs/api/conventions.md` §19:
+
+```
+POST /v1/staff/:id/suspend       { reason }
+POST /v1/staff/:id/mark-on-leave { reason, planned_return_date? }
+POST /v1/staff/:id/terminate     { reason }
+POST /v1/staff/:id/reactivate    { reason? }   — BLOCKED for TERMINATED
+```
+
+All 4 require `requireRole('SH', 'DSH')`. All 4 call `auditLog('STAFF_<TRANSITION>')`. All 4 validate Zod schemas with appropriate `reason` field (min 3 chars where required). Update Ops Console UI (Staff tab) to expose status dropdown + reason input replacing the binary toggle.
+
+Backward compat: existing code reading `staff.is_active` continues to work (it's a generated column post-migration 011). Only writes need to target `lifecycle_status`. Estimated effort: ~2 hours (~4 endpoints + Ops Console UI).
 
 ### 6. Apply apollo-demo seed (sales-only)
 
@@ -259,7 +284,7 @@ Status as of 2026-05-05 (founder updates as items complete):
 | Cyber liability insurance | Before pilot live | ⏳ |
 | DPDP Act compliance review (1-session lawyer) | Before first hospital meeting | ⏳ |
 | Razorpay KYC | Week 4 (after OPC + current account) | ⏳ |
-| Validation conversations (10 done; 7+ pain confirmed; 5+ accept managed-service framing; 2 pilots committed including 1 multi-bldg supermall per Q4) | 31 May 2026 gate | ⏳ |
+| Validation conversations (10 done; 7+ pain confirmed; 5+ accept managed-service framing; 2 pilots committed including 1 multi-bldg supermall per Q4) — use `docs/sales/validation-script.md` + capture in `docs/sales/validation-tracker.md` | 31 May 2026 gate | ⏳ |
 
 Update each `⏳` to ✅ as completed. Items still ⏳ on June 2 are blockers for the corresponding Phase B BR work (e.g. Airtel DLT for BR-10 SMS fallback).
 
@@ -286,7 +311,12 @@ After processing this checklist:
 | Supabase opaque-token keys | `docs/adr/0003-supabase-publishable-secret-keys.md` |
 | Apollo mockup spec | `docs/sales/apollo-mockup-spec.md` |
 | Apollo deck spec | `docs/sales/apollo-deck-spec.md` |
+| **Validation conversation script (5 questions + scoring)** | `docs/sales/validation-script.md` |
+| **Validation tracker (10-conversation capture template)** | `docs/sales/validation-tracker.md` |
+| **API L1 governance baseline** | `docs/api/conventions.md` |
 | Phase A plan + decisions | `report-gen/2026-05-04-22:30_plan.md` (local-only, gitignored) |
+| **Phase A handoff session log** | `report-gen/2026-05-05-13:00_handoff.md` (local-only) |
+| **Phase A iteration session log** | `report-gen/2026-05-05-19:00_iterate.md` (local-only) |
 | Session log index | `report-gen/SESSION_LOG.md` (local-only, gitignored) |
 | AWS infra reference | `AWS-process-doc-IMP.md` |
 | Daily ops routine | `DAILY-OPS.md` |
@@ -306,4 +336,4 @@ Discoverability. `report-gen/` is gitignored (local-only). `nexus/decisions/` is
 
 ---
 
-**Last updated:** 2026-05-05 (Phase A complete + Phase B pre-writes pushed; workers paused; ready for June unfreeze)
+**Last updated:** 2026-05-05 evening (Phase A + iteration complete; 29 commits ahead of main at HEAD `3af6c7b`; migration 011 staff lifecycle pre-written; Zone Accountability Map + Manage Staff capabilities live in mobile; validation conversation kit ready; workers paused; ready for June unfreeze)

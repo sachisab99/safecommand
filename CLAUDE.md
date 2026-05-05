@@ -632,8 +632,8 @@ Incident declared → POST /incidents → DB write → return 201 <200ms
 - ⏳ BR-10 SMS fallback: blocked on Airtel DLT
 - ⏳ BR-09 WhatsApp: blocked on Meta WABA approval
 
-### v7 Phase A — COMPLETE (on `safecommand_v7` branch — pending merge to `main`)
-All 12 Phase A steps + polish landed 2026-05-05. 19 commits ahead of main on `origin/safecommand_v7`. Workers paused.
+### v7 Phase A — COMPLETE + ITERATION (on `safecommand_v7` branch — pending merge to `main`)
+All 12 Phase A steps + polish + post-handoff iteration landed 2026-05-05. **29 commits ahead of main on `origin/safecommand_v7`** (HEAD `3af6c7b`). Workers paused.
 
 **Foundational artefacts:**
 - ✅ ADR 0001 migration renumbering captured
@@ -661,9 +661,22 @@ All 12 Phase A steps + polish landed 2026-05-05. 19 commits ahead of main on `or
 **Phase B pre-writes (NOT yet deployed — June 2026):**
 - ✅ `supabase/migrations/009_mbv.sql` (419 lines) — Spec Migration 007: buildings, building_visible(), 4-param set_tenant_context, all ALTER TABLEs, denormalisation triggers, RLS policies refreshed
 - ✅ `supabase/migrations/010_brand_roaming_drill.sql` (330 lines) — Spec Migration 008: corporate_accounts, corporate_brand_configs (with CHECK on powered_by_text per EC-18/Rule 20), roaming_staff_assignments (10-venue trigger), drill_sessions + drill_session_participants
+- ✅ `supabase/migrations/011_staff_lifecycle.sql` (164 lines) — staff lifecycle 4-state enum (ACTIVE/SUSPENDED/ON_LEAVE/TERMINATED) + status_reason + planned_return_date columns + `is_active` becomes generated column for backward compat + `enforce_terminated_oneway` trigger (compliance — wrongful-termination cover-up prevention) + CHECK constraint requiring reason ≥3 chars for non-ACTIVE rows
 - ✅ `supabase/seeds/apollo-demo.sql` (166 lines) — Phase B Path C mockup seed (idempotent; needs founder SC Ops UUID + S3 logo before applying)
 - ✅ `scripts/seed-test-tasks.sh` (210 lines, executable) — May testing bridge while workers paused
 - ✅ `apps/scheduler/src/index.ts` env-driven `MASTER_TICK_INTERVAL` — runtime tick control without code change
+
+**Capability extensions (post-handoff, 2026-05-05 evening):**
+- ✅ **BR-19 Zone Accountability Map** — mobile screen wired into drawer PRIMARY group (THE hero demo per Plan §22 Rec #1). Stats strip + per-floor groups + status pills + assigned-staff names; uses existing `/v1/zones/accountability` endpoint. Visible to all roles.
+- ✅ **BR-04/BR-13 Staff add via mobile (SH/DSH)** — full E2E flow: Manage Staff drawer item → list + slide-up Add modal → industry-leading keyboard handling (auto-focus, tab order, real-time validation, drag handle) → server allow-list (DSH/SC/FS/GS/FM only; blocks SH/GM/AUDITOR creation by SH/DSH). Validated end-to-end against CA Firm TEST-CA venue.
+- ✅ **Staff lifecycle Phase 1 surface** — Ops Console Enable button (polymorphic action: red Deactivate when active; green Enable when inactive). Phase B replaces this with 4-state lifecycle + 4 endpoints.
+- ✅ **API L1 governance** — `docs/api/conventions.md` (18 sections + §19 entity lifecycle pattern) — every Phase B endpoint has a checklist to satisfy.
+
+**Sales artefacts (validation gate readiness):**
+- ✅ `docs/sales/validation-script.md` — print-friendly 5-question script + scoring rubrics + GO/NO-GO decision tree per Plan §22
+- ✅ `docs/sales/validation-tracker.md` — markdown spreadsheet for 10-conversation capture + aggregate scoreboard + verbatim quote bank
+- ✅ `docs/sales/apollo-mockup-spec.md` — Path C live-software mockup spec (Phase B implementation)
+- ✅ `docs/sales/apollo-deck-spec.md` — 3-slide deck content + design spec
 
 ### Phase B (June 2026 unfreeze — single source of truth: `JUNE-2026-REVIEW-REQUIRED.md`)
 **Pre-merge:** merge `safecommand_v7` → `main` before any Phase B operation. See `JUNE-2026-REVIEW-REQUIRED.md` § A.
@@ -772,17 +785,21 @@ Per Business Plan §15.1 — all 25 must pass before first pilot venue live.
 
 ---
 
-## Current sprint focus (as of 2026-05-05)
+## Current sprint focus (as of 2026-05-05 evening)
 
-**Branch:** `safecommand_v7` (19 commits ahead of main; pending merge)
+**Branch:** `safecommand_v7` — **29 commits ahead of main**; HEAD `3af6c7b`; pending merge to main at June unfreeze
 **Workers:** PAUSED (`WORKERS_PAUSED=true` on all 4 services — May freeze)
-**Phase A:** ✅ Complete (12 steps + polish + Phase B pre-writes)
+**Phase A:** ✅ Complete (12 steps + polish + iteration + Phase B pre-writes)
 **Phase B:** ⏳ Pending June 2 unfreeze — see `JUNE-2026-REVIEW-REQUIRED.md` for the canonical action sequence
+
+**Test venues created during May:**
+- `Hyderabad Demo Supermall` (`SC-MAL-HYD-…` / `096a3701-beb0-4ffe-9e74-43af3c26e09f`) — 4 floors, 12 zones, 1 schedule template, 3 staff (1 SH active + 1 SH inactive + 1 GS active). Tower-prefixed naming convention (T1/T2/RB/PK/SV) ready for migration 009 retrofit to real MBV in June.
+- `CA Firm TEST-CA` — used to validate mobile staff add E2E.
 
 **Next sessions:**
 1. **(May, ongoing)** Founder actions in flight — Meta WABA / Airtel DLT / OPC / trademark / Apple Dev Account / Google Play / domain `safecommand.in` / AWS Activate / Apollo logo upload / Apollo deck composition. Status tracked in `JUNE-2026-REVIEW-REQUIRED.md` § "Founder action checklist".
-2. **(May, by 31 May)** Validation conversations gate — 10 conversations; 7+ pain confirmed; 5+ accept managed-service framing; 2 pilots committed (1 single-building + 1 multi-building Hyderabad supermall per Q4 decision).
-3. **(May testing, optional)** `./scripts/seed-test-tasks.sh` to generate task_instances on demand without unpausing workers.
-4. **(2 June 2026)** Execute `JUNE-2026-REVIEW-REQUIRED.md` end-to-end. First step: merge `safecommand_v7` → `main`.
+2. **(May, by 31 May)** Validation conversations gate — 10 conversations using `docs/sales/validation-script.md`; capture in `docs/sales/validation-tracker.md`; demo Zone Accountability Map (drawer → "Zone Accountability") on physical device; 7+ pain confirmed → GO; 2 pilots committed (1 single-building + 1 multi-building Hyderabad supermall per Q4 decision).
+3. **(May testing, optional)** `./scripts/seed-test-tasks.sh --venue-code SC-MAL-HYD-… --hours N` to generate task_instances on demand without unpausing workers.
+4. **(2 June 2026)** Execute `JUNE-2026-REVIEW-REQUIRED.md` end-to-end. First step: merge `safecommand_v7` → `main`. Then deploy migrations 009 + 010 + 011 + apollo-demo seed; build live Apollo Loom; resume BR sequence.
 
 **Blocked on:** nothing engineering-side. All May 2026 engineering work is complete; remaining is founder-action and validation-gated.
