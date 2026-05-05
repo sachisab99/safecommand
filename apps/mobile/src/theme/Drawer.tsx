@@ -19,7 +19,7 @@
  * with different feature subsets visible per role.
  */
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -122,29 +122,60 @@ export function Drawer({
 }: DrawerProps): React.JSX.Element {
   const c = useColours();
   const brand = useBrand();
-  const slide = useRef(new Animated.Value(visible ? 0 : -1)).current;
-  const fade = useRef(new Animated.Value(visible ? 1 : 0)).current;
+  const slide = useRef(new Animated.Value(-1)).current;
+  const fade = useRef(new Animated.Value(0)).current;
+  // shouldRender controls Modal mount; lags `visible=false` until close
+  // animation completes so the modal isn't unmounted mid-flight (which
+  // strands Animated.Values and breaks subsequent opens).
+  const [shouldRender, setShouldRender] = useState<boolean>(visible);
 
   useEffect(() => {
-    Animated.parallel([
-      Animated.timing(slide, {
-        toValue: visible ? 0 : -1,
-        duration: duration.normal,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }),
-      Animated.timing(fade, {
-        toValue: visible ? 1 : 0,
-        duration: duration.normal,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [visible, slide, fade]);
+    if (visible) {
+      // Reset to closed state explicitly so a stale value from an
+      // interrupted previous animation cannot persist across opens.
+      slide.setValue(-1);
+      fade.setValue(0);
+      setShouldRender(true);
+      Animated.parallel([
+        Animated.timing(slide, {
+          toValue: 0,
+          duration: duration.normal,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.timing(fade, {
+          toValue: 1,
+          duration: duration.normal,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else if (shouldRender) {
+      Animated.parallel([
+        Animated.timing(slide, {
+          toValue: -1,
+          duration: duration.normal,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.timing(fade, {
+          toValue: 0,
+          duration: duration.normal,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        }),
+      ]).start(({ finished }) => {
+        // Only unmount the Modal once the close animation is done.
+        // If a new open() raced in during animation, `visible` is now
+        // true and we leave shouldRender alone.
+        if (finished) setShouldRender(false);
+      });
+    }
+  }, [visible, slide, fade, shouldRender]);
 
   return (
     <Modal
-      visible={visible}
+      visible={shouldRender}
       transparent
       animationType="none"
       onRequestClose={onClose}

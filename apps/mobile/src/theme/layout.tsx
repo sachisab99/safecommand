@@ -26,6 +26,7 @@ import {
   SafeAreaView,
   StatusBar,
   StyleSheet,
+  Platform,
   type StyleProp,
   type ViewStyle,
   type ScrollViewProps,
@@ -81,9 +82,23 @@ export function Screen({
   const bg = background ?? c.surface;
   const content = padded ? <Container>{children}</Container> : children;
 
+  // SafeAreaView from 'react-native' applies inset padding only on iOS. On
+  // Android it does NOT push content below the status bar, so headers can
+  // overlap the time/battery/signal area. Compensate with explicit
+  // paddingTop = StatusBar.currentHeight on Android (translucent statusbar
+  // is the platform default for Expo apps).
+  const androidStatusBarInset =
+    Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0;
+
   return (
-    <SafeAreaView style={[styles.screen, { backgroundColor: bg }, style]}>
-      <StatusBar barStyle={statusBarStyle} backgroundColor={bg} />
+    <SafeAreaView
+      style={[
+        styles.screen,
+        { backgroundColor: bg, paddingTop: androidStatusBarInset },
+        style,
+      ]}
+    >
+      <StatusBar barStyle={statusBarStyle} backgroundColor={bg} translucent />
       {scroll ? (
         <ScrollView
           contentContainerStyle={styles.scrollContent}
