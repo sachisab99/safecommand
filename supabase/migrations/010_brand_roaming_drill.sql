@@ -116,11 +116,13 @@ CREATE TABLE corporate_brand_configs (
   updated_at                  TIMESTAMPTZ NOT NULL DEFAULT now(),
   -- Hard rule: cannot activate a brand without WCAG validation
   CHECK (NOT is_active OR wcag_validated = TRUE),
-  -- terminology_dictionary capped at 50 entries (BR-83)
-  CHECK (terminology_dictionary IS NULL OR jsonb_typeof(terminology_dictionary) = 'object'),
-  CHECK (terminology_dictionary IS NULL OR (
-    SELECT count(*) FROM jsonb_each(terminology_dictionary)
-  ) <= 50)
+  -- terminology_dictionary must be a JSON object (not array/scalar)
+  CHECK (terminology_dictionary IS NULL OR jsonb_typeof(terminology_dictionary) = 'object')
+  -- Note: BR-83 50-entry cap enforced at API layer via Zod validation,
+  -- not at schema level (Postgres CHECK constraints cannot contain subqueries
+  -- and a function-based check would require IMMUTABLE jsonb_object_keys
+  -- which isn't strictly IMMUTABLE per the Postgres planner). Documented in
+  -- docs/api/conventions.md §8 (Validation — Zod first).
 );
 
 CREATE INDEX idx_brand_configs_active ON corporate_brand_configs(corporate_account_id, is_active);

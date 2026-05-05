@@ -175,8 +175,8 @@ CREATE TRIGGER floors_propagate_building_to_zones
 
 ALTER TABLE staff
   ADD COLUMN primary_building_id UUID REFERENCES buildings(id);
-CREATE INDEX idx_staff_building ON staff(venue_id, primary_building_id, active_status)
-  WHERE active_status = 'ACTIVE';
+CREATE INDEX idx_staff_building ON staff(venue_id, primary_building_id, is_active)
+  WHERE is_active = TRUE;
 
 -- ─── Step 7: shifts + shift_instances — add building_id ────────────────────
 
@@ -265,7 +265,7 @@ CREATE INDEX idx_communications_building ON communications(venue_id, building_id
 
 ALTER TABLE equipment_items
   ADD COLUMN building_id UUID REFERENCES buildings(id);
-CREATE INDEX idx_equipment_building ON equipment_items(venue_id, building_id, next_service_date);
+CREATE INDEX idx_equipment_building ON equipment_items(venue_id, building_id, next_service_due);
 
 -- ─── Step 12: vms_entry_points + vms_visit_records — add building_id ──────
 -- VMS check-ins are always tied to an entry point, which is in a building.

@@ -148,42 +148,63 @@ export async function createStaffAction(formData: FormData) {
   revalidatePath(`/venues/${venue_id}`);
 }
 
+/**
+ * deactivateStaffAction — soft-disable a staff member.
+ *
+ * Post migration 011 (staff lifecycle), `is_active` is a GENERATED column
+ * derived from `lifecycle_status='ACTIVE'`. Direct UPDATE of `is_active`
+ * is REJECTED by Postgres. Writes target `lifecycle_status` instead.
+ *
+ * Default reason "Deactivated via Ops Console" satisfies the schema CHECK
+ * constraint (≥3 chars required for non-ACTIVE rows). A future enhancement
+ * surfaces a reason input in the Ops Console UI; for now the default is
+ * sufficient for May testing + early Phase B operations.
+ *
+ * Tenant guard — service-role bypasses RLS, so the .eq('venue_id') filter
+ * is the safety net against cross-venue writes.
+ */
 export async function deactivateStaffAction(formData: FormData) {
   const venue_id = formData.get('venue_id') as string;
   const id = formData.get('id') as string;
-  // Tenant guard — never write to a row outside the venue we're scoped to.
-  // Service-role bypasses RLS, so this filter is the safety net.
   await getAdminClient()
     .from('staff')
-    .update({ is_active: false, updated_at: new Date().toISOString() })
+    .update({
+      lifecycle_status: 'SUSPENDED',
+      status_reason: 'Deactivated via Ops Console',
+      status_changed_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
     .eq('id', id)
     .eq('venue_id', venue_id);
   revalidatePath(`/venues/${venue_id}`);
 }
 
 /**
- * reactivateStaffAction — re-enables a previously disabled staff member.
+ * reactivateStaffAction — re-enable a previously disabled staff member.
  *
- * Today's behaviour: simple is_active flip back to true. This is the
- * "minimum unblock" path so the founder can re-enable test staff during
- * May testing.
+ * Post migration 011: writes `lifecycle_status='ACTIVE'`. Schema trigger
+ * `enforce_terminated_oneway` BLOCKS this transition for TERMINATED rows
+ * (compliance — prevents wrongful-termination cover-up via silent
+ * reactivation). For SUSPENDED or ON_LEAVE rows, reactivation flows.
  *
- * Phase B (June) — migration 011_staff_lifecycle.sql replaces the binary
- * is_active toggle with a 4-state lifecycle (ACTIVE / SUSPENDED /
- * ON_LEAVE / TERMINATED) with required reason + audit columns. At that
- * point this action splits into reactivate / restore-from-leave /
- * lift-suspension, each with their own audit semantics. TERMINATED
- * staff become non-reactivatable (compliance requirement — wrongful-
- * termination cover-up prevention).
+ * `status_reason` cleared on reactivation (NULL allowed for ACTIVE rows
+ * per the schema CHECK).
  *
- * Per docs/api/conventions.md §19 (staff lifecycle pattern).
+ * Phase B (full lifecycle UI) — replaces this with separate suspend /
+ * markOnLeave / terminate / reactivate endpoints per docs/api/
+ * conventions.md §19. Today's binary toggle is the minimum unblock.
  */
 export async function reactivateStaffAction(formData: FormData) {
   const venue_id = formData.get('venue_id') as string;
   const id = formData.get('id') as string;
   await getAdminClient()
     .from('staff')
-    .update({ is_active: true, updated_at: new Date().toISOString() })
+    .update({
+      lifecycle_status: 'ACTIVE',
+      status_reason: null,
+      status_changed_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
     .eq('id', id)
     .eq('venue_id', venue_id);
   revalidatePath(`/venues/${venue_id}`);
