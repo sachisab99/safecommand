@@ -100,9 +100,17 @@ END;
 $$;
 
 -- ─── Step 3: set_tenant_context — upgrade to 4 parameters ──────────────────
--- Adds p_building_id (default NULL) so existing callers using 3-param signature
--- keep working until they migrate. Eventually all callers use 4-param.
--- The 3-param overload below preserves backward compat during deployment.
+-- Adds p_building_id (default NULL) so existing callers using 3-param
+-- signature keep working without code change.
+--
+-- CRITICAL: must DROP the existing 3-arg overload BEFORE creating the 4-arg
+-- version. Leaving both signatures present causes PostgREST RPC to fail with
+-- PGRST203 (Could not choose the best candidate function) — named-parameter
+-- calls become ambiguous because both signatures match. The 4-arg version
+-- with DEFAULT NULL is fully backward-compatible at the SQL level for
+-- 3-arg-style callers, so dropping the old overload is safe.
+
+DROP FUNCTION IF EXISTS set_tenant_context(UUID, UUID, TEXT);
 
 CREATE OR REPLACE FUNCTION set_tenant_context(
   p_venue_id    UUID,
