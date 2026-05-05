@@ -111,6 +111,7 @@ interface Props {
   onLogout: () => void;
   onDeclareIncident: () => void;
   onManageStaff: () => void;
+  onZoneAccountability: () => void;
 }
 
 export function TasksScreen({
@@ -118,6 +119,7 @@ export function TasksScreen({
   onLogout,
   onDeclareIncident,
   onManageStaff,
+  onZoneAccountability,
 }: Props): React.JSX.Element {
   const c = useColours();
   const brand = useBrand();
@@ -217,6 +219,15 @@ export function TasksScreen({
       title: 'Primary',
       items: [
         { key: 'tasks', label: 'My Tasks', icon: '📋', selected: true, onPress: () => undefined },
+        // BR-19 Zone Accountability Map — THE hero demo (Plan §22 Rec #1).
+        // Visible to all roles: SH/DSH/SC use it operationally; GS/FS see
+        // their assigned zones; AUD/GM see the venue-wide picture.
+        {
+          key: 'zones',
+          label: 'Zone Accountability',
+          icon: '🗺️',
+          onPress: onZoneAccountability,
+        },
         {
           key: 'incident',
           label: 'Declare Incident',
