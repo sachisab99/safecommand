@@ -22,6 +22,8 @@ import {
   Screen,
   useColours,
   useBrand,
+  Drawer,
+  DrawerTrigger,
   spacing,
   fontSize,
   fontWeight,
@@ -31,6 +33,7 @@ import {
   shadow,
   touch,
   type Colours,
+  type DrawerGroup,
 } from '../theme';
 
 const STATUS_LABEL: Record<string, string> = {
@@ -120,6 +123,7 @@ export function TasksScreen({ staff, onLogout, onDeclareIncident }: Props): Reac
   const [incidents, setIncidents] = useState<ActiveIncident[]>([]);
   const [markingSafe, setMarkingSafe] = useState<string | null>(null);
   const [resolving, setResolving] = useState<string | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   const load = useCallback(async (isRefresh = false): Promise<void> => {
     if (isRefresh) setRefreshing(true);
@@ -198,6 +202,91 @@ export function TasksScreen({ staff, onLogout, onDeclareIncident }: Props): Reac
   const actionable = tasks.filter((t) => !['COMPLETE', 'LATE_COMPLETE'].includes(t.status));
   const done = tasks.filter((t) => ['COMPLETE', 'LATE_COMPLETE'].includes(t.status));
 
+  // 5-group drawer structure per UX-DESIGN-DECISIONS.md §4.
+  // Phase B items render disabled (greyed out) to communicate forward roadmap
+  // without breaking the navigation skeleton during testing.
+  const drawerGroups: DrawerGroup[] = [
+    {
+      key: 'PRIMARY',
+      title: 'Primary',
+      items: [
+        { key: 'tasks', label: 'My Tasks', icon: '📋', selected: true, onPress: () => undefined },
+        {
+          key: 'incident',
+          label: 'Declare Incident',
+          icon: '⚠️',
+          onPress: onDeclareIncident,
+        },
+      ],
+    },
+    {
+      key: 'OPERATIONS',
+      title: 'Operations',
+      items: [
+        {
+          key: 'shift',
+          label: 'My Shift',
+          icon: '🕐',
+          disabled: true,
+          onPress: () => undefined,
+        },
+        {
+          key: 'visitors',
+          label: 'Visitors (VMS)',
+          icon: '🚪',
+          disabled: true,
+          onPress: () => undefined,
+        },
+      ],
+    },
+    {
+      key: 'COMPLIANCE',
+      title: 'Compliance',
+      items: [
+        {
+          key: 'certs',
+          label: 'My Certifications',
+          icon: '🎓',
+          disabled: true,
+          onPress: () => undefined,
+        },
+      ],
+    },
+    {
+      key: 'PEOPLE',
+      title: 'People',
+      items: [
+        {
+          key: 'profile',
+          label: 'My Profile',
+          icon: '👤',
+          disabled: true,
+          onPress: () => undefined,
+        },
+      ],
+    },
+    {
+      key: 'SETTINGS',
+      title: 'Settings',
+      items: [
+        {
+          key: 'notifications',
+          label: 'Notifications',
+          icon: '🔔',
+          disabled: true,
+          onPress: () => undefined,
+        },
+        {
+          key: 'help',
+          label: 'Help & Support',
+          icon: '❓',
+          disabled: true,
+          onPress: () => undefined,
+        },
+      ],
+    },
+  ];
+
   return (
     <Screen background={c.surface}>
       {/* Header */}
@@ -207,20 +296,18 @@ export function TasksScreen({ staff, onLogout, onDeclareIncident }: Props): Reac
           { backgroundColor: c.background, borderBottomColor: c.divider },
         ]}
       >
-        <View>
-          <Text style={[s.headerTitle, { color: c.textPrimary }]}>My Tasks</Text>
-          <Text style={[s.headerSub, { color: c.textMuted }]}>{today}</Text>
+        <View style={s.headerLeft}>
+          <DrawerTrigger onPress={() => setDrawerOpen(true)} />
+          <View>
+            <Text style={[s.headerTitle, { color: c.textPrimary }]}>My Tasks</Text>
+            <Text style={[s.headerSub, { color: c.textMuted }]}>{today}</Text>
+          </View>
         </View>
-        <View style={s.headerRight}>
-          {fromCache && (
-            <View style={[s.cacheBadge, { backgroundColor: c.status.warningBg }]}>
-              <Text style={[s.cacheBadgeText, { color: c.status.warning }]}>Offline cache</Text>
-            </View>
-          )}
-          <TouchableOpacity onPress={onLogout} style={s.logoutBtn} hitSlop={touch.hitSlop}>
-            <Text style={[s.logoutText, { color: c.textDisabled }]}>Sign out</Text>
-          </TouchableOpacity>
-        </View>
+        {fromCache && (
+          <View style={[s.cacheBadge, { backgroundColor: c.status.warningBg }]}>
+            <Text style={[s.cacheBadgeText, { color: c.status.warning }]}>Offline cache</Text>
+          </View>
+        )}
       </View>
 
       {/* Staff pill */}
@@ -317,6 +404,23 @@ export function TasksScreen({ staff, onLogout, onDeclareIncident }: Props): Reac
       >
         <Text style={[s.fabText, { color: c.textInverse }]}>⚠ Incident</Text>
       </TouchableOpacity>
+
+      {/* Slide-over drawer — UX-DESIGN-DECISIONS.md §4 */}
+      <Drawer
+        visible={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        header={{
+          initials: staff.name.charAt(0).toUpperCase(),
+          primaryText: staff.name,
+          secondaryText: staff.role.replace(/_/g, ' '),
+        }}
+        groups={drawerGroups}
+        footerAction={{
+          label: 'Sign Out',
+          onPress: onLogout,
+          tone: 'danger',
+        }}
+      />
     </Screen>
   );
 }
@@ -459,23 +563,27 @@ const s = StyleSheet.create({
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    paddingHorizontal: spacing.lg + 4,
-    paddingTop: spacing.lg,
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingRight: spacing.lg + 4,
+    paddingTop: spacing.md,
     paddingBottom: spacing.md,
     borderBottomWidth: 1,
   },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    flex: 1,
+  },
   headerTitle: { fontSize: fontSize.h5, fontWeight: fontWeight.bold },
   headerSub: { fontSize: fontSize.small, marginTop: 2 },
-  headerRight: { alignItems: 'flex-end', gap: spacing.xs + 2 },
   cacheBadge: {
     paddingHorizontal: spacing.sm,
     paddingVertical: 2,
     borderRadius: radius.sm + 2,
   },
   cacheBadgeText: { fontSize: 11, fontWeight: fontWeight.semibold },
-  logoutBtn: { paddingVertical: spacing.xs },
-  logoutText: { fontSize: fontSize.small },
   staffRow: {
     flexDirection: 'row',
     alignItems: 'center',
