@@ -110,9 +110,15 @@ interface Props {
   staff: StaffProfile;
   onLogout: () => void;
   onDeclareIncident: () => void;
+  onManageStaff: () => void;
 }
 
-export function TasksScreen({ staff, onLogout, onDeclareIncident }: Props): React.JSX.Element {
+export function TasksScreen({
+  staff,
+  onLogout,
+  onDeclareIncident,
+  onManageStaff,
+}: Props): React.JSX.Element {
   const c = useColours();
   const brand = useBrand();
   const [tasks, setTasks] = useState<TaskItem[]>([]);
@@ -256,6 +262,20 @@ export function TasksScreen({ staff, onLogout, onDeclareIncident }: Props): Reac
       key: 'PEOPLE',
       title: 'People',
       items: [
+        // SH/DSH only — gated server-side too (api 403 if non-SH/DSH attempts).
+        // Per Plan §11 Role × Permission Matrix: "Add / remove staff" = FULL
+        // for SH and DSH only; LTD or none for everyone else. UI mirrors that
+        // by hiding the entry for ineligible roles to reduce surface area.
+        ...(['SH', 'DSH'].includes(staff.role)
+          ? [
+              {
+                key: 'staff',
+                label: 'Manage Staff',
+                icon: '👥',
+                onPress: onManageStaff,
+              } as const,
+            ]
+          : []),
         {
           key: 'profile',
           label: 'My Profile',

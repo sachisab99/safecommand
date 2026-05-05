@@ -4,13 +4,14 @@ import { PhoneScreen } from './src/screens/PhoneScreen';
 import { OtpScreen } from './src/screens/OtpScreen';
 import { TasksScreen } from './src/screens/TasksScreen';
 import { IncidentScreen } from './src/screens/IncidentScreen';
+import { StaffScreen } from './src/screens/StaffScreen';
 import { getStoredSession, clearSession } from './src/services/auth';
 import { initDb, syncPending } from './src/services/tasks';
 import type { AuthSession, OtpConfirmation } from './src/services/auth';
 import { ThemeProvider, Screen, Stack, useColours } from './src/theme';
 import { ActivityIndicator } from 'react-native';
 
-type ScreenName = 'loading' | 'phone' | 'otp' | 'tasks' | 'incident';
+type ScreenName = 'loading' | 'phone' | 'otp' | 'tasks' | 'incident' | 'staff';
 
 initDb(); // initialise SQLite tables at module load
 
@@ -82,6 +83,7 @@ function AppRouter(): React.JSX.Element {
           staff={session.staff}
           onLogout={handleLogout}
           onDeclareIncident={() => setScreen('incident')}
+          onManageStaff={() => setScreen('staff')}
         />
       )}
       {screen === 'incident' && (
@@ -97,6 +99,7 @@ function AppRouter(): React.JSX.Element {
           }}
         />
       )}
+      {screen === 'staff' && <StaffScreen onBack={() => setScreen('tasks')} />}
     </>
   );
 }
