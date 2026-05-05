@@ -112,6 +112,7 @@ interface Props {
   onDeclareIncident: () => void;
   onManageStaff: () => void;
   onZoneAccountability: () => void;
+  onZoneStatusBoard: () => void;
 }
 
 export function TasksScreen({
@@ -120,6 +121,7 @@ export function TasksScreen({
   onDeclareIncident,
   onManageStaff,
   onZoneAccountability,
+  onZoneStatusBoard,
 }: Props): React.JSX.Element {
   const c = useColours();
   const brand = useBrand();
@@ -219,6 +221,16 @@ export function TasksScreen({
       title: 'Primary',
       items: [
         { key: 'tasks', label: 'My Tasks', icon: '📋', selected: true, onPress: () => undefined },
+        // BR-18 Zone Status Board — "Where are the problems right now?" Status-first
+        // view, severity-coded, refreshes every 30s (NFR-10). Companion to Zone
+        // Accountability below; both surfaces are essential — Status answers urgency,
+        // Accountability answers ownership.
+        {
+          key: 'zoneStatus',
+          label: 'Zone Status',
+          icon: '🚦',
+          onPress: onZoneStatusBoard,
+        },
         // BR-19 Zone Accountability Map — THE hero demo (Plan §22 Rec #1).
         // Visible to all roles: SH/DSH/SC use it operationally; GS/FS see
         // their assigned zones; AUD/GM see the venue-wide picture.

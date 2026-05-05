@@ -22,10 +22,11 @@ export const NAV_GROUPS: NavGroup[] = [
     id: 'primary',
     label: 'Primary',
     items: [
-      { id: 'dashboard', label: 'Dashboard',  icon: '▦', href: '/dashboard', enabled: true },
-      { id: 'zones',     label: 'Zone Board', icon: '⬡', href: '/zones',     enabled: true },
-      { id: 'incidents', label: 'Incidents',  icon: '⚡', href: '/incidents', enabled: true },
-      { id: 'broadcast', label: 'Broadcast',  icon: '📢', href: '/broadcast', enabled: false, newBadge: true },
+      { id: 'dashboard',      label: 'Dashboard',           icon: '▦',  href: '/dashboard',      enabled: true },
+      { id: 'zones',          label: 'Zone Status',         icon: '🚦', href: '/zones',          enabled: true },
+      { id: 'accountability', label: 'Zone Accountability', icon: '🗺',  href: '/accountability', enabled: true },
+      { id: 'incidents',      label: 'Incidents',           icon: '⚡',  href: '/incidents',      enabled: true },
+      { id: 'broadcast',      label: 'Broadcast',           icon: '📢', href: '/broadcast',      enabled: false, newBadge: true },
     ],
   },
   {

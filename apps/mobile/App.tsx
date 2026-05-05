@@ -6,13 +6,22 @@ import { TasksScreen } from './src/screens/TasksScreen';
 import { IncidentScreen } from './src/screens/IncidentScreen';
 import { StaffScreen } from './src/screens/StaffScreen';
 import { ZonesScreen } from './src/screens/ZonesScreen';
+import { ZoneStatusBoardScreen } from './src/screens/ZoneStatusBoardScreen';
 import { getStoredSession, clearSession } from './src/services/auth';
 import { initDb, syncPending } from './src/services/tasks';
 import type { AuthSession, OtpConfirmation } from './src/services/auth';
 import { ThemeProvider, Screen, Stack, useColours } from './src/theme';
 import { ActivityIndicator } from 'react-native';
 
-type ScreenName = 'loading' | 'phone' | 'otp' | 'tasks' | 'incident' | 'staff' | 'zones';
+type ScreenName =
+  | 'loading'
+  | 'phone'
+  | 'otp'
+  | 'tasks'
+  | 'incident'
+  | 'staff'
+  | 'zones'
+  | 'zoneStatusBoard';
 
 initDb(); // initialise SQLite tables at module load
 
@@ -86,6 +95,7 @@ function AppRouter(): React.JSX.Element {
           onDeclareIncident={() => setScreen('incident')}
           onManageStaff={() => setScreen('staff')}
           onZoneAccountability={() => setScreen('zones')}
+          onZoneStatusBoard={() => setScreen('zoneStatusBoard')}
         />
       )}
       {screen === 'incident' && (
@@ -103,6 +113,9 @@ function AppRouter(): React.JSX.Element {
       )}
       {screen === 'staff' && <StaffScreen onBack={() => setScreen('tasks')} />}
       {screen === 'zones' && <ZonesScreen onBack={() => setScreen('tasks')} />}
+      {screen === 'zoneStatusBoard' && (
+        <ZoneStatusBoardScreen onBack={() => setScreen('tasks')} />
+      )}
     </>
   );
 }

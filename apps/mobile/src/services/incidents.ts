@@ -19,6 +19,7 @@ export interface DeclarePayload {
 
 export interface ActiveIncident {
   id: string;
+  zone_id: string | null;
   incident_type: IncidentType;
   severity: Severity;
   status: 'ACTIVE' | 'CONTAINED';
