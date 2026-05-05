@@ -1,8 +1,25 @@
 @import "tailwindcss";
 
+/*
+ * Ops Console (EC-14: separate auth domain; always SafeCommand brand).
+ *
+ * Brand colour CSS variables are FIXED to SafeCommand defaults — never
+ * overridden at runtime. SC Ops users always see SafeCommand identity
+ * regardless of which corporate account they're configuring.
+ *
+ * Severity tokens immutable per NFR-35.
+ */
 :root {
   --background: #ffffff;
   --foreground: #171717;
+
+  /* Brand — fixed SafeCommand for ops-console (EC-14) */
+  --brand-primary:           #1E3A5F;
+  --brand-primary-strong:    #15293f;
+  --brand-primary-soft:      #d6dde7;
+  --brand-secondary:         #3B82F6;
+  --brand-text-on-primary:   #FFFFFF;
+  --brand-text-on-secondary: #FFFFFF;
 }
 
 @theme inline {
@@ -10,6 +27,30 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /* Brand colour tokens — Tailwind utility classes resolve to SafeCommand */
+  --color-brand-primary:           var(--brand-primary);
+  --color-brand-primary-strong:    var(--brand-primary-strong);
+  --color-brand-primary-soft:      var(--brand-primary-soft);
+  --color-brand-secondary:         var(--brand-secondary);
+  --color-brand-text-on-primary:   var(--brand-text-on-primary);
+  --color-brand-text-on-secondary: var(--brand-text-on-secondary);
+
+  /* Severity tokens — IMMUTABLE per NFR-35 */
+  --color-severity-sev1:        #DC2626;
+  --color-severity-sev1-bg:     #FEE2E2;
+  --color-severity-sev2:        #EA580C;
+  --color-severity-sev2-bg:     #FED7AA;
+  --color-severity-sev3:        #D97706;
+  --color-severity-sev3-bg:     #FEF3C7;
+
+  /* Zone status tokens (BR-18) */
+  --color-zone-clear:           #16A34A;
+  --color-zone-clear-bg:        #DCFCE7;
+  --color-zone-attention:       #D97706;
+  --color-zone-attention-bg:    #FEF3C7;
+  --color-zone-incident:        #DC2626;
+  --color-zone-incident-bg:     #FEE2E2;
 }
 
 @media (prefers-color-scheme: dark) {
