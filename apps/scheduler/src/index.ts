@@ -226,10 +226,26 @@ async function registerMasterTick(): Promise<void> {
     }
   }
 
-  // Hibernation-grade cadence — May 2026 budget freeze. Effectively dormant.
-  // Production target: 60_000 ms. Bump back before any pilot, demo, or testing session.
-  // Implication: scheduled tasks lag up to 4 hours — unfit for any user-facing testing.
-  const TICK_MS = 14_400_000; // 4 hours (~0.025 cmd/min from master-tick — near-zero burn)
+  // Master-tick cadence — env-driven for runtime control without redeploy.
+  //
+  // Set MASTER_TICK_INTERVAL on Railway (scheduler service) → ms between ticks:
+  //   60000     = 60 sec (production target — required for HOURLY templates
+  //                       to land within 15-min completion windows; per
+  //                       Architecture v7 §6 + 25-item go-live gate #8)
+  //   600000    = 10 min (lower-cost intermediate; tasks lag up to 10 min)
+  //   14400000  = 4 hours (May 2026 hibernation; effectively dormant —
+  //                        unfit for user-facing testing or pilot)
+  //
+  // Default = 60000 (production-correct). The May freeze is opt-in via env.
+  // Cost differential is small (~₹50–100/month between 60s and 10min ticks);
+  // the dominant cost is Railway compute, not Redis polling. See
+  // upstash_redis.md for the calculator.
+  const TICK_MS = parseInt(process.env['MASTER_TICK_INTERVAL'] ?? '60000', 10);
+  if (Number.isNaN(TICK_MS) || TICK_MS < 1000) {
+    throw new Error(
+      `Invalid MASTER_TICK_INTERVAL=${process.env['MASTER_TICK_INTERVAL']}; must be a positive integer (ms) >= 1000`,
+    );
+  }
   await (scheduleGenerationQueue as Queue).add(
     'master-tick',
     {} as ScheduleGenerationJob,
