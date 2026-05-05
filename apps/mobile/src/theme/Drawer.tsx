@@ -404,7 +404,12 @@ const styles = StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    zIndex: zIndex.overlay,
+    // Backdrop is the SCRIM — must sit BEHIND the drawer panel.
+    // Previously this used zIndex.overlay (200) > zIndex.drawer (100) which
+    // inverted the stack: backdrop's TouchableOpacity (flex: 1, full-screen)
+    // intercepted every tap, including taps that visually landed on the
+    // drawer rows. Drawer rows therefore never received touch events.
+    zIndex: zIndex.drawer,
   },
   backdropTouch: {
     flex: 1,
@@ -414,7 +419,9 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     left: 0,
-    zIndex: zIndex.drawer,
+    // Drawer panel sits ABOVE the backdrop scrim — z-index higher so its
+    // TouchableOpacity rows win the touch-arbitration on overlapping pixels.
+    zIndex: zIndex.overlay,
   },
   header: {
     paddingTop: spacing['3xl'],
