@@ -239,8 +239,11 @@ railway redeploy --yes
 - Plan: Pro ($25/mo)
 - PITR (point-in-time recovery): 7 days
 - Connection pooler (Supavisor): use for Railway worker connections
-- Service role key: stored in Railway env vars as `SUPABASE_SERVICE_ROLE_KEY` — **never** expose this client-side
-- Anon key: safe to expose client-side (RLS is the security boundary)
+- **Key model (migrated 2026-05-05):** Project uses Supabase's new opaque-token API keys (`sb_secret_*` server-only, `sb_publishable_*` client-safe) — NOT the legacy `anon` + `service_role` JWTs. Legacy JWT keys disabled at Supabase Dashboard. See ADR 0003 (`docs/adr/0003-supabase-publishable-secret-keys.md`) for migration rationale and Phase B per-service key-sharding plan.
+- **Env var names unchanged:** `SUPABASE_SERVICE_ROLE_KEY` now holds the `sb_secret_*` opaque value; `SUPABASE_ANON_KEY` now holds the `sb_publishable_*` opaque value. Supabase JS client treats both formats as opaque API keys; zero code change required.
+- **Server-only:** `SUPABASE_SERVICE_ROLE_KEY` (= `sb_secret_*`) — never expose client-side; bypasses RLS.
+- **Client-safe:** `SUPABASE_ANON_KEY` (= `sb_publishable_*`) — public-by-design; RLS is the security boundary.
+- **Rotation benefit:** opaque keys rotate without invalidating user-session JWTs (legacy JWT rotation = mass logout). Critical for NFR-13 (99.5% uptime) at pilot.
 
 **Known gotchas:**
 1. **TCP pooler blocked by some networks.** Use the REST API for migrations when you can't reach the pooler directly. Manual SQL via Dashboard SQL Editor is always available.
