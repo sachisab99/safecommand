@@ -221,7 +221,70 @@ When these come online, this doc will be revised:
 | `/v1/governance/*` | 3 | Per BR-65–80 — corporate governance aggregation; CORP-* role gated; never returns PII (EC-20) |
 | `/v1/external/<integration>` | 2+ | External API integrations (Fire Brigade, hospital PMS) — separate auth (per-consumer key + IP allow-list) |
 
-## 18. Open questions deferred to L2 governance work (Phase B)
+## 19. Entity lifecycle states (canonical pattern)
+
+Some entities — staff being the canonical example — have richer operational states than a binary active/inactive flag. SafeCommand uses a 4-state lifecycle pattern derived from enterprise HR systems (Workday / BambooHR / Personio).
+
+### Staff lifecycle (per `migration 011_staff_lifecycle.sql` — Phase B June 2026)
+
+| State | Meaning | Reversible? | Reason required? |
+|---|---|---|---|
+| `ACTIVE` | Working; receives task notifications; counts on rosters | — | No |
+| `SUSPENDED` | Temporary block (investigation, training, no-show) | Yes — back to ACTIVE | Yes |
+| `ON_LEAVE` | Planned absence (vacation, medical, parental); may have `planned_return_date` | Yes — back to ACTIVE | Yes |
+| `TERMINATED` | Permanent exit (resigned, fired) | **NO — one-way** | Yes |
+
+### Why `TERMINATED` is one-way
+
+Compliance + audit posture (NFR-17 audit immutability, EC-10 append-only). Silently re-enabling a terminated staff member could mask wrongful-termination scenarios. If the person returns to the venue, create a new staff row — preserving the original termination as a permanent audit record. Enforced at DB level via `enforce_terminated_oneway` trigger in migration 011.
+
+### Backward compat
+
+Migration 011 keeps `is_active` as a **generated column** (`TRUE iff lifecycle_status='ACTIVE'`). All Sprint 1 / Sprint 2 code reading `staff.is_active` continues to work. Updates must target `lifecycle_status`, not `is_active`.
+
+### Required transitions
+
+```
+ACTIVE       → SUSPENDED   (manual; reason required)
+ACTIVE       → ON_LEAVE    (manual or scheduled; reason required; optional planned_return_date)
+ACTIVE       → TERMINATED  (manual; reason required)
+SUSPENDED    → ACTIVE      (manual; transition logged)
+SUSPENDED    → TERMINATED  (manual; reason required)
+ON_LEAVE     → ACTIVE      (manual on return, OR auto-cron when planned_return_date hit)
+ON_LEAVE     → TERMINATED  (rare — usually only after extended leave; reason required)
+TERMINATED   → ANY         (BLOCKED — trigger raises exception)
+```
+
+### Endpoint surface (Phase B)
+
+Single binary `deactivateStaff` is replaced by four endpoints, each with its own audit semantics:
+
+```
+POST /v1/staff/:id/suspend       { reason }                    — ACTIVE→SUSPENDED
+POST /v1/staff/:id/mark-on-leave { reason, planned_return_date? } — ACTIVE→ON_LEAVE
+POST /v1/staff/:id/terminate     { reason }                    — ACTIVE/SUSPENDED/ON_LEAVE→TERMINATED
+POST /v1/staff/:id/reactivate    { reason? }                   — SUSPENDED/ON_LEAVE→ACTIVE
+                                                                   (TERMINATED never)
+```
+
+All four require `requireRole('SH', 'DSH')` per Plan §11 staff management authority. All four call `auditLog('STAFF_<TRANSITION>')`. All four validate Zod schemas with the appropriate reason field (min 3 chars where required).
+
+### Until migration 011 deploys (May 2026 — current state)
+
+Today's Ops Console has a binary `deactivate` / `reactivate` toggle (matches the pre-Phase-B is_active boolean). The new lifecycle UI lands alongside migration 011 deploy. Mobile app delegates lifecycle changes to Ops Console for now; Phase 3 may add SH-facing lifecycle UI.
+
+### Pattern applies beyond staff
+
+Other entities likely to adopt this pattern:
+- **Equipment** — `OPERATIONAL / MAINTENANCE / RETIRED` (BR-21)
+- **Schedule templates** — `ACTIVE / PAUSED / RETIRED` (BR-06)
+- **Visitor blacklist entries** — `ACTIVE / EXPIRED / RESCINDED` (BR-49)
+
+When adding lifecycle to a new entity, follow this pattern: 4 states, `<entity>_status_reason` required for non-default states, audit trigger on transitions, generated `is_active` for backward compat.
+
+---
+
+## 20. Open questions deferred to L2 governance work (Phase B)
 
 - **Per-tenant API quotas** — once corporate accounts can have their own quota tier, where does enforcement live? (L3 likely)
 - **Schema versioning** — when migration 009 lands, do we version `set_tenant_context` calls per-request? (Spec says no — backward-compat default)
