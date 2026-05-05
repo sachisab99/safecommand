@@ -24,8 +24,10 @@ import {
   View,
   Text,
   Modal,
-  Pressable,
+  TouchableOpacity,
   StyleSheet,
+  StatusBar,
+  Platform,
   Animated,
   Easing,
   ScrollView,
@@ -173,16 +175,32 @@ export function Drawer({
     }
   }, [visible, slide, fade, shouldRender]);
 
+  // Android status bar inset — Modal renders at y=0 by default; without this
+  // the drawer header would render under the status bar pixels.
+  const androidStatusBarInset =
+    Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0;
+
   return (
     <Modal
       visible={shouldRender}
       transparent
       animationType="none"
       onRequestClose={onClose}
-      statusBarTranslucent
     >
-      <Animated.View style={[styles.backdrop, { opacity: fade }]}>
-        <Pressable style={styles.backdropTouch} onPress={onClose} accessibilityLabel="Close menu" />
+      <Animated.View
+        style={[styles.backdrop, { opacity: fade }]}
+        pointerEvents="box-none"
+      >
+        {/*
+         * TouchableOpacity (not Pressable) — more reliable hit-testing
+         * inside RN Modal across Expo SDK 51+ on both iOS and Android.
+         */}
+        <TouchableOpacity
+          activeOpacity={1}
+          style={styles.backdropTouch}
+          onPress={onClose}
+          accessibilityLabel="Close menu"
+        />
       </Animated.View>
 
       <Animated.View
@@ -191,6 +209,7 @@ export function Drawer({
           {
             backgroundColor: c.background,
             width: `${widthFraction * 100}%`,
+            paddingTop: androidStatusBarInset,
             transform: [
               {
                 translateX: slide.interpolate({
@@ -246,15 +265,20 @@ export function Drawer({
         {/* Footer */}
         {footerAction !== undefined && (
           <View style={[styles.footer, { borderTopColor: c.divider }]}>
-            <Pressable
+            <TouchableOpacity
               accessibilityRole="button"
+              activeOpacity={0.7}
               onPress={() => {
+                // Defer the action to next tick so the close animation can
+                // start before the consumer's onPress mutates state (e.g.
+                // clearSession + screen change). Avoids racing the unmount
+                // path which can re-strand the Modal in some RN builds.
                 onClose();
-                footerAction.onPress();
+                setTimeout(() => footerAction.onPress(), 0);
               }}
-              style={({ pressed }) => [
+              style={[
                 styles.footerButton,
-                { backgroundColor: pressed ? c.surfaceMuted : 'transparent' },
+                { backgroundColor: 'transparent' },
               ]}
               hitSlop={touch.hitSlop}
             >
@@ -269,7 +293,7 @@ export function Drawer({
               >
                 {footerAction.label}
               </Text>
-            </Pressable>
+            </TouchableOpacity>
           </View>
         )}
       </Animated.View>
@@ -289,23 +313,24 @@ interface DrawerRowProps {
 function DrawerRow({ item, onClose, primaryColour }: DrawerRowProps): React.JSX.Element {
   const c = useColours();
   return (
-    <Pressable
+    <TouchableOpacity
       accessibilityRole="button"
       accessibilityLabel={item.label}
       accessibilityState={{ disabled: item.disabled, selected: item.selected }}
       disabled={item.disabled}
+      activeOpacity={0.6}
       onPress={() => {
+        // Defer consumer onPress to next tick so the drawer close animation
+        // begins before consumer state mutations (e.g. screen navigation).
         onClose();
-        item.onPress();
+        setTimeout(() => item.onPress(), 0);
       }}
-      style={({ pressed }) => [
+      style={[
         styles.rowBase,
         {
           backgroundColor: item.selected
             ? primaryColour + '14' // ~8% opacity tint
-            : pressed
-              ? c.surfaceMuted
-              : 'transparent',
+            : 'transparent',
           opacity: item.disabled ? 0.4 : 1,
           borderLeftColor: item.selected ? primaryColour : 'transparent',
         },
@@ -335,7 +360,7 @@ function DrawerRow({ item, onClose, primaryColour }: DrawerRowProps): React.JSX.
           <Text style={[styles.badgeText, { color: c.textInverse }]}>{item.badge}</Text>
         </View>
       )}
-    </Pressable>
+    </TouchableOpacity>
   );
 }
 
@@ -359,19 +384,16 @@ export function DrawerTrigger({
 }: DrawerTriggerProps): React.JSX.Element {
   const c = useColours();
   return (
-    <Pressable
+    <TouchableOpacity
       accessibilityRole="button"
       accessibilityLabel={label}
+      activeOpacity={0.6}
       onPress={onPress}
       hitSlop={touch.hitSlop}
-      style={({ pressed }) => [
-        styles.trigger,
-        { backgroundColor: pressed ? c.surfaceMuted : 'transparent' },
-        style,
-      ]}
+      style={[styles.trigger, { backgroundColor: 'transparent' }, style]}
     >
       <Text style={[styles.triggerIcon, { color: c.textPrimary }]}>{icon}</Text>
-    </Pressable>
+    </TouchableOpacity>
   );
 }
 
