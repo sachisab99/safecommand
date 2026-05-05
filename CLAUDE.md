@@ -632,34 +632,47 @@ Incident declared → POST /incidents → DB write → return 201 <200ms
 - ⏳ BR-10 SMS fallback: blocked on Airtel DLT
 - ⏳ BR-09 WhatsApp: blocked on Meta WABA approval
 
-### v7 Phase A (current — `safecommand_v7` branch)
+### v7 Phase A — COMPLETE (on `safecommand_v7` branch — pending merge to `main`)
+All 12 Phase A steps + polish landed 2026-05-05. 19 commits ahead of main on `origin/safecommand_v7`. Workers paused.
+
+**Foundational artefacts:**
 - ✅ ADR 0001 migration renumbering captured
 - ✅ ADR 0002 branching decision captured
 - ✅ ADR 0003 Supabase opaque-token migration captured
 - ✅ AWS-process-doc-IMP.md §3.3 updated for new key model
-- ✅ Security history rewrite complete (`origin/main` HEAD = `96594ad`; backup tag preserved)
-- ✅ Working branch `safecommand_v7` created from cleaned main
-- 🔄 **This file (CLAUDE.md rewrite)** — IN PROGRESS
-- ⏳ Theme scaffold (mobile): `theme/{tokens,colours,ThemeProvider}.ts` + `useBrand` + `useLabel`
-- ⏳ Layout primitives + viewport + safe-area
-- ⏳ Hamburger drawer (responsive Phase 1 deliverable from `UX-DESIGN-DECISIONS.md`)
-- ⏳ Mobile screen retrofits (PhoneScreen, OtpScreen, HomeScreen, TasksScreen, TaskDetailScreen, IncidentScreen)
-- ⏳ Dashboard ThemeProvider + Tailwind brand-vars
-- ⏳ Ops Console ThemeProvider (always SafeCommand brand per EC-14)
-- ⏳ `docs/sales/apollo-mockup-spec.md` (Path C — live working software via brand config row in Phase B)
+- ✅ Security history rewrite complete (`origin/main` HEAD = `96594ad`; backup tag preserved at `772fd85`)
+- ✅ This CLAUDE.md rewritten for v7 (91 BRs / 37 NFRs / 22 ECs / 22 Hard Rules)
 
-### Phase B (June 2026 unfreeze — pending)
-**Prerequisites (per `JUNE-2026-REVIEW-REQUIRED.md`):**
-1. Verify Upstash actual May burn vs projection
-2. Apply AWS Activate $1K credits (per `reference_aws_activate_safecommand.md`)
-3. Fix Railway worker Start Commands (per `2026-04-30-19:30_fix.md` G11)
-4. Set workers always-on: `WORKERS_PAUSED=false`, `MASTER_TICK_INTERVAL=60000` on scheduler
-5. Apply repo migration `009_mbv.sql` (Spec Migration 007)
-6. Apply repo migration `010_brand_roaming_drill.sql` (Spec Migration 008)
-7. Build live Apollo mockup (Path C — `apollo-demo` brand config row)
+**Code scaffold (`safecommand_v7`):**
+- ✅ Mobile theme: `theme/{tokens,colours,ThemeProvider,layout,Drawer,index}.ts` (~1574 lines) — EC-17/Rule 19 satisfied
+- ✅ Dashboard theme: `lib/theme/{types,wcag,ThemeProvider,index}.ts` + Tailwind v4 `@theme` brand-var integration
+- ✅ Ops Console theme: always-SafeCommand provider (EC-14)
+- ✅ 6 mobile screens retrofit to theme tokens — zero hardcoded `color: '#xxx'`
+- ✅ DrawerTrigger + Drawer wired into TasksScreen with 5-group categorisation per UX-DESIGN-DECISIONS.md §4
+- ✅ Apollo mockup spec (`docs/sales/apollo-mockup-spec.md`) — Path C live software approach
+- ✅ Apollo deck spec (`docs/sales/apollo-deck-spec.md`) — 3-slide content + design
 
-**BR sequence (resume after prerequisites):**
-- BR-10 → BR-08 → BR-12 → BR-13 → BR-A → BR-B → BR-14 → BR-15/16/17 → BR-18/19 → BR-39–55 + BR-64 (VMS) → BR-57–63 (MBV operational behaviours) → BR-20/29 (compliance + post-incident PDFs) → BR-32
+**Phase A polish (Drawer bugfixes from device testing):**
+- ✅ Android status-bar overlap fixed (`StatusBar.currentHeight` paddingTop)
+- ✅ Drawer animation race fixed (`shouldRender` lag-state, animated unmount)
+- ✅ Drawer rows clickable (`Pressable`→`TouchableOpacity` + `setTimeout(..., 0)` consumer onPress defer)
+- ✅ Drawer z-index inversion fixed — backdrop `z=drawer(100)`, drawer `z=overlay(200)`
+
+**Phase B pre-writes (NOT yet deployed — June 2026):**
+- ✅ `supabase/migrations/009_mbv.sql` (419 lines) — Spec Migration 007: buildings, building_visible(), 4-param set_tenant_context, all ALTER TABLEs, denormalisation triggers, RLS policies refreshed
+- ✅ `supabase/migrations/010_brand_roaming_drill.sql` (330 lines) — Spec Migration 008: corporate_accounts, corporate_brand_configs (with CHECK on powered_by_text per EC-18/Rule 20), roaming_staff_assignments (10-venue trigger), drill_sessions + drill_session_participants
+- ✅ `supabase/seeds/apollo-demo.sql` (166 lines) — Phase B Path C mockup seed (idempotent; needs founder SC Ops UUID + S3 logo before applying)
+- ✅ `scripts/seed-test-tasks.sh` (210 lines, executable) — May testing bridge while workers paused
+- ✅ `apps/scheduler/src/index.ts` env-driven `MASTER_TICK_INTERVAL` — runtime tick control without code change
+
+### Phase B (June 2026 unfreeze — single source of truth: `JUNE-2026-REVIEW-REQUIRED.md`)
+**Pre-merge:** merge `safecommand_v7` → `main` before any Phase B operation. See `JUNE-2026-REVIEW-REQUIRED.md` § A.
+
+**Sequence (per `JUNE-2026-REVIEW-REQUIRED.md`):**
+1. **Stage 1** — Verify Upstash burn / worker state / apply AWS Activate credits
+2. **Stage 2** — Apply migrations 009 + 010 (pre-written; just `supabase db push`); update api 4-param `set_tenant_context` calls; apply apollo-demo seed (after S3 logo upload + UUID replacement); record Apollo Loom; set workers always-on (`WORKERS_PAUSED=false`, `MASTER_TICK_INTERVAL=60000`)
+3. **Stage 3** — Resume BR sequence: BR-10 → BR-08 → BR-12 → BR-13 → BR-A → BR-B → BR-14 → BR-15/16/17 → BR-18/19 → BR-39–55 + BR-64 (VMS) → BR-57–63 (MBV) → BR-20/29 (compliance + post-incident PDFs) → BR-32
+4. **Stage 4** — 25-item go-live checklist (Business Plan §15.1)
 
 **Pilot strategy (per Q4 decision):** Pilot 1 = single-building (clinic/boutique hotel); Pilot 2 = multi-building Hyderabad supermall. Hospital pilots blocked by Rule 12 / Phase 2 GCP migration.
 
@@ -759,10 +772,17 @@ Per Business Plan §15.1 — all 25 must pass before first pilot venue live.
 
 ---
 
-## Current sprint focus
+## Current sprint focus (as of 2026-05-05)
 
-**Branch:** `safecommand_v7`
-**Active work:** Phase A scaffold (theme + responsive Phase 1 + CLAUDE.md + Apollo mockup spec)
-**Next concrete step:** mobile `theme/tokens.ts` (spacing/typography/radii — design-system layer)
-**Done in Phase A so far:** ADRs 0001/0002/0003 + AWS-process-doc-IMP.md update + this CLAUDE.md rewrite + security history rewrite of `origin/main`
-**Blocked on:** nothing engineering-side; founder actions in parallel (Meta WABA / Airtel DLT / OPC / trademark / Apple Dev / domain / AWS Activate)
+**Branch:** `safecommand_v7` (19 commits ahead of main; pending merge)
+**Workers:** PAUSED (`WORKERS_PAUSED=true` on all 4 services — May freeze)
+**Phase A:** ✅ Complete (12 steps + polish + Phase B pre-writes)
+**Phase B:** ⏳ Pending June 2 unfreeze — see `JUNE-2026-REVIEW-REQUIRED.md` for the canonical action sequence
+
+**Next sessions:**
+1. **(May, ongoing)** Founder actions in flight — Meta WABA / Airtel DLT / OPC / trademark / Apple Dev Account / Google Play / domain `safecommand.in` / AWS Activate / Apollo logo upload / Apollo deck composition. Status tracked in `JUNE-2026-REVIEW-REQUIRED.md` § "Founder action checklist".
+2. **(May, by 31 May)** Validation conversations gate — 10 conversations; 7+ pain confirmed; 5+ accept managed-service framing; 2 pilots committed (1 single-building + 1 multi-building Hyderabad supermall per Q4 decision).
+3. **(May testing, optional)** `./scripts/seed-test-tasks.sh` to generate task_instances on demand without unpausing workers.
+4. **(2 June 2026)** Execute `JUNE-2026-REVIEW-REQUIRED.md` end-to-end. First step: merge `safecommand_v7` → `main`.
+
+**Blocked on:** nothing engineering-side. All May 2026 engineering work is complete; remaining is founder-action and validation-gated.
