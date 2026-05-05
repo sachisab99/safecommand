@@ -1,39 +1,106 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  View, Text, FlatList, TouchableOpacity, RefreshControl,
-  StyleSheet, SafeAreaView, ActivityIndicator, Alert,
+  View,
+  Text,
+  FlatList,
+  TouchableOpacity,
+  RefreshControl,
+  StyleSheet,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { fetchMyTasks, syncPending, type TaskItem } from '../services/tasks';
-import { fetchActiveIncidents, markSafe, resolveIncident, type ActiveIncident } from '../services/incidents';
+import {
+  fetchActiveIncidents,
+  markSafe,
+  resolveIncident,
+  type ActiveIncident,
+} from '../services/incidents';
 import type { StaffProfile } from '../services/auth';
 import { TaskDetailScreen } from './TaskDetailScreen';
-
-const STATUS_COLOR: Record<string, string> = {
-  PENDING:      '#2563EB',
-  IN_PROGRESS:  '#7C3AED',
-  COMPLETE:     '#16A34A',
-  LATE_COMPLETE:'#16A34A',
-  MISSED:       '#DC2626',
-  ESCALATED:    '#EA580C',
-};
+import {
+  Screen,
+  useColours,
+  useBrand,
+  spacing,
+  fontSize,
+  fontWeight,
+  letterSpacing,
+  radius,
+  borderWidth,
+  shadow,
+  touch,
+  type Colours,
+} from '../theme';
 
 const STATUS_LABEL: Record<string, string> = {
-  PENDING:      'Pending',
-  IN_PROGRESS:  'In Progress',
-  COMPLETE:     'Complete',
-  LATE_COMPLETE:'Complete (Late)',
-  MISSED:       'Missed',
-  ESCALATED:    'Escalated',
+  PENDING: 'Pending',
+  IN_PROGRESS: 'In Progress',
+  COMPLETE: 'Complete',
+  LATE_COMPLETE: 'Complete (Late)',
+  MISSED: 'Missed',
+  ESCALATED: 'Escalated',
 };
 
 const FREQ_LABEL: Record<string, string> = {
-  HOURLY:'Hourly', EVERY_2H:'Every 2h', EVERY_4H:'Every 4h',
-  EVERY_6H:'Every 6h', EVERY_8H:'Every 8h', DAILY:'Daily',
-  WEEKLY:'Weekly', MONTHLY:'Monthly', QUARTERLY:'Quarterly', ANNUAL:'Annual',
+  HOURLY: 'Hourly',
+  EVERY_2H: 'Every 2h',
+  EVERY_4H: 'Every 4h',
+  EVERY_6H: 'Every 6h',
+  EVERY_8H: 'Every 8h',
+  DAILY: 'Daily',
+  WEEKLY: 'Weekly',
+  MONTHLY: 'Monthly',
+  QUARTERLY: 'Quarterly',
+  ANNUAL: 'Annual',
 };
 
+const TYPE_ICON: Record<string, string> = {
+  FIRE: '🔥',
+  MEDICAL: '🏥',
+  SECURITY: '🔒',
+  EVACUATION: '🚨',
+  STRUCTURAL: '🏗️',
+  OTHER: '⚠️',
+};
+
+function statusColour(c: Colours, status: string): string {
+  switch (status) {
+    case 'PENDING':
+      return c.status.pending;
+    case 'IN_PROGRESS':
+      return c.status.inProgress;
+    case 'COMPLETE':
+    case 'LATE_COMPLETE':
+      return c.status.success;
+    case 'MISSED':
+      return c.status.danger;
+    case 'ESCALATED':
+      return c.status.escalated;
+    default:
+      return c.textMuted;
+  }
+}
+
+function severityColour(c: Colours, sev: string): string {
+  switch (sev) {
+    case 'SEV1':
+      return c.severity.SEV1;
+    case 'SEV2':
+      return c.severity.SEV2;
+    case 'SEV3':
+      return c.severity.SEV3;
+    default:
+      return c.severity.SEV1;
+  }
+}
+
 function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+  return new Date(iso).toLocaleTimeString('en-IN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  });
 }
 
 interface Props {
@@ -42,20 +109,19 @@ interface Props {
   onDeclareIncident: () => void;
 }
 
-const SEV_COLOR: Record<string, string> = { SEV1: '#DC2626', SEV2: '#EA580C', SEV3: '#D97706' };
-const TYPE_ICON: Record<string, string>  = { FIRE: '🔥', MEDICAL: '🏥', SECURITY: '🔒', EVACUATION: '🚨', STRUCTURAL: '🏗️', OTHER: '⚠️' };
+export function TasksScreen({ staff, onLogout, onDeclareIncident }: Props): React.JSX.Element {
+  const c = useColours();
+  const brand = useBrand();
+  const [tasks, setTasks] = useState<TaskItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [fromCache, setFromCache] = useState(false);
+  const [selectedTask, setSelectedTask] = useState<TaskItem | null>(null);
+  const [incidents, setIncidents] = useState<ActiveIncident[]>([]);
+  const [markingSafe, setMarkingSafe] = useState<string | null>(null);
+  const [resolving, setResolving] = useState<string | null>(null);
 
-export function TasksScreen({ staff, onLogout, onDeclareIncident }: Props) {
-  const [tasks, setTasks]                   = useState<TaskItem[]>([]);
-  const [loading, setLoading]               = useState(true);
-  const [refreshing, setRefreshing]         = useState(false);
-  const [fromCache, setFromCache]           = useState(false);
-  const [selectedTask, setSelectedTask]     = useState<TaskItem | null>(null);
-  const [incidents, setIncidents]           = useState<ActiveIncident[]>([]);
-  const [markingSafe, setMarkingSafe]       = useState<string | null>(null);
-  const [resolving, setResolving]           = useState<string | null>(null);
-
-  const load = useCallback(async (isRefresh = false) => {
+  const load = useCallback(async (isRefresh = false): Promise<void> => {
     if (isRefresh) setRefreshing(true);
     const [{ tasks: t, fromCache: fc }, activeIncidents] = await Promise.all([
       fetchMyTasks(),
@@ -73,7 +139,7 @@ export function TasksScreen({ staff, onLogout, onDeclareIncident }: Props) {
     syncPending();
   }, [load]);
 
-  const handleMarkSafe = useCallback(async (incident: ActiveIncident) => {
+  const handleMarkSafe = useCallback(async (incident: ActiveIncident): Promise<void> => {
     setMarkingSafe(incident.id);
     const ok = await markSafe(incident.id);
     setMarkingSafe(null);
@@ -84,7 +150,7 @@ export function TasksScreen({ staff, onLogout, onDeclareIncident }: Props) {
     }
   }, []);
 
-  const handleResolve = useCallback((incident: ActiveIncident) => {
+  const handleResolve = useCallback((incident: ActiveIncident): void => {
     Alert.alert(
       'Resolve Incident',
       `Mark this ${incident.incident_type.toLowerCase()} incident as resolved?`,
@@ -98,8 +164,7 @@ export function TasksScreen({ staff, onLogout, onDeclareIncident }: Props) {
             const ok = await resolveIncident(incident.id);
             setResolving(null);
             if (ok) {
-              // Optimistic: remove from local state immediately
-              setIncidents(prev => prev.filter(i => i.id !== incident.id));
+              setIncidents((prev) => prev.filter((i) => i.id !== incident.id));
             } else {
               Alert.alert('Error', 'Could not resolve incident. Try again.');
             }
@@ -109,9 +174,9 @@ export function TasksScreen({ staff, onLogout, onDeclareIncident }: Props) {
     );
   }, []);
 
-  const handleComplete = useCallback(() => {
+  const handleComplete = useCallback((): void => {
     setSelectedTask(null);
-    load(true); // reload task list after completion
+    void load(true);
   }, [load]);
 
   if (selectedTask) {
@@ -124,48 +189,66 @@ export function TasksScreen({ staff, onLogout, onDeclareIncident }: Props) {
     );
   }
 
-  const today = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', weekday: 'short' });
+  const today = new Date().toLocaleDateString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    weekday: 'short',
+  });
 
-  const actionable = tasks.filter(t => !['COMPLETE', 'LATE_COMPLETE'].includes(t.status));
-  const done       = tasks.filter(t => ['COMPLETE', 'LATE_COMPLETE'].includes(t.status));
+  const actionable = tasks.filter((t) => !['COMPLETE', 'LATE_COMPLETE'].includes(t.status));
+  const done = tasks.filter((t) => ['COMPLETE', 'LATE_COMPLETE'].includes(t.status));
 
   return (
-    <SafeAreaView style={s.safe}>
+    <Screen background={c.surface}>
       {/* Header */}
-      <View style={s.header}>
+      <View
+        style={[
+          s.header,
+          { backgroundColor: c.background, borderBottomColor: c.divider },
+        ]}
+      >
         <View>
-          <Text style={s.headerTitle}>My Tasks</Text>
-          <Text style={s.headerSub}>{today}</Text>
+          <Text style={[s.headerTitle, { color: c.textPrimary }]}>My Tasks</Text>
+          <Text style={[s.headerSub, { color: c.textMuted }]}>{today}</Text>
         </View>
         <View style={s.headerRight}>
           {fromCache && (
-            <View style={s.cacheBadge}>
-              <Text style={s.cacheBadgeText}>Offline cache</Text>
+            <View style={[s.cacheBadge, { backgroundColor: c.status.warningBg }]}>
+              <Text style={[s.cacheBadgeText, { color: c.status.warning }]}>Offline cache</Text>
             </View>
           )}
-          <TouchableOpacity onPress={onLogout} style={s.logoutBtn}>
-            <Text style={s.logoutText}>Sign out</Text>
+          <TouchableOpacity onPress={onLogout} style={s.logoutBtn} hitSlop={touch.hitSlop}>
+            <Text style={[s.logoutText, { color: c.textDisabled }]}>Sign out</Text>
           </TouchableOpacity>
         </View>
       </View>
 
       {/* Staff pill */}
-      <View style={s.staffRow}>
-        <View style={s.avatar}>
-          <Text style={s.avatarText}>{staff.name.charAt(0).toUpperCase()}</Text>
+      <View
+        style={[
+          s.staffRow,
+          { backgroundColor: c.background, borderBottomColor: c.divider },
+        ]}
+      >
+        <View style={[s.avatar, { backgroundColor: brand.primary_colour }]}>
+          <Text style={[s.avatarText, { color: c.textOnPrimary }]}>
+            {staff.name.charAt(0).toUpperCase()}
+          </Text>
         </View>
         <View>
-          <Text style={s.staffName}>{staff.name}</Text>
-          <Text style={s.staffRole}>{staff.role.replace(/_/g, ' ')}</Text>
+          <Text style={[s.staffName, { color: c.textPrimary }]}>{staff.name}</Text>
+          <Text style={[s.staffRole, { color: c.textMuted }]}>
+            {staff.role.replace(/_/g, ' ')}
+          </Text>
         </View>
         <View style={s.taskCount}>
-          <Text style={s.taskCountNum}>{actionable.length}</Text>
-          <Text style={s.taskCountLabel}>open</Text>
+          <Text style={[s.taskCountNum, { color: brand.primary_colour }]}>{actionable.length}</Text>
+          <Text style={[s.taskCountLabel, { color: c.textDisabled }]}>open</Text>
         </View>
       </View>
 
       {/* Active incident banner — shown whenever an ACTIVE or CONTAINED incident exists */}
-      {incidents.map(incident => (
+      {incidents.map((incident) => (
         <IncidentBanner
           key={incident.id}
           incident={incident}
@@ -177,32 +260,45 @@ export function TasksScreen({ staff, onLogout, onDeclareIncident }: Props) {
       ))}
 
       {loading ? (
-        <View style={s.center}><ActivityIndicator size="large" color="#1E3A5F" /></View>
+        <View style={s.center}>
+          <ActivityIndicator size="large" color={brand.primary_colour} />
+        </View>
       ) : tasks.length === 0 ? (
         <View style={s.center}>
-          <Text style={s.emptyTitle}>No tasks today</Text>
-          <Text style={s.emptySub}>Pull down to refresh</Text>
+          <Text style={[s.emptyTitle, { color: c.textMuted }]}>No tasks today</Text>
+          <Text style={[s.emptySub, { color: c.textDisabled }]}>Pull down to refresh</Text>
         </View>
       ) : (
         <FlatList
           data={[...actionable, ...done]}
-          keyExtractor={item => item.id}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} colors={['#1E3A5F']} />}
+          keyExtractor={(item) => item.id}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => load(true)}
+              colors={[brand.primary_colour]}
+            />
+          }
           contentContainerStyle={s.list}
           ItemSeparatorComponent={() => <View style={s.sep} />}
-          ListHeaderComponent={actionable.length > 0 && done.length > 0 ? (
-            <View style={s.sectionHeader}>
-              <Text style={s.sectionTitle}>Open ({actionable.length})</Text>
-            </View>
-          ) : null}
+          ListHeaderComponent={
+            actionable.length > 0 && done.length > 0 ? (
+              <View style={s.sectionHeader}>
+                <Text style={[s.sectionTitle, { color: c.textDisabled }]}>
+                  Open ({actionable.length})
+                </Text>
+              </View>
+            ) : null
+          }
           renderItem={({ item, index }) => {
-            // Section divider between open and done
             const isDoneSection = index === actionable.length;
             return (
               <>
                 {isDoneSection && (
-                  <View style={[s.sectionHeader, { marginTop: 16 }]}>
-                    <Text style={s.sectionTitle}>Completed ({done.length})</Text>
+                  <View style={[s.sectionHeader, { marginTop: spacing.lg }]}>
+                    <Text style={[s.sectionTitle, { color: c.textDisabled }]}>
+                      Completed ({done.length})
+                    </Text>
                   </View>
                 )}
                 <TaskRow task={item} onPress={() => setSelectedTask(item)} />
@@ -212,159 +308,316 @@ export function TasksScreen({ staff, onLogout, onDeclareIncident }: Props) {
         />
       )}
 
-      {/* Incident declaration FAB — always visible regardless of scroll */}
-      <TouchableOpacity style={s.fab} onPress={onDeclareIncident} activeOpacity={0.85}>
-        <Text style={s.fabText}>⚠ Incident</Text>
+      {/* Incident declaration FAB — always visible */}
+      <TouchableOpacity
+        style={[s.fab, { backgroundColor: c.severity.SEV1, shadowColor: c.severity.SEV1 }]}
+        onPress={onDeclareIncident}
+        activeOpacity={0.85}
+        hitSlop={touch.hitSlop}
+      >
+        <Text style={[s.fabText, { color: c.textInverse }]}>⚠ Incident</Text>
       </TouchableOpacity>
-    </SafeAreaView>
+    </Screen>
   );
 }
 
-function IncidentBanner({
-  incident, markingSafe, resolving, onMarkSafe, onResolve,
-}: {
+interface IncidentBannerProps {
   incident: ActiveIncident;
   markingSafe: boolean;
   resolving: boolean;
   onMarkSafe: () => void;
   onResolve: () => void;
-}) {
-  const sevColor   = SEV_COLOR[incident.severity] ?? '#DC2626';
-  const icon       = TYPE_ICON[incident.incident_type] ?? '⚠️';
-  const elapsed    = Math.floor((Date.now() - new Date(incident.declared_at).getTime()) / 60_000);
-  const elapsedStr = elapsed < 1 ? 'Just now' : elapsed === 1 ? '1 min ago' : `${elapsed} min ago`;
+}
+
+function IncidentBanner({
+  incident,
+  markingSafe,
+  resolving,
+  onMarkSafe,
+  onResolve,
+}: IncidentBannerProps): React.JSX.Element {
+  const c = useColours();
+  const sevColor = severityColour(c, incident.severity);
+  const icon = TYPE_ICON[incident.incident_type] ?? '⚠️';
+  const elapsed = Math.floor((Date.now() - new Date(incident.declared_at).getTime()) / 60_000);
+  const elapsedStr =
+    elapsed < 1 ? 'Just now' : elapsed === 1 ? '1 min ago' : `${elapsed} min ago`;
 
   return (
-    <View style={[bs.banner, { borderLeftColor: sevColor }]}>
+    <View style={[bs.banner, { backgroundColor: c.severity.SEV1_BG, borderLeftColor: sevColor }]}>
       <View style={bs.bannerTop}>
         <View style={[bs.sevDot, { backgroundColor: sevColor }]} />
-        <Text style={bs.bannerAlert}>INCIDENT ACTIVE</Text>
+        <Text style={[bs.bannerAlert, { color: sevColor }]}>INCIDENT ACTIVE</Text>
         <View style={[bs.sevPill, { backgroundColor: sevColor + '22' }]}>
           <Text style={[bs.sevPillText, { color: sevColor }]}>{incident.severity}</Text>
         </View>
       </View>
       <View style={bs.bannerMid}>
         <Text style={bs.bannerIcon}>{icon}</Text>
-        <View style={{ flex: 1 }}>
-          <Text style={bs.bannerType}>
+        <View style={bs.bannerMidText}>
+          <Text style={[bs.bannerType, { color: c.textPrimary }]}>
             {incident.incident_type.charAt(0) + incident.incident_type.slice(1).toLowerCase()}
             {incident.zones ? ` · ${incident.zones.name}` : ''}
           </Text>
-          <Text style={bs.bannerTime}>{elapsedStr}</Text>
+          <Text style={[bs.bannerTime, { color: c.textMuted }]}>{elapsedStr}</Text>
         </View>
       </View>
       <View style={bs.bannerActions}>
         <TouchableOpacity
-          style={[bs.safeBtn, markingSafe && bs.safeBtnDisabled]}
+          style={[
+            bs.safeBtn,
+            { backgroundColor: c.status.successBg, borderColor: c.status.success },
+            markingSafe && bs.btnDisabled,
+          ]}
           onPress={onMarkSafe}
           disabled={markingSafe || resolving}
           activeOpacity={0.8}
+          hitSlop={touch.hitSlop}
         >
-          {markingSafe
-            ? <ActivityIndicator color="#15803D" size="small" />
-            : <Text style={bs.safeBtnText}>✓  I AM SAFE</Text>
-          }
+          {markingSafe ? (
+            <ActivityIndicator color={c.status.success} size="small" />
+          ) : (
+            <Text style={[bs.safeBtnText, { color: c.status.success }]}>✓  I AM SAFE</Text>
+          )}
         </TouchableOpacity>
         <TouchableOpacity
-          style={[bs.resolveBtn, resolving && bs.safeBtnDisabled]}
+          style={[
+            bs.resolveBtn,
+            { backgroundColor: c.surface, borderColor: c.borderStrong },
+            resolving && bs.btnDisabled,
+          ]}
           onPress={onResolve}
           disabled={markingSafe || resolving}
           activeOpacity={0.8}
+          hitSlop={touch.hitSlop}
         >
-          {resolving
-            ? <ActivityIndicator color="#64748B" size="small" />
-            : <Text style={bs.resolveBtnText}>Resolve</Text>
-          }
+          {resolving ? (
+            <ActivityIndicator color={c.textSecondary} size="small" />
+          ) : (
+            <Text style={[bs.resolveBtnText, { color: c.textSecondary }]}>Resolve</Text>
+          )}
         </TouchableOpacity>
       </View>
     </View>
   );
 }
 
-function TaskRow({ task, onPress }: { task: TaskItem; onPress: () => void }) {
-  const color = STATUS_COLOR[task.status] ?? '#64748B';
+interface TaskRowProps {
+  task: TaskItem;
+  onPress: () => void;
+}
+
+function TaskRow({ task, onPress }: TaskRowProps): React.JSX.Element {
+  const c = useColours();
+  const colour = statusColour(c, task.status);
   const isDone = ['COMPLETE', 'LATE_COMPLETE'].includes(task.status);
   const tpl = task.schedule_templates;
 
   return (
-    <TouchableOpacity style={[s.row, isDone && s.rowDone]} onPress={onPress} activeOpacity={0.7}>
-      <View style={[s.statusBar, { backgroundColor: color }]} />
+    <TouchableOpacity
+      style={[s.row, { backgroundColor: c.background }, isDone && s.rowDone]}
+      onPress={onPress}
+      activeOpacity={0.7}
+      hitSlop={touch.hitSlop}
+    >
+      <View style={[s.statusBar, { backgroundColor: colour }]} />
       <View style={s.rowContent}>
-        <Text style={[s.rowTitle, isDone && s.rowTitleDone]} numberOfLines={2}>{tpl.title}</Text>
+        <Text
+          style={[
+            s.rowTitle,
+            { color: c.textPrimary },
+            isDone && { textDecorationLine: 'line-through', color: c.textDisabled },
+          ]}
+          numberOfLines={2}
+        >
+          {tpl.title}
+        </Text>
         <View style={s.rowMeta}>
-          <Text style={s.metaText}>{FREQ_LABEL[tpl.frequency] ?? tpl.frequency}</Text>
-          <Text style={s.metaDot}>·</Text>
-          <Text style={s.metaText}>Due {formatTime(task.due_at)}</Text>
+          <Text style={[s.metaText, { color: c.textMuted }]}>
+            {FREQ_LABEL[tpl.frequency] ?? tpl.frequency}
+          </Text>
+          <Text style={[s.metaDot, { color: c.borderStrong }]}>·</Text>
+          <Text style={[s.metaText, { color: c.textMuted }]}>Due {formatTime(task.due_at)}</Text>
           {tpl.evidence_type !== 'NONE' && (
             <>
-              <Text style={s.metaDot}>·</Text>
-              <Text style={s.metaText}>{tpl.evidence_type.toLowerCase()}</Text>
+              <Text style={[s.metaDot, { color: c.borderStrong }]}>·</Text>
+              <Text style={[s.metaText, { color: c.textMuted }]}>
+                {tpl.evidence_type.toLowerCase()}
+              </Text>
             </>
           )}
         </View>
       </View>
-      <View style={[s.statusPill, { backgroundColor: color + '18' }]}>
-        <Text style={[s.statusPillText, { color }]}>{STATUS_LABEL[task.status]}</Text>
+      <View style={[s.statusPill, { backgroundColor: colour + '18' }]}>
+        <Text style={[s.statusPillText, { color: colour }]}>{STATUS_LABEL[task.status]}</Text>
       </View>
     </TouchableOpacity>
   );
 }
 
 const s = StyleSheet.create({
-  safe:         { flex: 1, backgroundColor: '#F8FAFC' },
-  header:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingHorizontal: 20, paddingTop: 16, paddingBottom: 12, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
-  headerTitle:  { fontSize: 20, fontWeight: '700', color: '#0F172A' },
-  headerSub:    { fontSize: 13, color: '#64748B', marginTop: 2 },
-  headerRight:  { alignItems: 'flex-end', gap: 6 },
-  cacheBadge:   { backgroundColor: '#FEF3C7', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
-  cacheBadgeText:{ fontSize: 11, color: '#92400E', fontWeight: '600' },
-  logoutBtn:    { paddingVertical: 4 },
-  logoutText:   { fontSize: 13, color: '#94A3B8' },
-  staffRow:     { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F1F5F9', gap: 12 },
-  avatar:       { width: 40, height: 40, borderRadius: 20, backgroundColor: '#1E3A5F', alignItems: 'center', justifyContent: 'center' },
-  avatarText:   { color: '#fff', fontSize: 16, fontWeight: '700' },
-  staffName:    { fontSize: 14, fontWeight: '600', color: '#1E293B' },
-  staffRole:    { fontSize: 12, color: '#64748B', marginTop: 1 },
-  taskCount:    { marginLeft: 'auto', alignItems: 'center' },
-  taskCountNum: { fontSize: 22, fontWeight: '700', color: '#1E3A5F' },
-  taskCountLabel:{ fontSize: 11, color: '#94A3B8' },
-  center:       { flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 60 },
-  emptyTitle:   { fontSize: 16, fontWeight: '600', color: '#64748B', marginBottom: 4 },
-  emptySub:     { fontSize: 13, color: '#94A3B8' },
-  list:         { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 40 },
-  sep:          { height: 8 },
-  sectionHeader:{ paddingVertical: 6 },
-  sectionTitle: { fontSize: 12, fontWeight: '700', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 0.8 },
-  row:          { backgroundColor: '#fff', borderRadius: 12, flexDirection: 'row', alignItems: 'center', overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
-  rowDone:      { opacity: 0.7 },
-  statusBar:    { width: 4, alignSelf: 'stretch' },
-  rowContent:   { flex: 1, paddingVertical: 14, paddingLeft: 14, paddingRight: 8 },
-  rowTitle:     { fontSize: 14, fontWeight: '600', color: '#1E293B', marginBottom: 4 },
-  rowTitleDone: { textDecorationLine: 'line-through', color: '#94A3B8' },
-  rowMeta:      { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 },
-  metaText:     { fontSize: 12, color: '#64748B' },
-  metaDot:      { fontSize: 12, color: '#CBD5E1' },
-  statusPill:   { marginRight: 12, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
-  statusPillText:{ fontSize: 11, fontWeight: '700' },
-  fab:           { position: 'absolute', bottom: 28, right: 20, backgroundColor: '#DC2626', borderRadius: 28, paddingHorizontal: 20, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', shadowColor: '#DC2626', shadowOpacity: 0.45, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 8 },
-  fabText:       { color: '#fff', fontSize: 14, fontWeight: '800', letterSpacing: 0.5 },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    paddingHorizontal: spacing.lg + 4,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.md,
+    borderBottomWidth: 1,
+  },
+  headerTitle: { fontSize: fontSize.h5, fontWeight: fontWeight.bold },
+  headerSub: { fontSize: fontSize.small, marginTop: 2 },
+  headerRight: { alignItems: 'flex-end', gap: spacing.xs + 2 },
+  cacheBadge: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.sm + 2,
+  },
+  cacheBadgeText: { fontSize: 11, fontWeight: fontWeight.semibold },
+  logoutBtn: { paddingVertical: spacing.xs },
+  logoutText: { fontSize: fontSize.small },
+  staffRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg + 4,
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    gap: spacing.md,
+  },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.circle,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: { fontSize: fontSize.bodyLarge, fontWeight: fontWeight.bold },
+  staffName: { fontSize: fontSize.body, fontWeight: fontWeight.semibold },
+  staffRole: { fontSize: fontSize.caption, marginTop: 1 },
+  taskCount: { marginLeft: 'auto', alignItems: 'center' },
+  taskCountNum: { fontSize: fontSize.h4, fontWeight: fontWeight.bold },
+  taskCountLabel: { fontSize: 11 },
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingBottom: spacing['3xl'] + spacing.md,
+  },
+  emptyTitle: {
+    fontSize: fontSize.bodyLarge,
+    fontWeight: fontWeight.semibold,
+    marginBottom: spacing.xs,
+  },
+  emptySub: { fontSize: fontSize.small },
+  list: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing['2xl'] + spacing.sm },
+  sep: { height: spacing.sm },
+  sectionHeader: { paddingVertical: spacing.xs + 2 },
+  sectionTitle: {
+    fontSize: fontSize.caption,
+    fontWeight: fontWeight.bold,
+    textTransform: 'uppercase',
+    letterSpacing: letterSpacing.wide,
+  },
+  row: {
+    borderRadius: radius.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    overflow: 'hidden',
+    ...shadow.sm,
+  },
+  rowDone: { opacity: 0.7 },
+  statusBar: { width: 4, alignSelf: 'stretch' },
+  rowContent: {
+    flex: 1,
+    paddingVertical: spacing.md + 2,
+    paddingLeft: spacing.md + 2,
+    paddingRight: spacing.sm,
+  },
+  rowTitle: { fontSize: fontSize.body, fontWeight: fontWeight.semibold, marginBottom: spacing.xs },
+  rowMeta: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.xs },
+  metaText: { fontSize: fontSize.caption },
+  metaDot: { fontSize: fontSize.caption },
+  statusPill: {
+    marginRight: spacing.md,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    borderRadius: radius.sm + 2,
+  },
+  statusPillText: { fontSize: 11, fontWeight: fontWeight.bold },
+  fab: {
+    position: 'absolute',
+    bottom: spacing['2xl'] - spacing.xs,
+    right: spacing.lg + 4,
+    borderRadius: 28,
+    paddingHorizontal: spacing.lg + 4,
+    paddingVertical: spacing.md + 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: touch.minTarget,
+    shadowOpacity: 0.45,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 8,
+  },
+  fabText: {
+    fontSize: fontSize.body,
+    fontWeight: fontWeight.heavy,
+    letterSpacing: letterSpacing.wide,
+  },
 });
 
 const bs = StyleSheet.create({
-  banner:        { backgroundColor: '#FFF1F2', borderLeftWidth: 4, marginHorizontal: 0, paddingHorizontal: 16, paddingVertical: 12, gap: 10 },
-  bannerTop:     { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  sevDot:        { width: 8, height: 8, borderRadius: 4 },
-  bannerAlert:   { fontSize: 11, fontWeight: '800', color: '#9F1239', letterSpacing: 1, flex: 1 },
-  sevPill:       { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
-  sevPillText:   { fontSize: 11, fontWeight: '700' },
-  bannerMid:     { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  bannerIcon:    { fontSize: 26 },
-  bannerType:    { fontSize: 14, fontWeight: '700', color: '#1E293B' },
-  bannerTime:    { fontSize: 12, color: '#64748B', marginTop: 2 },
-  bannerActions: { flexDirection: 'row', gap: 10 },
-  safeBtn:       { flex: 1, height: 40, backgroundColor: '#F0FDF4', borderWidth: 1.5, borderColor: '#86EFAC', borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  safeBtnDisabled:{ opacity: 0.6 },
-  safeBtnText:   { fontSize: 14, fontWeight: '700', color: '#15803D' },
-  resolveBtn:    { height: 40, paddingHorizontal: 16, backgroundColor: '#F8FAFC', borderWidth: 1.5, borderColor: '#CBD5E1', borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  resolveBtnText:{ fontSize: 14, fontWeight: '600', color: '#475569' },
+  banner: {
+    borderLeftWidth: 4,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    gap: spacing.sm + 2,
+  },
+  bannerTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  sevDot: { width: 8, height: 8, borderRadius: 4 },
+  bannerAlert: {
+    fontSize: 11,
+    fontWeight: fontWeight.heavy,
+    letterSpacing: letterSpacing.wider,
+    flex: 1,
+  },
+  sevPill: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.sm + 2,
+  },
+  sevPillText: { fontSize: 11, fontWeight: fontWeight.bold },
+  bannerMid: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm + 2,
+  },
+  bannerIcon: { fontSize: fontSize.h3 },
+  bannerMidText: { flex: 1 },
+  bannerType: { fontSize: fontSize.body, fontWeight: fontWeight.bold },
+  bannerTime: { fontSize: fontSize.caption, marginTop: 2 },
+  bannerActions: { flexDirection: 'row', gap: spacing.sm + 2 },
+  safeBtn: {
+    flex: 1,
+    height: touch.minTarget - 8,
+    borderWidth: borderWidth.medium - 0.5,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  btnDisabled: { opacity: 0.6 },
+  safeBtnText: { fontSize: fontSize.body, fontWeight: fontWeight.bold },
+  resolveBtn: {
+    height: touch.minTarget - 8,
+    paddingHorizontal: spacing.lg,
+    borderWidth: borderWidth.medium - 0.5,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  resolveBtnText: { fontSize: fontSize.body, fontWeight: fontWeight.semibold },
 });

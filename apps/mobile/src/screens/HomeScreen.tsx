@@ -1,13 +1,20 @@
 import React from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  SafeAreaView,
-} from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import type { StaffProfile } from '../services/auth';
+import {
+  Screen,
+  useColours,
+  useBrand,
+  useRoleLabel,
+  spacing,
+  fontSize,
+  fontWeight,
+  radius,
+  borderWidth,
+  shadow,
+  touch,
+} from '../theme';
 
 const ROLE_LABELS: Record<string, string> = {
   SH: 'Security Head',
@@ -25,114 +32,154 @@ interface Props {
   onLogout: () => void;
 }
 
-export function HomeScreen({ staff, onLogout }: Props) {
+export function HomeScreen({ staff, onLogout }: Props): React.JSX.Element {
   const { t } = useTranslation();
-  const roleLabel = ROLE_LABELS[staff.role] ?? staff.role;
+  const c = useColours();
+  const brand = useBrand();
+  // useRoleLabel respects per-corporate role_overrides (BR-84); falls through
+  // to JWT role code otherwise. We then map the code/override to the long form.
+  const resolvedCode = useRoleLabel(
+    staff.role as 'SH' | 'DSH' | 'SHIFT_COMMANDER' | 'GM' | 'AUDITOR' | 'FM' | 'FLOOR_SUPERVISOR' | 'GROUND_STAFF',
+  );
+  const roleLabel = ROLE_LABELS[resolvedCode] ?? resolvedCode;
 
   return (
-    <SafeAreaView style={s.safe}>
+    <Screen background={c.surface}>
       <View style={s.container}>
         <View style={s.header}>
-          <View style={s.badge}>
-            <Text style={s.badgeText}>SC</Text>
+          <View style={[s.badge, { backgroundColor: brand.primary_colour }]}>
+            <Text style={[s.badgeText, { color: c.textOnPrimary }]}>SC</Text>
           </View>
-          <Text style={s.title}>SafeCommand</Text>
+          <Text style={[s.title, { color: c.textPrimary }]}>{brand.brand_name}</Text>
         </View>
 
-        <View style={s.card}>
+        <View style={[s.card, { backgroundColor: c.background }]}>
           <View style={s.avatarRow}>
-            <View style={s.avatar}>
-              <Text style={s.avatarText}>{staff.name.charAt(0).toUpperCase()}</Text>
+            <View style={[s.avatar, { backgroundColor: brand.primary_colour }]}>
+              <Text style={[s.avatarText, { color: c.textOnPrimary }]}>
+                {staff.name.charAt(0).toUpperCase()}
+              </Text>
             </View>
             <View>
-              <Text style={s.name}>{staff.name}</Text>
-              <View style={s.rolePill}>
-                <Text style={s.roleText}>{roleLabel}</Text>
+              <Text style={[s.name, { color: c.textPrimary }]}>{staff.name}</Text>
+              <View style={[s.rolePill, { backgroundColor: c.status.pendingBg }]}>
+                <Text style={[s.roleText, { color: c.status.pending }]}>{roleLabel}</Text>
               </View>
             </View>
           </View>
-          <View style={s.divider} />
+          <View style={[s.divider, { backgroundColor: c.divider }]} />
           <View style={s.statusRow}>
-            <View style={s.statusDot} />
-            <Text style={s.statusText}>Logged in — Sprint 1 Gate 2 ✓</Text>
+            <View style={[s.statusDot, { backgroundColor: c.status.success }]} />
+            <Text style={[s.statusText, { color: c.textMuted }]}>
+              Logged in — Sprint 1 Gate 2 ✓
+            </Text>
           </View>
         </View>
 
-        <Text style={s.note}>
-          Full dashboard coming in Sprint 2. Scheduling engine, tasks, and incident declaration will appear here.
+        <Text style={[s.note, { color: c.textDisabled }]}>
+          Full dashboard coming in Sprint 2. Scheduling engine, tasks, and incident declaration
+          will appear here.
         </Text>
 
-        <TouchableOpacity style={s.logoutBtn} onPress={onLogout}>
-          <Text style={s.logoutText}>{t('common.logout')}</Text>
+        <TouchableOpacity
+          style={[s.logoutBtn, { borderColor: c.borderStrong }]}
+          onPress={onLogout}
+          hitSlop={touch.hitSlop}
+        >
+          <Text style={[s.logoutText, { color: c.textMuted }]}>{t('common.logout')}</Text>
         </TouchableOpacity>
       </View>
-    </SafeAreaView>
+    </Screen>
   );
 }
 
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F8FAFC' },
-  container: { flex: 1, paddingHorizontal: 24, paddingTop: 24 },
-  header: { flexDirection: 'row', alignItems: 'center', marginBottom: 32 },
+  container: { flex: 1, paddingHorizontal: spacing.xl, paddingTop: spacing.xl },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing['2xl'],
+  },
   badge: {
     width: 40,
     height: 40,
-    borderRadius: 10,
-    backgroundColor: '#1E3A5F',
+    borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    marginRight: spacing.md,
   },
-  badgeText: { color: '#fff', fontSize: 15, fontWeight: '700' },
-  title: { fontSize: 20, fontWeight: '700', color: '#1E293B' },
+  badgeText: {
+    fontSize: fontSize.body + 1,
+    fontWeight: fontWeight.bold,
+  },
+  title: {
+    fontSize: fontSize.h5,
+    fontWeight: fontWeight.bold,
+  },
   card: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
-    marginBottom: 20,
+    borderRadius: radius.xl,
+    padding: spacing.xl - spacing.xs,
+    marginBottom: spacing.xl - spacing.xs,
+    ...shadow.sm,
   },
-  avatarRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
+  avatarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.lg,
+  },
   avatar: {
     width: 52,
     height: 52,
-    borderRadius: 26,
-    backgroundColor: '#1E3A5F',
+    borderRadius: radius.circle,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 14,
+    marginRight: spacing.md + 2,
   },
-  avatarText: { color: '#fff', fontSize: 20, fontWeight: '700' },
-  name: { fontSize: 17, fontWeight: '700', color: '#1E293B', marginBottom: 6 },
+  avatarText: {
+    fontSize: fontSize.h5,
+    fontWeight: fontWeight.bold,
+  },
+  name: {
+    fontSize: fontSize.h6 - 1,
+    fontWeight: fontWeight.bold,
+    marginBottom: spacing.xs + 2,
+  },
   rolePill: {
-    backgroundColor: '#EFF6FF',
-    borderRadius: 6,
-    paddingHorizontal: 8,
+    borderRadius: radius.sm + 2,
+    paddingHorizontal: spacing.sm,
     paddingVertical: 2,
     alignSelf: 'flex-start',
   },
-  roleText: { fontSize: 12, fontWeight: '600', color: '#2563EB' },
-  divider: { height: 1, backgroundColor: '#F1F5F9', marginBottom: 14 },
+  roleText: {
+    fontSize: fontSize.caption,
+    fontWeight: fontWeight.semibold,
+  },
+  divider: {
+    height: 1,
+    marginBottom: spacing.md + 2,
+  },
   statusRow: { flexDirection: 'row', alignItems: 'center' },
-  statusDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#22C55E', marginRight: 8 },
-  statusText: { fontSize: 13, color: '#64748B' },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: spacing.sm,
+  },
+  statusText: { fontSize: fontSize.small },
   note: {
-    fontSize: 13,
-    color: '#94A3B8',
+    fontSize: fontSize.small,
     lineHeight: 20,
-    marginBottom: 32,
+    marginBottom: spacing['2xl'],
   },
   logoutBtn: {
-    height: 48,
-    borderWidth: 1.5,
-    borderColor: '#CBD5E1',
-    borderRadius: 10,
+    height: touch.minTarget,
+    borderWidth: borderWidth.medium - 0.5,
+    borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  logoutText: { fontSize: 15, color: '#64748B', fontWeight: '500' },
+  logoutText: {
+    fontSize: fontSize.body + 1,
+    fontWeight: fontWeight.medium,
+  },
 });
