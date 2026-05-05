@@ -151,10 +151,41 @@ export async function createStaffAction(formData: FormData) {
 export async function deactivateStaffAction(formData: FormData) {
   const venue_id = formData.get('venue_id') as string;
   const id = formData.get('id') as string;
+  // Tenant guard — never write to a row outside the venue we're scoped to.
+  // Service-role bypasses RLS, so this filter is the safety net.
   await getAdminClient()
     .from('staff')
     .update({ is_active: false, updated_at: new Date().toISOString() })
-    .eq('id', id);
+    .eq('id', id)
+    .eq('venue_id', venue_id);
+  revalidatePath(`/venues/${venue_id}`);
+}
+
+/**
+ * reactivateStaffAction — re-enables a previously disabled staff member.
+ *
+ * Today's behaviour: simple is_active flip back to true. This is the
+ * "minimum unblock" path so the founder can re-enable test staff during
+ * May testing.
+ *
+ * Phase B (June) — migration 011_staff_lifecycle.sql replaces the binary
+ * is_active toggle with a 4-state lifecycle (ACTIVE / SUSPENDED /
+ * ON_LEAVE / TERMINATED) with required reason + audit columns. At that
+ * point this action splits into reactivate / restore-from-leave /
+ * lift-suspension, each with their own audit semantics. TERMINATED
+ * staff become non-reactivatable (compliance requirement — wrongful-
+ * termination cover-up prevention).
+ *
+ * Per docs/api/conventions.md §19 (staff lifecycle pattern).
+ */
+export async function reactivateStaffAction(formData: FormData) {
+  const venue_id = formData.get('venue_id') as string;
+  const id = formData.get('id') as string;
+  await getAdminClient()
+    .from('staff')
+    .update({ is_active: true, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('venue_id', venue_id);
   revalidatePath(`/venues/${venue_id}`);
 }
 

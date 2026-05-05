@@ -13,6 +13,7 @@ import {
   updateTemplateAction,
   createStaffAction,
   deactivateStaffAction,
+  reactivateStaffAction,
   updateStaffAction,
 } from '@/actions/venues';
 import type { Venue, Floor, Zone, ScheduleTemplate, StaffRole, FrequencyType, EvidenceType } from '@safecommand/types';
@@ -711,11 +712,29 @@ function StaffTab({
           </div>
           <div className="px-6 py-3 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
             <Link href={`/venues/${venue.id}?tab=staff&edit_staff=${selected.id}`} className={editLinkCls}>Edit staff</Link>
-            {selected.is_active && (
+            {/*
+             * Polymorphic action button — same slot, different intent.
+             * Active staff: red "Deactivate" (destructive). Inactive
+             * staff: green "Enable" (constructive). Mirrors the
+             * row-level RowActions; provides single-click reactivation
+             * from the detail panel without going back to the list.
+             */}
+            {selected.is_active ? (
               <form action={deactivateStaffAction} className="inline">
                 <input type="hidden" name="venue_id" value={venue.id} />
                 <input type="hidden" name="id" value={selected.id} />
                 <button type="submit" className={removeBtnCls}>Deactivate</button>
+              </form>
+            ) : (
+              <form action={reactivateStaffAction} className="inline">
+                <input type="hidden" name="venue_id" value={venue.id} />
+                <input type="hidden" name="id" value={selected.id} />
+                <button
+                  type="submit"
+                  className="px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded hover:bg-green-700"
+                >
+                  Enable
+                </button>
               </form>
             )}
           </div>
@@ -816,17 +835,26 @@ function StaffTab({
                     </span>
                   </td>
                   <td className="px-4 py-3">
+                    {/*
+                     * Polymorphic action slot:
+                     *   active   → "Deactivate" (red, danger tone)
+                     *   inactive → "Enable"     (green, success tone)
+                     * The schema is a binary toggle today; lifecycle
+                     * states (ACTIVE/SUSPENDED/ON_LEAVE/TERMINATED) land
+                     * in Phase B per migration 011_staff_lifecycle.sql.
+                     */}
                     <RowActions
                       viewHref={`/venues/${venue.id}?tab=staff&view_staff=${s.id}`}
                       editHref={`/venues/${venue.id}?tab=staff&edit_staff=${s.id}`}
-                      removeLabel={s.is_active ? 'Deactivate' : undefined}
-                      removeForm={s.is_active ? (
+                      removeLabel={s.is_active ? 'Deactivate' : 'Enable'}
+                      removeForm={
                         <>
                           <input type="hidden" name="venue_id" value={venue.id} />
                           <input type="hidden" name="id" value={s.id} />
                         </>
-                      ) : null}
-                      removeAction={s.is_active ? deactivateStaffAction : undefined}
+                      }
+                      removeAction={s.is_active ? deactivateStaffAction : reactivateStaffAction}
+                      removeTone={s.is_active ? 'danger' : 'success'}
                     />
                   </td>
                 </tr>
@@ -858,13 +886,21 @@ function Field({
 
 function RowActions({
   viewHref, editHref, removeForm, removeAction, removeLabel = 'Remove',
+  // Tone signals semantic meaning: 'danger' (default — destructive deactivate)
+  // vs 'success' (constructive re-enable). Different colour palettes; same
+  // structural slot. Used for staff lifecycle: deactivate=red, enable=green.
+  removeTone = 'danger',
 }: {
   viewHref: string;
   editHref: string;
   removeForm?: React.ReactNode;
   removeAction?: (formData: FormData) => Promise<void>;
   removeLabel?: string;
+  removeTone?: 'danger' | 'success';
 }) {
+  const removeBtnCls = removeTone === 'success'
+    ? 'text-xs text-green-600 hover:text-green-800 font-medium'
+    : 'text-xs text-red-500 hover:text-red-700 font-medium';
   return (
     <div className="flex items-center justify-end gap-2.5">
       <Link href={viewHref} className="text-xs text-blue-600 hover:text-blue-800 font-medium">View</Link>
@@ -875,7 +911,7 @@ function RowActions({
           <span className="text-gray-300 text-xs select-none">·</span>
           <form action={removeAction} className="inline">
             {removeForm}
-            <button type="submit" className="text-xs text-red-500 hover:text-red-700 font-medium">{removeLabel}</button>
+            <button type="submit" className={removeBtnCls}>{removeLabel}</button>
           </form>
         </>
       )}
