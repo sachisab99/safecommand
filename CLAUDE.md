@@ -1,13 +1,24 @@
-# SafeCommand — Claude Code Context
+# SafeCommand — Claude Code Context (v7)
+
+> **Spec authority (2026-05-10):** `nexus/specs/2026-05-10_prime_business-plan-report-gen.md` (Business Plan v2 — 91 BRs, 37 NFRs, 22 sections) and `nexus/specs/2026-05-10_SafeCommand_Architecture_v7_Complete.md` (Architecture v7 — 22 ECs, 22 Hard Rules, 6089 lines). These supersede all prior versions. When this file diverges from the spec, the spec wins.
+>
+> **Working branch:** `safecommand_v7` (Phase A scaffold work). `main` is paused-pilot-ready. ADR 0002 captures branching rationale. Merge-back target: before June 2 unfreeze.
+>
+> **Build state:** Architecture v7 §16 explicitly preserves Sprint 1 work (BR-01 → BR-09). Workers paused (`WORKERS_PAUSED=true`); master-tick = 4 hr (hibernation). Resume from BR-10 in June after migrations 009 + 010 land.
+
+---
 
 ## 🔴 Critical operational controls — read before any infra/cost work
 
 | Control | Where | What it does |
 |---------|-------|--------------|
-| **`WORKERS_PAUSED` env var** | Railway Console → service → Variables tab (per worker) | When `=true`, scheduler/escalation/notifier idle without crash. **First thing to check if "system seems broken"** — pushed/scheduled/escalated jobs all stop until resumed. See `reference_workers_paused_kill_switch.md` memory file or `AWS-process-doc-IMP.md` §11.4.0. |
-| **Scheduler master-tick interval** | `apps/scheduler/src/index.ts` `TICK_MS` constant | Currently 4 hours (hibernation, May 2026 budget freeze). Production target = 60_000 ms. Change before any pilot/demo. |
-| **JUNE-2026 review required** | `JUNE-2026-REVIEW-REQUIRED.md` at product root | Mandatory checklist on first June 2026 work session. Verifies May spend, decides whether to keep workers paused/hibernated. |
-| **Deferred work in May 2026** | `UX-DESIGN-DECISIONS.md` Phases 1-5 | Mobile responsive dashboard redesign — fully analyzed, awaiting June 2026 budget unfreeze. |
+| **`WORKERS_PAUSED` env var** | Railway Console → service → Variables tab (per worker) | When `=true`, scheduler/escalation/notifier idle without crash. **First thing to check if "system seems broken"** — pushed/scheduled/escalated jobs all stop until resumed. **June 2026 onward: repurposed as emergency kill switch only** (per Q5 decision); always-on workers are the default. See `reference_workers_paused_kill_switch.md` memory or `AWS-process-doc-IMP.md` §11.4.0. |
+| **Scheduler master-tick interval** | `apps/scheduler/src/index.ts` `TICK_MS` constant | Currently 4 hours (hibernation, May 2026 budget freeze). **Production target = 60_000 ms.** Change to 60s before any pilot/demo/June unfreeze. |
+| **JUNE-2026 review required** | `JUNE-2026-REVIEW-REQUIRED.md` at product root | Mandatory checklist on first June 2026 work session. Verifies May spend, decides workers always-on, applies AWS Activate credits, fixes Railway worker Start Commands (per `2026-04-30-19:30_fix.md` G11). |
+| **Migration numbering offset** | ADR 0001 (`docs/adr/0001-migration-renumbering.md`) | Repo migrations 007/008 already deployed (schedule_time + comm_deliveries_nullable). Spec migration 007 (MBV) → repo `009_mbv.sql`. Spec migration 008 (brand+roaming+drill) → repo `010_brand_roaming_drill.sql`. **Hard Rule 3 forbids modifying deployed migrations.** Citations going forward: "Spec Migration N (repo: `0NN_*.sql`)". |
+| **Supabase opaque-token keys** | ADR 0003 (`docs/adr/0003-supabase-publishable-secret-keys.md`) | 2026-05-05 migrated from legacy `anon`/`service_role` JWTs to `sb_publishable_*`/`sb_secret_*` opaque tokens. Env var names unchanged (`SUPABASE_SERVICE_ROLE_KEY` holds `sb_secret_*`; `SUPABASE_ANON_KEY` holds `sb_publishable_*`). **Do NOT click "Reset JWT secret"** (would mass-logout all users). Phase B June: shard to per-service keys. |
+| **GitHub history rewrite (2026-05-05)** | Backup tag `backup/pre-history-rewrite-2026-05-04` on origin | Pre-rewrite SHA `772fd85` preserved for ≥30-day recovery window (suggested deletion 2026-06-04). Post-rewrite `main` HEAD = `96594ad`. 4 secrets scrubbed: Firebase RSA key, Supabase service_role/anon JWTs, Upstash TLS password. |
+| **Deferred work in May 2026** | `UX-DESIGN-DECISIONS.md` Phases 1-5 | Mobile responsive dashboard redesign — fully analyzed. Phase 1 of responsive redesign **bundled with ThemeProvider scaffold** as Phase A work on `safecommand_v7` (per Q3 decision). |
 
 **Companion docs at this folder root:**
 - `AWS-process-doc-IMP.md` — full infra reference + decision log
@@ -15,121 +26,247 @@
 - `DAILY-OPS.md` — daily start/end-of-day routine
 - `upstash_redis.md` — Redis cost analysis + tick-rate tiers
 - `JUNE-2026-REVIEW-REQUIRED.md` — time-sensitive review marker (delete after 2026-06-02 review)
+- `docs/adr/` — Architecture Decision Records (0001 migrations, 0002 branch, 0003 Supabase keys)
 
 ---
 
 ## What this is
 
-SafeCommand is a managed venue safety infrastructure platform that replaces paper checklists, WhatsApp groups, verbal procedures, and paper visitor registers at Indian hospitals, malls, and hotels with a configured, audited, and compliant system — operated daily so that when an emergency occurs, the team responds in seconds.
+SafeCommand is **declared safety infrastructure** for Indian venues — hospitals, malls, hotels, corporate campuses. It replaces paper checklists, WhatsApp groups, verbal procedures, and paper visitor registers with a configured, audited, and DPDP-compliant system, operated daily so that when an emergency occurs, the team responds in seconds. Three commercial layers:
+
+- **Venue Subscriptions** — Essential / Professional / Enterprise / Chain tiers (₹10K–90K/venue/month)
+- **Corporate Governance Licences** — Corp Starter / Professional / Enterprise / Global (₹50K–15L+/month)
+- **Enterprise Brand Enablement** — "Apollo SafeCommand" white-label add-on (₹15K–5L/month + one-time config fee)
+
+Apollo India example: 65 venues × Professional + Corp Enterprise + Brand Layer = ₹3.34 Cr ARR. Month-12 ARR target: ₹1.08 Cr. Month-48 target: ₹51 Cr.
+
+**Hero demo (always lead with this):** Zone Accountability Map — *"Who owns Zone B right now?"* answered in under one second. For multi-building campuses: building-scoped incident demo (Apollo MAIN/EMRG/DIAG). For corporate prospects: governance drill-down (Global → Country → State → City → Venue → Building → Zone in 3 clicks). For brand prospects: live "Apollo SafeCommand" mockup via Path C `apollo-demo` brand config.
+
+---
+
+## v7 architectural layers introduced (vs v5/v6)
+
+1. **Multi-Building Venue (MBV)** — `building_id` nullable on every relevant table; `building_visible()` RLS function; SEV1 always venue-wide (Rule 17); single-building venues unaffected (NFR-25). New BRs 57–64 in Phase 1. ★ Phase 1 schema in repo migration `009_mbv.sql`.
+2. **Roaming Authority Model** — JWT carries `venue_roles` array + `is_roaming` flag + `active_venue_id` (RLS session var); max 10 venues per roaming role; SC/FS/GS NEVER roaming. ★ Phase 2 UI; schema in repo migration `010_brand_roaming_drill.sql` Phase 1.
+3. **Enterprise Brand Enablement** — `corporate_brand_configs` table; ThemeProvider mandatory from first commit (EC-17 / Rule 19); 'Powered by SafeCommand' is hard-coded non-removable credit (EC-18 / Rule 20); WCAG 2.1 AA contrast guard on safety-critical screens (NFR-35). ★ Schema Phase 1; UI Phase 2.
+4. **Corporate Governance Platform** — 7-level hierarchy (Global → Country → State → City → Venue → Building → Zone); CORP-CXO/DIR/MGR/COO roles; SEV1 → CXO in ≤30s; CORP roles never access PII (EC-20); raw PII never crosses country boundaries (EC-21). ★ Phase 3.
+
+---
+
+## Migration mapping (per ADR 0001)
+
+| Spec migration (Architecture v7) | Repo filename | State | Content |
+|---|---|---|---|
+| 001 | `001_enums.sql` | Deployed | Enums: staff_role, subscription_tier, task_status, incident_severity (SEV1/SEV2/SEV3), evidence_type, frequency_type, etc. |
+| 002 | `002_tables.sql` | Deployed | All Phase 1 tables; venue/floor/zone/staff/shifts/templates/instances/incidents/comms/audit |
+| 003 | `003_rls.sql` | Deployed | RLS policies + `set_tenant_context(venue, staff, role)` (3-param) |
+| 004 | `004_indexes.sql` | Deployed | Performance indexes |
+| 005 | `005_seed_templates.sql` | Deployed | Hospital/Mall/Hotel/Corporate venue-type schedule template seeds |
+| 006 | `006_realtime.sql` | Deployed | Realtime publication on zones / incidents / zone_status_log / incident_timeline |
+| **— (repo only)** | `007_schedule_time.sql` | Deployed 2026-04-30 | `schedule_templates`: `start_time`, `timezone`, `secondary_escalation_chain` |
+| **— (repo only)** | `008_comm_deliveries_nullable.sql` | Deployed 2026-04-30 | `comm_deliveries` nullable relaxation |
+| **Spec 007 (MBV)** | `009_mbv.sql` | **Pending Phase B (June 2026)** | `buildings` table, `building_visible()`, 4-param `set_tenant_context(venue, staff, role, building)`, `ADD COLUMN building_id` everywhere, `zones_building_sync` + `visit_inherit_building` triggers |
+| **Spec 008 (Brand+Roaming+Drill)** | `010_brand_roaming_drill.sql` | **Pending Phase B (June 2026)** | `corporate_brand_configs` (with CHECK `powered_by_text = 'Platform by SafeCommand'`), `roaming_staff_assignments`, `drill_sessions`, `drill_session_participants` |
 
 ---
 
 ## Business requirements
 
-### Functional Requirements (BR-01 to BR-55 — Phase 1 scope)
+### Functional Requirements — 91 BRs total
+
+Phase tagging: **P1** = Phase 1 (Weeks 1–16, May→Oct 2026); **P2** = Phase 2 (Month 5–10, Roaming + Brand UI + GCP); **P3** = Phase 3 (Month 11–18, Corporate Governance).
+
+#### Foundation + Core (BR-01 to BR-12) — all P1
+
+| ID | Requirement | Priority | State |
+|----|-------------|----------|-------|
+| BR-01 | Multi-tenant — zero cross-venue data leakage at every layer | Critical | ✅ Sprint 1 |
+| BR-02 | Venue Identity — SC-[TYPE]-[CITY]-[SEQ] auto-generated on onboarding | High | ✅ Sprint 1 |
+| BR-03 | Operations Console — internal SC team tool, never accessible to venues (EC-14) | High | ✅ Sprint 1 |
+| BR-04 | 8-Role permission model: SH, DSH, SC, GM, AUD, FM, FS, GS | Critical | ✅ Sprint 1 |
+| BR-05 | Three-tier permission model: SC Platform / Venue Infrastructure / Venue Ops / Task Execution | Critical | ✅ Sprint 1 |
+| BR-06 | Scheduled Activity Engine — time-triggered tasks (hourly to annual) per venue | Critical | ✅ Sprint 2 (partial — master-tick + computeCurrentSlot live) |
+| BR-07 | Task completion tracking with evidence: photo, text, numeric, checklist | Critical | ✅ Sprint 2 (partial — TEXT verified end-to-end; photo→S3 pending) |
+| BR-08 | Escalation engine — auto-escalate missed tasks up command chain with timestamps | Critical | ⏳ Phase B |
+| BR-09 | Dual-channel delivery — FCM push (primary) + WhatsApp Business API (parallel primary) | Critical | ✅ Sprint 2 (FCM live; WA pending Meta WABA approval) |
+| BR-10 | SMS fallback — auto-trigger if WhatsApp undelivered within 90 seconds | Critical | ⏳ Phase B (blocked on Airtel DLT) |
+| BR-11 | One-tap Incident Declaration — type, zone, confirm → escalation fires ≤5s | Critical | ✅ Mobile UI live (commit `8bc2c02`); ≤5s gate pending Phase B |
+| BR-12 | Shift Handover protocol — outgoing logs, incoming confirms, authority transfers | High | ⏳ Phase B |
+
+#### Command + Compliance (BR-13 to BR-29) — all P1
+
+| ID | Requirement | Priority | Phase |
+|----|-------------|----------|-------|
+| BR-13 | Deputy SH Activation — manual / auto-emergency (5 min SH unresponsive) / pre-scheduled | High | P1 |
+| BR-14 | GM Dashboard — real-time health score, BI analytics, incident intelligence, benchmarks (per-building cards) | High | P1 |
+| BR-15 | GM Broadcast — venue-wide / floor / zone / role / individual / shift / command chain scopes | High | P1 |
+| BR-16 | GM Custom Task — assignee, deadline, evidence type, escalation chain (one-off only, no recurrence) | High | P1 |
+| BR-17 | Auditor role — full read, compliance report generation, audit flagging, zero writes | High | P1 |
+| BR-18 | Zone Status Board — real-time colour-coded: All Clear / Attention / Incident Active | Critical | P1 |
+| BR-19 | **Zone Accountability Map — live map, named owner per zone per shift (THE hero demo)** | High | P1 |
+| BR-20 | Compliance exports — PDF/Excel: Fire NOC / NABH / Insurance | High | P1 |
+| BR-21 | Equipment & Maintenance Tracker — expiry alerts at 90/30/7 days | High | P1 |
+| BR-22 | Staff Certification Tracker — role restriction alert on expiry | High | P1 |
+| BR-23 | Special Events / Festival Mode — one-tap elevated safety posture | Medium | P1 |
+| BR-24 | Visitor Safety Alert — QR opt-in, emergency push, all-clear (no app required) | Medium | P1 |
+| BR-25 | Venue-type activity templates — Hospital / Mall / Hotel / Corporate | High | ✅ P1 (seeded migration 005) |
+| BR-26 | Change Request workflow — CR inbox, SLA tracking, approval, audit log | Medium | P1 |
+| BR-27 | Shift Briefing System — time-scheduled, role-scoped, acknowledgement tracked | High | P1 |
+| BR-28 | Communication audit trail — sender, recipient, delivery, ack, escalation per message | Critical | ✅ Sprint 1 (audit middleware live) |
+| BR-29 | Post-incident report auto-generation — timeline, responders, resolution, PDF export | High | P1 |
+
+#### Extended + Workflow (BR-30 to BR-38)
+
+| ID | Requirement | Priority | Phase |
+|----|-------------|----------|-------|
+| BR-30 | Governing Body Integration — venue pre-registration, one-tap alert with floor plan | Medium | **P3** |
+| BR-31 | Analytics pipeline — safety health score, incident trends, response time, benchmarks | High | P1 |
+| BR-32 | Cross-venue analytics — cohort benchmarking, India Safety Index (SC Ops Console only) | Medium | P2 |
+| BR-33 | Staff gamification — streak records, performance scorecards, Monthly Safety Star | Medium | P1 |
+| BR-34 | Controlled Area logging — two-person confirmation for restricted zones | Medium | P1 |
+| BR-35 | Offline mode — last 4 hours cached; completions queue locally, sync on reconnect | Critical | P1 |
+| BR-36 | Multi-language UI — English (P1); Hindi/Telugu/Kannada (P2) | High | P1/P2 |
+| BR-37 | Subscription tier enforcement — Essential / Professional / Enterprise / Chain gating | High | P1 |
+| BR-38 | Change Request fee management — count per tier, fee calculation, billing | Medium | P1 |
+
+#### Visitor Management System (BR-39 to BR-56)
+
+| ID | Requirement | Priority | Phase |
+|----|-------------|----------|-------|
+| BR-39 | VMS Entry Points — configurable check-in points per floor (name, location, hours, guard) | High | P1 |
+| BR-40 | VMS Mode 1 — Manual Entry: name, phone, purpose, host (optional photo) — ≤30s | Critical | P1 |
+| BR-41 | VMS Mode 2 — ID Card Photo with on-device OCR (Google ML Kit); store last 4 digits only | High | P1 |
+| BR-42 | VMS Mode 3 — Aadhaar QR offline (UIDAI XML parsed on-device; **never store full Aadhaar — Rule 13**) | High | P1 |
+| BR-43 | VMS Mode 4 — Pre-Registration QR (host pre-registers, visitor receives QR, single-use token) | High | P1 |
+| BR-44 | VMS Mode 5 — Self-Service Kiosk (visitor scans venue QR, fills form on own phone, guard approves) | Medium | P1 |
+| BR-45 | VMS Visitor Photo (optional) — encrypted at rest, role-gated access | High | P1 |
+| BR-46 | VMS Check-Out Tracking — time-on-premises, overstay alerts | High | P1 |
+| BR-47 | VMS Host Notification — push + WhatsApp on visitor arrival | High | P1 |
+| BR-48 | VMS Entry Point Customisation — custom fields, photo/ID toggles | High | P1 |
+| BR-49 | VMS Visitor Blacklist — venue-level + corporate-scope opt-in | High | P1 |
+| BR-50 | VMS Digital Gate Pass — QR generated on check-in, scanned at exit | Medium | P1 |
+| BR-51 | VMS Emergency Integration — visitors on evacuation board, opt-in safety alerts | Critical | P1 |
+| BR-52 | VMS Reporting — daily log, peak hour analytics, dwell time, repeat visitors | High | P1 |
+| BR-53 | VMS Overstay Alerts — configurable per entry point; 15-min escalation | High | P1 |
+| BR-54 | VMS Repeat Visitor Recognition — phone-based; pre-fills name/company | Medium | P1 |
+| BR-55 | VMS Data Retention — 90d minimum, configurable per tier (3 yr Enterprise); auto-purge with audit | High | P1 |
+| BR-56 | VMS Contractor / Vendor Mode — special visitor type with permit number, work zone, materials | Medium | **P2** |
+
+#### Multi-Building Venue (BR-57 to BR-64) — all P1
 
 | ID | Requirement | Priority |
 |----|-------------|----------|
-| BR-01 | Multi-tenant — zero cross-venue data leakage at every layer | Critical |
-| BR-02 | Venue Identity — SC-[TYPE]-[CITY]-[SEQ] auto-generated on onboarding | High |
-| BR-03 | Operations Console — internal SC team tool, never accessible to venues | High |
-| BR-04 | 8-Role permission model: SH, DSH, SC, GM, AUD, FM, FS, GS | Critical |
-| BR-05 | Three-tier permission model: SC Platform / Venue Infrastructure / Venue Ops / Task Execution | Critical |
-| BR-06 | Scheduled Activity Engine — time-triggered tasks (hourly to annual) per venue | Critical |
-| BR-07 | Task completion tracking with evidence: photo, text, numeric, checklist | Critical |
-| BR-08 | Escalation engine — auto-escalate missed tasks up command chain with timestamps | Critical |
-| BR-09 | Dual-channel delivery — FCM push (primary) + WhatsApp Business API (parallel primary) | Critical |
-| BR-10 | SMS fallback — auto-trigger if WhatsApp undelivered within 90 seconds | Critical |
-| BR-11 | One-tap Incident Declaration — type, zone, confirm → escalation fires ≤5 seconds | Critical |
-| BR-12 | Shift Handover protocol — outgoing logs, incoming confirms, authority transfers | High |
-| BR-13 | Deputy SH Activation — manual, auto-emergency (5 min SH unresponsive), pre-scheduled | High |
-| BR-14 | GM Dashboard — real-time health score, BI analytics, incident intelligence, benchmarks | High |
-| BR-15 | GM Broadcast — venue-wide, floor, zone, role, individual, shift, command chain scopes | High |
-| BR-16 | GM Custom Task — assignee, deadline, evidence type, escalation chain | High |
-| BR-17 | Auditor role — full read, compliance report generation, audit flagging, zero writes | High |
-| BR-18 | Zone Status Board — real-time colour-coded: All Clear / Attention / Incident Active | Critical |
-| BR-19 | Zone Accountability Map — live map: named owner per zone per shift | High |
-| BR-20 | Compliance exports — PDF/Excel: Fire NOC packages, NABH documentation, drill reports | High |
-| BR-21 | Equipment & Maintenance Tracker — expiry alerts at 90/30/7 days | High |
-| BR-22 | Staff Certification Tracker — role restriction alert on expiry | High |
-| BR-23 | Special Events / Festival Mode — one-tap elevated safety posture | Medium |
-| BR-24 | Visitor Safety Alert — QR opt-in, emergency push, all-clear. No app required | Medium |
-| BR-25 | Venue-type activity templates — Hospital, Mall, Hotel, Corporate | High |
-| BR-26 | Change Request workflow — CR inbox, SLA tracking, approval, audit log | Medium |
-| BR-27 | Shift Briefing System — time-scheduled, role-scoped, acknowledgement tracked | High |
-| BR-28 | Communication audit trail — sender, recipient, delivery, ack, escalation per message | Critical |
-| BR-29 | Post-incident report auto-generation — timeline, responders, resolution, PDF export | High |
-| BR-30 | Governing Body Integration — venue pre-registration, one-tap alert with floor plan | Medium — Phase 3 only |
-| BR-31 | Analytics pipeline — safety health score, incident trends, response time, benchmarks | High |
-| BR-32 | Cross-venue analytics — cohort benchmarking, India Safety Index (SC Ops Console only) | Medium — Phase 2 |
-| BR-33 | Staff gamification — streak records, performance scorecards, Monthly Safety Star | Medium |
-| BR-34 | Controlled Area logging — two-person confirmation for restricted zones | Medium |
-| BR-35 | Offline mode — last 4 hours cached; completions queue locally, sync on reconnect | Critical |
-| BR-36 | Multi-language UI — English (Phase 1), Hindi/Telugu/Kannada (Phase 2) | High |
-| BR-37 | Subscription tier enforcement — Essential / Professional / Enterprise / Chain gating | High |
-| BR-38 | Change Request fee management — count per tier, fee calculation, billing | Medium |
+| BR-57 | MBV Structure — 1–N named buildings per venue; single-building unchanged (NFR-25) | Critical |
+| BR-58 | MBV Building Identity — name, short_code (e.g. "EMRG-BLOCK"), address/GPS, optional floor plan | High |
+| BR-59 | MBV Staff Assignment — primary building per staff; SH/DSH span all buildings | High |
+| BR-60 | MBV Incident Scope — building-scoped or venue-wide; SEV1 always all buildings (Rule 17) | Critical |
+| BR-61 | MBV Shift Structure — building-scoped or venue-wide shifts | High |
+| BR-62 | MBV Zone Status Board — grouped by building → floor → zone; guard sees only assigned building | High |
+| BR-63 | MBV Analytics — health score per building + venue aggregate; per-building compliance reports | High |
+| BR-64 | MBV VMS Entry Points — assigned to a building; visitor log filterable by building | High |
 
-#### Visitor Management System (VMS — BR-39 to BR-55, Phase 1)
+#### Drill + Cert (P1 additions)
 
 | ID | Requirement | Priority |
 |----|-------------|----------|
-| BR-39 | VMS Entry Points — configurable check-in points per floor per venue (name, location, operating hours, assigned guard) | High |
-| BR-40 | VMS Check-In Mode 1: Manual Entry — guard types visitor name, phone, purpose, host name; photo capture optional | Critical |
-| BR-41 | VMS Check-In Mode 2: ID Card Photo Capture — camera captures ID card image (Aadhaar/PAN/DL/Passport); stored as evidence; name auto-extracted via OCR | High |
-| BR-42 | VMS Check-In Mode 3: Aadhaar QR Scan — guard scans Aadhaar QR code using device camera; UIDAI offline XML parsed locally; name/DOB/gender auto-populated; no Aadhaar number stored (masked) | High |
-| BR-43 | VMS Check-In Mode 4: Pre-Registration — host staff pre-registers visitor via app/dashboard; visitor receives QR code; guard scans QR for instant check-in (no typing) | High |
-| BR-44 | VMS Check-In Mode 5: Self-Service QR Kiosk — visitor scans venue QR, fills form on own phone browser (no app), guard approves on mobile — zero hardware required | Medium |
-| BR-45 | VMS Visitor Photo — optional camera capture of visitor face at check-in for gate pass / record | High |
-| BR-46 | VMS Check-Out Tracking — guard records check-out time; system tracks time-on-premises; overstay alerts if visitor exceeds expected duration | High |
-| BR-47 | VMS Host Notification — on visitor check-in: host staff member notified via push + WhatsApp ("Your visitor [Name] has arrived at [Entry Point]") | High |
-| BR-48 | VMS Entry Point Customisation — per entry point: custom fields (vehicle number, laptop serial, visitor company, badge number), required vs optional fields, photo mandatory toggle, ID required toggle | High |
-| BR-49 | VMS Visitor Blacklist — Security Head can flag visitor as blacklisted; alert fires if blacklisted visitor attempts check-in at any entry point in venue | High |
-| BR-50 | VMS Digital Gate Pass — generated on check-in (QR code); shown on visitor phone; guard scans at exit for check-out confirmation | Medium |
-| BR-51 | VMS Emergency Integration — during active incident, visitor log is accessible from incident evacuation board; visitor QR opt-in safety alerts extend to VMS visitors | Critical |
-| BR-52 | VMS Reporting — daily visitor log (per entry point, per floor, per venue), peak hour analytics, average dwell time, repeat visitor tracking, compliance export | High |
-| BR-53 | VMS Overstay Alerts — configurable per entry point; alert fires to guard + SH when visitor exceeds expected_duration; escalates if no action in 15 minutes | High |
-| BR-54 | VMS Repeat Visitor Recognition — mobile number-based recognition; returning visitors shown previous visit history; pre-fills name/company on re-entry | Medium |
-| BR-55 | VMS Data Retention — visitor records retained for minimum 90 days (configurable per tier up to 3 years); auto-purge with audit log per DPDP Act | High |
-| BR-56 | VMS Contractor / Vendor Mode — special visitor type for contractors with permit number, work zone, expected duration, material carried — tracked separately from regular visitors | Medium — Phase 2 only |
+| BR-A | Drill Management Module — schedule/run/time/document; auto-generate timed Fire NOC report; per-building separate records; missed-participant logging | High |
+| BR-B | Cert Expiry Warning on Shift Activation — soft warning (NOT hard block); SC + SH notified; logged to audit_logs | High |
+
+#### Corporate Governance (BR-65 to BR-80) — all P3
+
+| ID | Requirement | Priority |
+|----|-------------|----------|
+| BR-65 | Corporate Account entity — parent above venues; isolated from other corporate accounts | Critical |
+| BR-66 | 7-level hierarchy (Global → Country → State → City → Venue → Building → Zone) | Critical |
+| BR-67 | CORP-CXO role — Global Safety Head; SEV1 push ≤30s globally | Critical |
+| BR-68 | CORP-DIR role — Country Safety Director | High |
+| BR-69 | CORP-MGR role — State/Region Safety Manager | High |
+| BR-70 | CORP-COO role — City Safety Coordinator | High |
+| BR-71 | Corporate Safety Score Chain — building → venue → city → state/country/global; drill-down to zone within 3 clicks | Critical |
+| BR-72 | Corporate Incident Feed — real-time across all venues in scope | High |
+| BR-73 | SEV1 Global Alert — ANY SEV1 → CXO push in ≤30s (NFR-32) | Critical |
+| BR-74 | Corporate Drill Calendar — overdue/upcoming across all venues, per-building | High |
+| BR-75 | Corporate Compliance Report — per-country regulatory format (NABH India / DHA UAE / MOH Singapore) | High |
+| BR-76 | Regulatory Risk Heatmap — Fire NOC / NABH / insurance gaps 90 days ahead | High |
+| BR-77 | Corporate Broadcast — message all GMs in scope via push + WA | High |
+| BR-78 | Cross-Venue Blacklist (opt-in) — city/state/country/global scope | Medium |
+| BR-79 | International Data Residency — per-country GCP regions; raw PII never crosses borders (EC-21) | Critical |
+| BR-80 | Corporate account isolation — Account A never sees Account B (six isolation rules) | Critical |
+
+#### Roaming Authority (BR-R1 to BR-R5) — all P2
+
+| ID | Requirement | Priority |
+|----|-------------|----------|
+| BR-R1 | Roaming JWT structure — `venue_roles` array, `is_roaming`, `active_venue_id` | Critical |
+| BR-R2 | Unified multi-venue dashboard — all assigned venues as tabs (Option B confirmed) | Critical |
+| BR-R3 | Roaming notification routing — SEV1 always; routine tasks only for active_venue_id | Critical |
+| BR-R4 | Venue isolation per active tab — RLS session var enforced (EC-19, Rule 21) | Critical |
+| BR-R5 | Assignment rules — SC-OPS only; max 10 venues; SC/FS/GS never roaming | Critical |
+
+#### Enterprise Brand Enablement (BR-81 to BR-88)
+
+| ID | Requirement | Priority | Phase |
+|----|-------------|----------|-------|
+| BR-81 | `corporate_brand_configs` table with all fields including hard-coded `powered_by_text` | Critical | P1 (schema) |
+| BR-82 | Mobile App ThemeProvider — reads brand_config; default SafeCommand brand; 24-hour AsyncStorage cache | Critical | **P1 (Week 1, EC-17/Rule 19)** |
+| BR-83 | Terminology Resolver — every label via `useLabel()`; <5ms render impact (NFR-34) | Medium | P2 |
+| BR-84 | Role Override Display — `role_overrides` JSONB; JWT codes unchanged (display only) | Medium | P2 |
+| BR-85 | 'Powered by SafeCommand' in Settings > About + all PDF report footers — non-removable (EC-18, Rule 20) | Critical | P1 (About) / P2 (reports) |
+| BR-86 | Notification sender customisation — dedicated WABA per corporate account | High | P2 |
+| BR-87 | Enterprise subdomain — `app.[enterprise_code].safecommand.in` via Cloudflare CNAME | Medium | P3 |
+| BR-88 | Report branding — enterprise logo + header + colours; WCAG 2.1 AA validated by SC Ops | High | P2 |
 
 ---
 
-### Non-Functional Requirements (NFR-01 to NFR-24)
+## Non-Functional Requirements — 37 NFRs
 
-| ID | Requirement | Target | How Enforced |
-|----|-------------|--------|-------------|
-| NFR-01 | Multi-tenancy isolation | Zero cross-venue data access | PostgreSQL RLS + API middleware + storage path scoping |
-| NFR-02 | Incident escalation latency | ≤5 seconds: declaration → first notification | High-priority async queue; API returns immediately |
-| NFR-03 | WhatsApp delivery SLA | SMS fallback if WA undelivered in 90 seconds | Notification worker delayed job pattern |
-| NFR-04 | Task completion UX | Max 3 taps: notification → submitted | Design review gate per screen |
-| NFR-05 | Reading load — critical flows | Max 20 words before any action | Copy review gate for all safety-critical screens |
-| NFR-06 | Device coverage | Android INR 5,000–8,000; iOS iPhone 8+ | Physical device test matrix — gate before pilot |
-| NFR-07 | Connectivity | 2G/3G compatible for all critical flows | Payload <10KB for critical paths; offline cache |
-| NFR-08 | Touch targets | Minimum 48×48dp all interactive elements | StyleSheet enforcement + lint rule |
-| NFR-09 | Offline cache | Last 4 hours of tasks; completions queue locally | Expo SQLite + pending completions table |
-| NFR-10 | Zone board refresh | ≤30s for GM dashboard; instant for command roles | Supabase Realtime (Phase 1) / Pub/Sub WS (Phase 2) |
-| NFR-11 | Data sovereignty | Files in India from Day 1 (AWS S3 ap-south-1); all data in India by Phase 2 | Enforced in migration gate — no hospital sales before Phase 2 |
-| NFR-12 | DPDP Act compliance | Full compliance before first hospital contract | Legal review + Data Processing Agreements with all vendors |
-| NFR-13 | Availability | 99.5%+ uptime (safety infrastructure) | Multi-replica compute + managed DB + health checks |
-| NFR-14 | Scheduling scale | 100,000+ daily task triggers | Queue-based scheduling — never in-process timers |
-| NFR-15 | Concurrent WebSocket | 500+ concurrent (Phase 1 Supabase); unlimited (Phase 2 GCP) | Supabase Pro limit; upgrade trigger at 15 venues |
-| NFR-16 | Authentication security | JWT + RLS + HTTPS everywhere | Three-layer defence model |
-| NFR-17 | Audit immutability | Append-only, no modification possible | PostgreSQL INSERT-only policy; no UPDATE/DELETE policy exists |
-| NFR-18 | Low operational overhead | Managed services only — no self-hosted infrastructure | Architecture review gate — self-hosted = rejected |
-| NFR-19 | Solo buildable (Phase 1) | 16-week sprint with Claude Code | Railway + Supabase developer experience |
-| NFR-20 | Gross margin | 70%+ cash gross margin at 20 venues | Cost model tracked monthly; Phase 1: ~94% infra margin |
-| NFR-21 | VMS check-in speed | Guard completes full visitor check-in in ≤60 seconds (manual mode) | UX design review + physical device timing test |
-| NFR-22 | VMS offline operation | Guard can check in visitors and view current visitor log with no internet; sync on reconnect | Expo SQLite VMS cache; same offline-first pattern as task system |
-| NFR-23 | ID card photo storage | ID card images encrypted at rest; access-controlled to SH/DSH/AUD only; never in mobile gallery | S3/GCS server-side encryption; presigned URL with role check |
-| NFR-24 | Aadhaar compliance | No Aadhaar number stored in DB; masked version only (last 4 digits); QR parsing is offline (no UIDAI API call for visitor check-in) | Code review gate; DB schema enforces masked_aadhaar only |
+| NFR | Requirement | Target |
+|-----|-------------|--------|
+| NFR-01 | Multi-tenancy isolation | Zero cross-venue data access at any layer |
+| NFR-02 | Incident escalation latency | ≤5s declaration → first notification on recipient device |
+| NFR-03 | WA → SMS fallback SLA | SMS fires if WA undelivered in 90s |
+| NFR-04 | Task completion UX | Max 3 taps from notification to submitted |
+| NFR-05 | Reading load — critical flows | Max 20 words before any required action |
+| NFR-06 | Device coverage | Android ₹5K–8K (Redmi 9A, Samsung A03); iOS iPhone 8+ |
+| NFR-07 | Connectivity | 2G/3G compatible; critical flows <3s |
+| NFR-08 | Touch targets | Minimum 48×48dp all interactive elements |
+| NFR-09 | Offline cache | Last 4 hr tasks; completions queue locally; sync on reconnect |
+| NFR-10 | Zone board refresh | ≤30s GM dashboard; real-time (Supabase Realtime) for command roles |
+| NFR-11 | India data residency | Files in India from Day 1 (S3 ap-south-1); all data in India by Phase 2 |
+| NFR-12 | DPDP Act compliance | Full compliance before first hospital contract (Rule 12) |
+| NFR-13 | Availability | 99.5%+ uptime — lives depend on it |
+| NFR-14 | Scheduling scale | 100K+ daily task triggers without queue degradation |
+| NFR-15 | Concurrent WebSocket | 500+ (P1 Supabase); unlimited (P2 GCP) |
+| NFR-16 | Authentication security | JWT + RLS + HTTPS — three-layer defence |
+| NFR-17 | Audit immutability | Append-only, never editable (EC-10, Rule 4) |
+| NFR-18 | Operational overhead | Managed services only — no self-hosted infrastructure |
+| NFR-19 | Solo buildable — Phase 1 | 16-week sprint with Claude Code |
+| NFR-20 | Cash gross margin | 70%+ at 20 venues |
+| NFR-21 | VMS check-in speed | ≤60s manual mode (BR-40) on Redmi 9A |
+| NFR-22 | VMS offline operation | Guard checks in / views log with no internet |
+| NFR-23 | ID photo access control | SH/DSH/AUD only; never in mobile gallery (Rule 14) |
+| NFR-24 | Aadhaar compliance | No Aadhaar number stored anywhere; masked (last 4) only — Rule 13 |
+| NFR-25 | MBV backward compatibility | Single-building venues = zero behaviour change |
+| NFR-26 | MBV incident latency | Building-scoped incident still ≤5s; building filter <100ms |
+| NFR-27 | MBV mobile context isolation | Guard A cannot see Building B zones/tasks |
+| NFR-28 | Corporate aggregation latency | Safety scores at city/state/country/global within 6 hr |
+| NFR-29 | Corporate dashboard load | Full corporate dashboard <3s regardless of scope size |
+| NFR-30 | Cross-account isolation | Venue raw data never visible to other corporate account governance users |
+| NFR-31 | International data residency | Raw PII never crosses borders; only anonymised scores aggregate globally (EC-21) |
+| NFR-32 | Corporate SEV1 notification | SEV1 anywhere → CXO push within 30s (BR-73) |
+| NFR-33 | Roaming venue isolation | Roaming SH in active_venue sees only that venue's data; zero contamination |
+| NFR-34 | Brand config fetch latency | Fetched + applied within 1s of authentication; 24-hour cache |
+| NFR-35 | Safety-critical screen readability | ALL safety-critical screens pass WCAG 2.1 AA (4.5:1 contrast) regardless of brand |
+| NFR-36 | Brand config isolation | Account A's brand never served to Account B users |
+| NFR-37 | Roaming venue isolation | `active_venue_id` set as RLS session var on every request; validated against `venue_roles` (Rule 21) |
 
 ---
 
-### Absolute Engineering Constraints (non-negotiable — violating in code review is a blocker)
+## Engineering Constraints — 22 ECs (non-negotiable; violation in code review = blocker)
 
 | ID | Constraint |
 |----|-----------|
-| EC-01 | PostgreSQL as the database engine — RLS multi-tenancy is PostgreSQL-specific |
+| EC-01 | PostgreSQL as the database engine (RLS multi-tenancy is PostgreSQL-specific) |
 | EC-02 | Row-Level Security on every table |
 | EC-03 | `venue_id` present in every table and every query |
 | EC-04 | JWT stateless authentication |
@@ -144,520 +281,488 @@ SafeCommand is a managed venue safety infrastructure platform that replaces pape
 | EC-13 | All write operations must be idempotent |
 | EC-14 | Operations Console never on the same auth domain as venues |
 | EC-15 | i18n keys for all user-visible strings from Day 1 |
+| **EC-16** | **`building_id` is optional on all tables that reference it — never NOT NULL** (single-building venues unaffected; NULL = entire-venue scope) |
+| **EC-17** | **ThemeProvider must exist from the first commit of mobile app and web dashboard** (every colour/label as theme token; retrofit cost is 3–4× the from-scratch cost) |
+| **EC-18** | **'Powered by SafeCommand' credit is non-removable for all accounts** (Settings > About + all PDF report footers; hard-coded; cannot be NULL or modified) |
+| **EC-19** | **Roaming `active_venue_id` validated against `venue_roles` on EVERY request** (middleware enforces; 403 on mismatch) |
+| **EC-20** | **CORP-* roles NEVER access individual PII** (aggregation queries return scores/counts only; code review hard blocker) |
+| **EC-21** | **Raw PII never crosses country boundaries** (India venue data stays in GCP asia-south1; only anonymised scores aggregate globally) |
 
 ---
 
-## Architecture — Data model
+## Engineering Hard Rules — 22 Rules (violation in PR = blocker)
 
-### Users, Roles, and Interfaces
+| Rule | Statement |
+|------|-----------|
+| 1 | Never store secrets in code or version control (gitleaks pre-commit; rotate immediately if leaked) |
+| 2 | Every database query must include `venue_id` (no exceptions; code review blocker) |
+| 3 | Never modify a committed database migration (always add a new file; ADR 0001 references) |
+| 4 | Audit logs are write-once — never update or delete (DB policy enforces; never write code that tries) |
+| 5 | All write operations must be idempotent (`idempotency_key` or `ON CONFLICT DO NOTHING`) |
+| 6 | Operations Console never on the same auth domain as venues (separate Supabase project) |
+| 7 | Notification failures must never fail the primary operation (POST /incidents returns 201 before notify) |
+| 8 | Three notification channels must all be configured before pilot go-live |
+| 9 | Mobile app must function offline for 4 hours — tested before go-live (5-task airplane test) |
+| 10 | All API inputs validated with Zod before any business logic (.strict() schemas) |
+| 11 | All user-visible strings use i18n keys from Day 1 (no hardcoded strings even in P1 English-only) |
+| 12 | **No hospital data before Phase 2 GCP migration completes** (DPDP Act legal requirement) |
+| 13 | **Aadhaar numbers NEVER stored** — only `masked_aadhaar` (last 4) — VMS-specific |
+| 14 | ID card photos and visitor face photos never accessible to GS/FS roles (presigned URL role-gated) |
+| 15 | `building_id` always nullable — never enforce NOT NULL (EC-16; PR adding NOT NULL = blocker) |
+| 16 | `building_visible()` must be used in all RLS policies where building scope applies (no inline filters) |
+| 17 | **SEV1 incidents always notify all buildings regardless of declared `building_id`** (hard-coded in escalation worker; no config override) |
+| 18 | Incident codes for building-scoped incidents include the building `short_code` (immutable once declared) |
+| 19 | **ThemeProvider must be in the first commit of mobile app and web dashboard** (EC-17; default SafeCommand brand from Day 1) |
+| 20 | **'Powered by SafeCommand' is hard-coded** — DB CHECK constraint enforces `powered_by_text = 'Platform by SafeCommand'`; Settings > About + PDF footers literal strings in code (EC-18) |
+| 21 | **Roaming validation is double-enforced** — JWT `venue_roles` + middleware validates `active_venue_id ∈ venue_roles` on EVERY request (EC-19) |
+| 22 | **CORP-* roles never return individual PII** — aggregation only; code review hard blocker (EC-20) |
+
+---
+
+## Roles — 16 total, 3 authority models
+
+### Model A — Local Authority (single venue, majority of users)
+
+| # | Code | Title | Building scope | Interface |
+|---|------|-------|----------------|-----------|
+| 1 | GS | Ground Staff | Building-bound | Mobile App (primary) + WhatsApp |
+| 2 | FS | Floor Supervisor | Building-bound (assigned floors) | Mobile + WhatsApp |
+| 3 | SC | Shift Commander | Building-bound (shift-bound) | Mobile + Web Dashboard |
+| 4 | FM | Facility Manager | Assigned building(s) | Mobile + Web Dashboard |
+| 5 | SH | Security Head | Venue-wide (all buildings tabbed) | Mobile + Web Dashboard |
+| 6 | DSH | Deputy Security Head | Venue-wide when activated | Mobile + Web Dashboard |
+| 7 | GM | General Manager | Venue-wide BI + broadcast + custom tasks | Web Dashboard (primary) + Mobile |
+| 8 | AUD | Auditor | Venue-wide read; zero writes | Web Dashboard (read-only) |
+
+### Model B — Roaming Authority (Phase 2; max 10 venues; SC-OPS-assigned only)
+
+| # | Code | Title | Notes |
+|---|------|-------|-------|
+| 9 | ROAMING-SH | Roaming Security Head | Full SH at each venue; venue tabs |
+| 10 | ROAMING-GM | Roaming General Manager | Unified BI |
+| 11 | ROAMING-AUD | Roaming Auditor | Cross-venue compliance comparison |
+| 12 | ROAMING-FM | Roaming Facility Manager | Building-scoped per venue |
+
+> **Hard rule:** SC, FS, GS NEVER roaming — always single-venue, building-scoped.
+
+### Model C — Corporate Governance (Phase 3; read + aggregation only; no PII; no operations)
+
+| # | Code | Title | Scope |
+|---|------|-------|-------|
+| 13 | CORP-CXO | Global Safety Head | All venues globally in corporate account |
+| 14 | CORP-DIR | Country Safety Director | All venues in assigned country |
+| 15 | CORP-MGR | State/Region Safety Manager | All venues in assigned state/region |
+| 16 | CORP-COO | City Safety Coordinator | All venues in assigned city |
+
+### Platform
+
+| Code | Title | Scope |
+|------|-------|-------|
+| SC-OPS | SafeCommand Ops Team | Operations Console (internal, never public; EC-14) |
+
+### 9-Level Hierarchy (Architecture v7 §3 + Business Plan §3)
 
 ```
-ROLE                  CODE    INTERFACE
-────────────────────  ──────  ──────────────────────────────────────────
-Ground Staff          GS      Mobile App (primary) + WhatsApp (parallel)
-Floor Supervisor      FS      Mobile App + WhatsApp
-Shift Commander       SC      Mobile App + Web Dashboard
-Security Head         SH      Mobile App + Web Dashboard
-Deputy Security Head  DSH     Mobile App + Web Dashboard
-Facility Manager      FM      Mobile App + Web Dashboard
-General Manager       GM      Web Dashboard (primary) + Mobile App
-Auditor               AUD     Web Dashboard (read-only)
-────────────────────  ──────  ──────────────────────────────────────────
-SC Ops Team           —       Operations Console (internal, never public)
+L0 GLOBAL    → CORP-CXO   (corporate account scope)
+L1 COUNTRY   → CORP-DIR
+L2 STATE     → CORP-MGR
+L3 CITY      → CORP-COO
+L4 VENUE     → GM         ← THE RLS TENANT BOUNDARY
+L5 BUILDING  → SH/SC      (nullable; NULL = single-building venue)
+L6 FLOOR     → FS
+L7 ZONE      → GS
+CROSS        → ROAMING ROLE (operational role spanning 2–10 L4 boundaries)
 ```
 
-## Architecture — Components
+---
 
-### System Components
+## Architecture — components
 
 ```
-COMPUTE LAYER  (Railway — GCP us-central1)
-  Service: api          Node.js 20 + Express + TypeScript, 2 replicas
-                        → api.safecommand.in
-                        Handles: auth, REST API, presigned URLs, webhooks
+COMPUTE LAYER  (Railway)
+  Service: api          Node.js 20 + Express + TypeScript, 2 replicas → api.safecommand.in
+  Service: scheduler    BullMQ consumer 'schedule-generation' (1 replica) — generates task_instances
+  Service: escalation   BullMQ consumer 'escalations' (priority queue, 1 replica) — escalation chains
+  Service: notifier     BullMQ consumer 'notifications' (1 replica) — FCM push + WA + SMS
 
-  Service: scheduler    Bull queue consumer: 'schedule-generation', 1 replica
-                        → Generates task_instances from schedule_templates
-                        → Schedules escalation delayed jobs
-
-  Service: escalation   Bull queue consumer: 'escalations' (priority queue), 1 replica
-                        → Detects missed windows, fires escalation chain
-                        → Handles incident-level escalations at highest priority
-
-  Service: notifier     Bull queue consumer: 'notifications', 1 replica
-                        → FCM push (iOS + Android) — parallel with WhatsApp
-                        → Meta WhatsApp Cloud API — interactive messages
-                        → Airtel SMS — delayed 90s fallback with circuit breaker
-
-WEB LAYER  (Vercel)
-  apps/dashboard        Next.js — Venue Dashboard (SH/GM/AUD/FM/SC)
-                        → app.safecommand.in
-
-  apps/ops-console      Next.js — Operations Console (SC Ops Team ONLY)
-                        → ops.safecommand.in (separate auth domain — EC-14)
+WEB LAYER  (AWS Amplify ap-south-1; will move to Vercel for ops-console)
+  apps/dashboard        Next.js — Venue Dashboard (SH/GM/AUD/FM/SC) → app.safecommand.in (pending domain)
+  apps/ops-console      Next.js — Operations Console (SC Ops Team ONLY) → ops.safecommand.in (separate auth — EC-14)
 
 MOBILE LAYER
-  apps/mobile           Expo React Native SDK 51+ — iOS + Android
-                        Firebase Auth (Phone OTP) + FCM push
+  apps/mobile           Expo React Native SDK 51+ — iOS + Android. Currently using TEST_PHONE_PAIRS bypass; native Firebase Auth migration deferred to Sprint 3.
 
 DATA LAYER
-  Supabase PostgreSQL   AWS us-east-1, Pro plan, PITR 7-day, RLS enforced
-  Upstash Redis         Serverless, Bull queue backend, AOF persistence
-  AWS S3 ap-south-1     India file storage from Day 1, SSE-S3 encryption
+  Supabase PostgreSQL   AWS us-east-1 (Pro plan, PITR 7-day, RLS enforced) — migrating to ap-south-1 in Phase 2
+  Upstash Redis         Serverless — BullMQ backend, AOF persistence (lucky-giraffe-107825)
+  AWS S3 ap-south-1     India file storage from Day 1, SSE-S3 (sc-evidence-prod)
 
 EXTERNAL CHANNELS  (3 independent failure modes)
-  Meta WhatsApp Business API   Interactive messages, 2-way button reply
-  Airtel Business SMS          DLT-registered TRAI, ~90s SMS fallback
-  Firebase FCM                 iOS (APNs) + Android push, always active
+  Meta WhatsApp Business API   Direct (not Twilio); 12 templates submit Week 1
+  Airtel Business SMS          DLT-registered (sender ID: SFCMND); 90s WA→SMS fallback
+  Firebase FCM                 iOS (APNs) + Android push; safecommand-51499 project
+
+TESTING / OPERATIONS
+  Sentry (errors), UptimeRobot (uptime) — gated as go-live items
 ```
 
-### Monorepo Structure
+### Monorepo structure
 
 ```
-platform/                          ← GitHub monorepo root
+products/Safecommand/                           ← repo root
 ├── apps/
 │   ├── api/                       ← Railway: REST API service
-│   │   └── src/
-│   │       ├── middleware/
-│   │       │   ├── auth.ts        ← JWT verify + req.auth population
-│   │       │   ├── tenant.ts      ← SET LOCAL session variables for RLS
-│   │       │   ├── validate.ts    ← Zod schema validation factory
-│   │       │   ├── rateLimit.ts   ← Rate limiters (Upstash Redis store)
-│   │       │   └── audit.ts       ← Auto-writes to audit_logs on mutations
-│   │       ├── routes/
-│   │       │   ├── auth.ts, venues.ts, staff.ts, zones.ts
-│   │       │   ├── tasks.ts, incidents.ts, shifts.ts, handovers.ts
-│   │       │   ├── communications.ts, analytics.ts, compliance.ts
-│   │       │   ├── equipment.ts, certifications.ts, changeRequests.ts
-│   │       │   ├── visitors.ts
-│   │       │   └── webhooks/meta.ts, webhooks/airtel.ts
-│   │       └── services/
-│   │           ├── db.ts          ← Supabase client (service role key)
-│   │           ├── storage.ts     ← S3 presigned URL generation
-│   │           └── pdf.ts         ← PDFKit report generation
-│   ├── scheduler/                 ← Railway: Scheduling worker
-│   ├── escalation/                ← Railway: Escalation worker
-│   ├── notifier/                  ← Railway: Notification worker
+│   ├── scheduler/                 ← Railway: scheduling worker
+│   ├── escalation/                ← Railway: escalation worker
+│   ├── notifier/                  ← Railway: notification worker
 │   ├── mobile/                    ← Expo React Native (iOS + Android)
-│   ├── dashboard/                 ← Next.js Venue Dashboard (Vercel)
-│   └── ops-console/               ← Next.js Operations Console (Vercel)
+│   ├── dashboard/                 ← Next.js Venue Dashboard
+│   └── ops-console/               ← Next.js Operations Console
 ├── packages/
 │   ├── db/                        ← Supabase client + type-safe helpers
-│   ├── types/                     ← Shared TypeScript types (all apps)
+│   ├── types/                     ← Shared TypeScript types
 │   ├── schemas/                   ← Shared Zod validation schemas
-│   └── queue/                     ← Bull queue definitions (shared)
+│   └── queue/                     ← BullMQ definitions (reads SC_REDIS_URL ?? REDIS_URL)
 ├── supabase/
-│   ├── migrations/                ← 001_enums.sql, 002_tables.sql, etc.
+│   ├── migrations/                ← 001 → 008 deployed; 009/010 pending Phase B
 │   └── functions/                 ← Edge Functions (JWT hook)
+├── docs/
+│   └── adr/                       ← 0001 migrations | 0002 branch | 0003 supabase keys
+├── scripts/                       ← rls_isolation_verify_v2.sql + ops scripts
 └── .github/workflows/             ← CI/CD pipelines
 ```
 
-### Data Model — Core Entity Relationships
+### Data model — core entity relationships (post-migration 009)
 
 ```
-VENUE  ──── root of every RLS policy
-  ├── FLOORS (1:N)
-  │     └── ZONES (1:N)
-  │           └── ZONE_STATUS_LOG (1:N, append-only)
-  ├── STAFF (1:N)
-  │     ├── STAFF_ZONE_ASSIGNMENTS (junction: staff × zone × shift_date)
-  │     └── STAFF_CERTIFICATIONS (1:N)
-  ├── SHIFTS (1:N) → SHIFT_INSTANCES (1:N) → SHIFT_HANDOVERS (1:1)
-  ├── SCHEDULE_TEMPLATES (1:N)
-  │     └── TASK_INSTANCES (1:N)
-  │           ├── TASK_COMPLETIONS (1:1 when done)
-  │           └── ESCALATION_EVENTS (1:N per missed window)
+VENUE  ──── root of every RLS policy (the L4 tenant boundary)
+  ├── BUILDINGS (1:N) [building_id nullable everywhere — EC-16]
+  │     └── FLOORS (1:N, building_id propagates via trigger)
+  │           └── ZONES (1:N, denormalised building_id for query speed)
+  │                 └── ZONE_STATUS_LOG (1:N, append-only)
+  ├── STAFF (1:N, primary_building_id nullable)
+  │     ├── STAFF_ZONE_ASSIGNMENTS (junction)
+  │     ├── STAFF_CERTIFICATIONS (1:N)
+  │     └── ROAMING_STAFF_ASSIGNMENTS (1:N, Phase 2 schema in mig 010)
+  ├── SHIFTS (1:N, building_id nullable) → SHIFT_INSTANCES → SHIFT_HANDOVERS
+  ├── SCHEDULE_TEMPLATES (1:N, building_id nullable) → TASK_INSTANCES (1:N) → TASK_COMPLETIONS / ESCALATION_EVENTS
   ├── CUSTOM_TASKS (1:N) → TASK_COMPLETIONS
-  ├── INCIDENTS (1:N)
-  │     ├── INCIDENT_TIMELINE (1:N, append-only)
-  │     └── INCIDENT_REPORTS (1:1 auto-generated on resolution)
-  ├── COMMUNICATIONS (1:N) → COMM_DELIVERIES (1:N per recipient × channel)
-  ├── EQUIPMENT_ITEMS (1:N)
+  ├── INCIDENTS (1:N, building_id nullable + incident_scope) → INCIDENT_TIMELINE / INCIDENT_REPORTS
+  ├── COMMUNICATIONS (1:N, building_id nullable) → COMM_DELIVERIES (1:N per recipient × channel)
+  ├── EQUIPMENT_ITEMS (1:N, building_id nullable)
+  ├── DRILL_SESSIONS (1:N, building_id nullable; mig 010) → DRILL_SESSION_PARTICIPANTS
   ├── CHANGE_REQUESTS (1:N)
   ├── VENUE_SUBSCRIPTIONS (1:1)
   ├── AUDIT_LOGS (1:N, IMMUTABLE — INSERT-only)
-  └── VMS_ENTRY_POINTS (1:N) → VMS_VISIT_RECORDS (1:N)
+  └── VMS_ENTRY_POINTS (1:N, building_id nullable) → VMS_VISITS (denormalised building_id)
+
+CORPORATE_ACCOUNTS (Phase 3)
+  ├── CORPORATE_BRAND_CONFIGS (1:1; mig 010 — Phase 1 schema)
+  ├── CORPORATE_VENUE_ASSIGNMENTS (junction to venues)
+  ├── CORPORATE_COUNTRIES / STATES / CITIES (governance hierarchy)
+  └── CORPORATE_STAFF (CORP-CXO/DIR/MGR/COO)
 ```
 
-**Tenant isolation rule:** `venue_id` is present on every table. Every RLS policy checks `venue_id`. No table is exempt.
-
-**RLS session context set before every query:**
+**Tenant isolation rule (enforced at RLS):**
 ```sql
-SELECT set_tenant_context(p_venue_id, p_staff_id, p_role);
--- sets app.current_venue_id, app.current_staff_id, app.current_role
+SELECT set_tenant_context(p_venue_id, p_staff_id, p_role, p_building_id DEFAULT NULL);
+-- sets app.current_venue_id, app.current_staff_id, app.current_role, app.current_building_id
+-- Used with building_visible(record_building_id) RLS function (Rule 16; no inline filters)
 ```
 
 **Append-only tables (no UPDATE/DELETE policy):**
-- `audit_logs` — compliance requirement
-- `zone_status_log` — status history
-- `incident_timeline` — incident chronology
+- `audit_logs`, `zone_status_log`, `incident_timeline`
 
-### Key Enums
+**Key enums (current state — `incident_severity` already SEV1/SEV2/SEV3):**
+```
+staff_role_enum:    SH | DSH | SHIFT_COMMANDER | GM | AUDITOR | FM | FLOOR_SUPERVISOR | GROUND_STAFF
+                    (Phase 2/3 add ROAMING-* + CORP-* via JWT claims, NOT enum extension)
+subscription_tier:  ESSENTIAL | PROFESSIONAL | ENTERPRISE | CHAIN
+task_status:        PENDING | IN_PROGRESS | COMPLETE | MISSED | ESCALATED | LATE_COMPLETE
+evidence_type:      NONE | PHOTO | TEXT | NUMERIC | CHECKLIST
+incident_type:      FIRE | MEDICAL | SECURITY | EVACUATION | STRUCTURAL | OTHER
+incident_severity:  SEV1 | SEV2 | SEV3
+delivery_channel:   APP_PUSH | WHATSAPP | SMS
+frequency_type:     HOURLY | EVERY_2H | EVERY_4H | EVERY_6H | EVERY_8H | DAILY | WEEKLY | MONTHLY | QUARTERLY | ANNUAL | CUSTOM
+checkin_mode (VMS): MANUAL | ID_PHOTO | AADHAAR_QR | PRE_REGISTERED | SELF_SERVICE_QR
+visitor_status:     CHECKED_IN | CHECKED_OUT | OVERSTAY | DENIED | BLACKLISTED_ATTEMPT
+```
 
-```
-staff_role_enum:       SH | DSH | SHIFT_COMMANDER | GM | AUDITOR | FM | FLOOR_SUPERVISOR | GROUND_STAFF
-subscription_tier:     ESSENTIAL | PROFESSIONAL | ENTERPRISE | CHAIN
-task_status:           PENDING | IN_PROGRESS | COMPLETE | MISSED | ESCALATED | LATE_COMPLETE
-evidence_type:         NONE | PHOTO | TEXT | NUMERIC | CHECKLIST
-incident_type:         FIRE | MEDICAL | SECURITY | EVACUATION | STRUCTURAL | OTHER
-incident_severity:     SEV1 | SEV2 | SEV3
-delivery_channel:      APP_PUSH | WHATSAPP | SMS
-frequency_type:        HOURLY | EVERY_2H | EVERY_4H | EVERY_6H | EVERY_8H | DAILY | WEEKLY | MONTHLY | QUARTERLY | ANNUAL | CUSTOM
-checkin_mode (VMS):    MANUAL | ID_PHOTO | AADHAAR_QR | PRE_REGISTERED | SELF_SERVICE_QR
-visitor_status (VMS):  CHECKED_IN | CHECKED_OUT | OVERSTAY | DENIED | BLACKLISTED_ATTEMPT
-```
+---
 
 ## Architecture — API design
 
-### Endpoints
-
-**Base URL:** `https://api.safecommand.in/v1`
-**Auth:** `Authorization: Bearer {jwt}` on all endpoints except `/auth/*`, `/visitor/*`, and webhooks
-**Format:** `Content-Type: application/json`
+**Base URL:** `https://api.safecommand.in/v1` (currently `https://api-production-9f9dd.up.railway.app/v1` pending domain purchase)
+**Auth:** `Authorization: Bearer {jwt}` on all endpoints except `/auth/*`, `/visitor/*`, and webhooks.
+**Roaming users:** additionally send `x-active-venue-id: <uuid>` header on every request (middleware validates ∈ JWT `venue_roles`; 403 on mismatch — Rule 21).
 
 ```
-AUTHENTICATION
-  POST  /auth/send-otp          { phone }        → sends OTP (rate: 5/15min/phone)
-  POST  /auth/verify-otp        { phone, otp }   → { access_token, refresh_token }
-  POST  /auth/refresh           { refresh_token } → { access_token }
-  POST  /auth/logout            → revokes refresh token
-  POST  /auth/device-token      { token, platform: ANDROID|IOS } → registers FCM/APNs token
-
-VENUE
-  GET   /venue                  → current venue profile + subscription tier
-  PATCH /venue                  → update contact info (SH/DSH only)
-  GET   /venue/health-score     → health score (0-100) + component breakdown
-  GET   /venue/compliance-readiness
-  PUT   /venue/festival-mode    { active: true|false }
-
-FLOORS + ZONES
-  GET   /floors                 → all floors with zone counts
-  GET   /floors/:id/zones       → zones on floor with current status + assigned staff
-  PUT   /zones/:id/status       { status: ALL_CLEAR|ATTENTION|INCIDENT_ACTIVE }
-  GET   /zones/accountability   → Zone Accountability Map (named owner per zone per shift)
-
-STAFF
-  GET   /staff                  → all staff (SH/GM/AUD only)
-  POST  /staff                  → create staff (SH only)
-  PATCH /staff/:id              → update role/status
-  POST  /staff/:id/deputy-activate  → activate DSH manually
-  GET   /staff/on-duty          → currently on-duty staff with zone assignments
-
-TASKS
-  GET   /tasks                  → my tasks (filtered by role/assignment)
-  GET   /tasks?date=YYYY-MM-DD  → tasks for date
-  POST  /tasks/:id/complete     { evidence_type, evidence_url|text|numeric|checklist }
-  GET   /tasks/pending          → missed + overdue tasks (SH/SC view)
-
-SCHEDULING
-  GET   /schedule-templates     → all templates for venue (SC Ops Console)
-  POST  /schedule-templates     → create template (SC Ops only)
-  PATCH /schedule-templates/:id
-  DELETE /schedule-templates/:id
-
-INCIDENTS
-  POST  /incidents              { incident_type, severity, zone_id, description }
-                                → writes DB → returns 201 IMMEDIATELY
-                                → async: enqueues incident escalation (priority 0)
-  GET   /incidents              → active + recent incidents
-  GET   /incidents/:id          → full incident detail
-  PUT   /incidents/:id/status   { status: CONTAINED|RESOLVED|CLOSED }
-  POST  /incidents/:id/staff-safe  → evacuation confirmation ("I AM SAFE")
-  GET   /incidents/:id/evacuation → live board: safe / unaccounted staff
-
-SHIFTS
-  GET   /shifts                 → shift templates
-  GET   /shift-instances?date=  → shift instances for date
-  POST  /shift-instances/:id/activate
-  POST  /shift-instances/:id/zone-assignments  { zone_id, staff_id, assignment_type }
-  POST  /handovers              { outgoing_instance_id, incoming_instance_id, notes, snapshots }
-  PUT   /handovers/:id/accept
-
-COMMUNICATIONS
-  POST  /communications         { scope_type, scope_id, purpose_type, message, scheduled_at }
-  GET   /communications         → communications log
-  GET   /communications/briefings → pending briefings requiring acknowledgement
-  POST  /communications/:id/acknowledge
-
-ANALYTICS
-  GET   /analytics/dashboard    → GM dashboard KPIs
-  GET   /analytics/incidents    → incident trends
-  GET   /analytics/tasks        → task compliance rate
-  GET   /analytics/staff        → staff performance + streaks
-  GET   /analytics/financial-risk
-
-COMPLIANCE
-  GET   /compliance/export      { type: FIRE_NOC|NABH|FULL_AUDIT, from, to }
-                                → generates PDF → uploads to S3 → returns presigned URL
-
-EQUIPMENT
-  GET   /equipment              → all equipment items with status
-  POST  /equipment              → add item
-  PATCH /equipment/:id
-  GET   /equipment/expiring     → items due for service in next 30 days
-
-CERTIFICATIONS
-  GET   /certifications         → all staff certs
-  POST  /certifications         → add certification
-  GET   /certifications/expiring → certs expiring in next 30 days
-
-CHANGE REQUESTS
-  POST  /change-requests        → submit CR
-  GET   /change-requests        → venue's CR history + status
-
-VISITOR MANAGEMENT (VMS)
-  GET   /vms/entry-points       → configured entry points for venue
-  POST  /vms/checkin            { mode, entry_point_id, visitor_data, id_photo_url }
-  POST  /vms/checkout           { visit_record_id }
-  GET   /vms/visits             { date?, entry_point_id? } → visitor log
-  GET   /vms/visits/active      → currently checked-in visitors
-  POST  /vms/blacklist          { visitor_id }
-  GET   /vms/pre-registrations  → pending pre-registered visitors
-  GET   /vms/reports/daily      → daily summary
-
-VISITOR QR (no auth)
-  POST  /visitor/opt-in         { venue_id, phone } → { qr_token }
-  GET   /visitor/self-checkin/:venue_token → kiosk landing page
-
-WEBHOOKS (HMAC-verified)
-  POST  /webhooks/meta          → WhatsApp inbound messages + delivery callbacks
-  POST  /webhooks/airtel        → SMS delivery callbacks
+AUTH:        POST /auth/{send-otp,verify-otp,refresh,logout,device-token}
+VENUE:       GET/PATCH /venue; GET /venue/{health-score,compliance-readiness}; PUT /venue/festival-mode
+BUILDINGS:   GET /buildings; GET /buildings/:id; GET /buildings/:id/{zones,health-score} (Phase B)
+FLOORS+ZONES:GET /floors; GET /floors/:id/zones; PUT /zones/:id/status; GET /zones/accountability
+STAFF:       GET/POST /staff; PATCH /staff/:id; POST /staff/:id/deputy-activate; GET /staff/on-duty
+TASKS:       GET /tasks (?date=); POST /tasks/:id/complete; GET /tasks/pending
+SCHEDULING:  GET/POST/PATCH/DELETE /schedule-templates
+INCIDENTS:   POST /incidents (returns 201 <200ms; async escalation queue priority 0)
+             GET /incidents (?active=); GET /incidents/:id; PUT /incidents/:id/status
+             POST /incidents/:id/staff-safe; GET /incidents/:id/evacuation
+SHIFTS:      GET /shifts; GET /shift-instances; POST /shift-instances/:id/{activate,zone-assignments}
+HANDOVERS:   POST /handovers; PUT /handovers/:id/accept
+COMMS:       POST /communications; GET /communications; GET /communications/briefings
+             POST /communications/:id/acknowledge
+ANALYTICS:   GET /analytics/{dashboard,incidents,tasks,staff,financial-risk}
+COMPLIANCE:  GET /compliance/export ({type, from, to}) → S3 presigned URL
+EQUIPMENT:   GET/POST/PATCH /equipment; GET /equipment/expiring
+CERTS:       GET/POST /certifications; GET /certifications/expiring
+CR:          POST /change-requests; GET /change-requests
+DRILLS:      POST /drill-sessions/{start,end}; GET /drill-sessions/:id (Phase B per BR-A)
+VMS:         GET /vms/entry-points; POST /vms/{checkin,checkout,blacklist}
+             GET /vms/visits (?date,?entry_point_id,?building_id); GET /vms/visits/active
+             GET /vms/pre-registrations; GET /vms/reports/daily
+VISITOR (no auth): POST /visitor/opt-in; GET /visitor/self-checkin/:venue_token
+WEBHOOKS (HMAC): POST /webhooks/{meta,airtel}
 ```
 
-### Notification Architecture
+### Notification architecture (NFR-02 — ≤5s incident; Rule 7 primary-op never blocked)
 
 ```
-Incident declared → POST /incidents → DB write → return 201
-  → async: enqueue to 'escalations' queue (priority 0)
-  → escalation-worker: resolve all on-duty staff
-  → enqueue FCM jobs + WA jobs simultaneously to 'notifications' queue
-  → notifier-worker: send FCM push AND WhatsApp in parallel
-  → if WA undelivered in 90s: enqueue SMS fallback job
-  → comm_deliveries: record status at each step
-  → total time: declaration → first push ≤5 seconds (NFR-02)
-
-Task missed → escalation-worker detects at window_expires_at
-  → resolve next role from escalation_chain[level]
-  → find on-duty staff with that role
-  → insert escalation_events row
-  → enqueue priority-1 notification job
-  → schedule next escalation level delayed job
+Incident declared → POST /incidents → DB write → return 201 <200ms
+  → async: enqueue 'escalations' priority 0
+  → escalation-worker: resolve targets per scope (SEV1=all-bldg always per Rule 17; SEV2=building+SH/DSH)
+  → enqueue FCM + WA simultaneously to 'notifications'
+  → notifier-worker: parallel push + WA; on WA-undelivered@90s enqueue SMS
+  → comm_deliveries records each step
+  → P3 Corporate: if venue.corporate_account_id && SEV1 → notifyCorporateCXO ≤30s (NFR-32, BR-73)
 ```
 
 ---
 
-## Architecture — User flow
-
-Step-by-step new user journey (from SC Ops onboarding through daily operations):
+## Architecture — User flow (MBV-aware)
 
 **1. Venue onboarding (SC Ops Console — ops.safecommand.in)**
-- SC Ops creates venue record → auto-generates `venue_code` (e.g. SC-MAL-HYD-00042)
-- SC Ops creates floors, zones, zone types, two-person-required toggles
-- SC Ops creates schedule templates (frequency, assigned role, evidence type, escalation chain)
-- SC Ops creates initial SH account (phone number → Firebase auth_id → staff record)
+- SC Ops creates venue → `generate_venue_code(p_type, p_city)` → `SC-MAL-HYD-00042`
+- (MBV) SC Ops creates buildings: name, short_code (e.g. EMRG-BLOCK), address/GPS — or skips for single-building venue (NFR-25)
+- SC Ops creates floors (assigned to building if MBV), zones (zone_type, two-person-required toggles)
+- SC Ops creates schedule templates (frequency, role, evidence, escalation chain — building-scoped or venue-wide)
+- SC Ops creates initial SH (phone → Firebase auth_id → staff record)
 
-**2. Security Head first login (Mobile App + Web Dashboard)**
-- SH receives WhatsApp welcome message with app download link
-- SH opens app → Phone OTP login → FCM device token registered
-- SH adds staff: Ground Staff, Floor Supervisors, Shift Commanders
-- New staff receive WhatsApp welcome + app download link automatically
+**2. Security Head first login (Mobile + Web Dashboard)**
+- WhatsApp welcome with app download link
+- Phone OTP → JWT issued (today: TEST_PHONE_PAIRS bypass; native Firebase Auth = Sprint 3)
+- SH adds staff (GS, FS, SC); each gets WA welcome
 
-**3. Staff daily workflow (Mobile App + WhatsApp)**
-- Scheduling engine ticks every 60 seconds — generates `task_instances` from active templates
-- Each staff member receives FCM push + WhatsApp notification for their assigned tasks
-- Ground staff: tap notification → open task → complete with evidence (photo/text/checklist) → 3 taps max
-- Task completion syncs instantly; if on airplane mode, queues locally and syncs on reconnect
+**3. Staff daily workflow (Mobile + WhatsApp)**
+- scheduler-worker tick (60s production target; 4hr hibernation today) generates `task_instances` from active templates
+- Each staff: FCM push + WA; tap → complete with evidence (3 taps max — NFR-04)
+- Offline: completion queued in Expo SQLite; syncs on reconnect (NFR-09)
 
-**4. Escalation chain (automatic)**
-- Task missed at window_expires_at → escalation-worker fires
-- Level 1: Floor Supervisor notified (via push + WhatsApp)
-- Level 2: Shift Commander notified (+30 min default)
-- Level 3: Security Head notified (+60 min default)
-- Each level logged in `escalation_events` with timestamp
+**4. Escalation chain (automatic, escalation-worker)**
+- Task missed @ `window_expires_at` → resolve next role from `escalation_chain[level]`
+- Level 1 → FS, Level 2 (+30 min) → SC, Level 3 (+60 min) → SH; each logged in `escalation_events`
 
-**5. Shift management (Shift Commander — Mobile App + Dashboard)**
-- Shift Commander activates shift → assigns staff to zones for the shift period
-- Coverage gap alert fires if any zone has no PRIMARY assignment
-- End of shift: outgoing commander submits handover (with open incidents + zone snapshots)
-- Incoming commander accepts handover → authority transfers, audit logged
+**5. Shift management (SC — Mobile + Dashboard)**
+- Shift activation → zone assignments → coverage gap alerts on PRIMARY-less zones
+- End of shift: outgoing submits handover (zone snapshots + open incidents); incoming SC accepts; authority transfers, audit logged
 
-**6. Incident declaration (any command role — Mobile App)**
-- 3-tap flow: type → zone → confirm
-- API returns 201 in <200ms; notification to all on-duty staff fires within ≤5 seconds
-- All zones update to INCIDENT_ACTIVE on Supabase Realtime → dashboards reflect instantly
-- Staff tap [I AM SAFE] button → evacuation board updates in real-time
-- GM / SH sees live evacuation board: safe / unaccounted staff count per zone
+**6. Incident declaration (any command role — Mobile)**
+- 3-tap: type → zone → confirm; API 201 <200ms; notification ≤5s
+- (MBV) Building-scoped SEV2/SEV3; SEV1 always all-buildings (Rule 17)
+- All zones → INCIDENT_ACTIVE via Supabase Realtime; staff [I AM SAFE] updates evacuation board
 
 **7. GM situational awareness (Web Dashboard — app.safecommand.in)**
-- Health score (0–100) auto-computed nightly: task compliance 40%, incident response 25%, cert coverage 15%, equipment status 10%, drill completion 10%
-- Zone Accountability Map: every zone shows named owner, last check-in time, current status — answered in 1 second
-- GM Broadcast: send message to any scope (venue-wide, floor, zone, role, individual)
-- GM Custom Task: assign one-off task with deadline, evidence requirement, escalation chain
+- Health score 0–100 nightly: tasks 40% / incidents 25% / certs 15% / equipment 10% / drills 10%
+- (MBV) Per-building health score cards (e.g. `[MAIN: 94] [EMRG: 84⚠] [DIAG: 96]`)
+- Zone Accountability Map (THE hero demo)
+- GM Broadcast / Custom Task
 
-**8. Auditor / compliance export (Web Dashboard — read-only)**
-- Auditor opens dashboard → browses audit trail, incident log, task history
-- Compliance export: select type (Fire NOC / NABH / Full Audit) → PDF generated via PDFKit → S3 presigned URL returned → download
-- PDF includes zone list, equipment status, cert status, drill history, incident log for period
+**8. Auditor / compliance export (Web Dashboard, read-only)**
+- Compliance export (Fire NOC / NABH / Full Audit) → PDF via PDFKit → S3 presigned URL → download
+- All PDFs include 'Powered by SafeCommand' footer (Rule 20, EC-18)
 
-**9. VMS visitor check-in (Guard — Mobile App)**
-- Guard at entry point opens VMS screen → selects check-in mode
-- Manual: type name, phone, purpose, host → optional photo → check-in recorded
-- Aadhaar QR: scan QR with camera → UIDAI XML parsed locally → name/DOB auto-filled → no Aadhaar number stored
-- Pre-registered visitor: scan visitor QR code → instant check-in (no typing)
-- Host staff notified via push + WhatsApp: "Your visitor [Name] has arrived at [Entry Point]"
-- On active incident: VMS visitor log appears on evacuation board automatically (BR-51)
-
----
-
-## Build phases
-
-### Sprint 1 — Foundation (Weeks 1–2, June 2026)
-
-**Goal:** Database deployed, RLS proven, project skeleton running, Ops Console scaffolded
-
-**BRs in scope:**
-- BR-01: Multi-tenant RLS isolation at database and API middleware layers
-- BR-02: Venue Identity auto-generation (SC-[TYPE]-[CITY]-[SEQ]) in Ops Console onboarding wizard
-- BR-03: Operations Console scaffold (separate Supabase auth project, venue onboarding wizard, floor + zone editor, schedule template CRUD)
-- BR-04: 8-Role permission model encoded in JWT middleware matrix
-- BR-05: Three-tier permission middleware — SC Platform / Venue Infrastructure / Venue Ops / Task Execution
-
-**Deliverables:**
-- Supabase: all migrations deployed (001_enums → 005_seed_templates); Realtime on `zones` + `incidents`
-- Railway `api` service: `GET /health` returns 200; auth endpoints live; JWT + tenant middleware
-- Expo: project scaffold compiles on physical iOS + Android device; i18next configured
-- Upstash Redis: connected; Bull queue definitions registered
-- GitHub Actions: test workflow runs on every PR; gitleaks pre-commit hook active
-- Ops Console: venue onboarding, floor editor, zone editor, schedule template CRUD, initial SH creation
-
-**Gates before Sprint 2:**
-1. RLS Isolation Proof: create 2 venues, query venue_1 tasks as venue_2 staff → 0 rows returned
-2. Full Venue Creation: 3 floors, 12 zones, 5 schedule templates, 1 SH account — all via Ops Console; SH can log in to mobile app
-
-**Target dates:** Start June 2026 (after Go/No-Go validation gate passes 31 May 2026)
-
----
-
-### Sprint 2 — Scheduling Engine + Notification Stack (Weeks 3–4, June 2026)
-
-**Goal:** Tasks generate automatically and are delivered via push + WhatsApp
-
-**BRs in scope:**
-- BR-06: Scheduled Activity Engine — scheduler-worker generates task_instances from schedule_templates every 60 seconds
-- BR-07: Task completion tracking with evidence (photo, text, numeric, checklist) including S3 presigned URL upload flow
-- BR-09: Dual-channel delivery — FCM push (primary) + WhatsApp Business API (parallel primary) for task assignments
-- BR-10: SMS fallback — Airtel SMS auto-triggered if WhatsApp undelivered within 90 seconds
-- BR-25: Venue-type activity templates — seed templates for Hospital, Mall, Hotel, Corporate venue types
-- BR-28: Communication audit trail — `comm_deliveries` records per recipient × channel with delivery status
-
-**Deliverables:**
-- `scheduler` service: Bull repeatable tick (every 60s, singleton jobId); `computeNextDue()` for all frequency types; idempotency via `ON CONFLICT idempotency_key DO NOTHING`
-- `notifier` service: Firebase Admin SDK FCM push; Meta WhatsApp Cloud API interactive messages; Airtel SMS; parallel push + WA with 90s SMS fallback; circuit breakers (`waCircuit`, `smsCircuit`)
-- Meta webhook: HMAC signature verification + button reply parsing
-- Mobile: `GET /tasks/my` with Expo SQLite 4-hour offline cache; task completion flow with evidence upload to S3
-- All 8 WhatsApp message templates submitted to Meta for approval (task_assigned, escalation_alert, incident_alert, evacuation_confirm, shift_briefing, broadcast, cert_expiry, equipment_alert)
-
-**Gates before Sprint 3:**
-1. Scheduling Idempotency: create HOURLY template → wait 60 seconds → verify 1 task_instance created → trigger tick again → verify 0 new rows
-2. Full Notification Chain: staff with device_token + whatsapp_number → FCM push within 3 seconds → WhatsApp interactive message within 3 seconds → button reply → `comm_deliveries.status = ACKNOWLEDGED` → wait 90 seconds without reply → SMS arrives on test phone
+**9. VMS visitor check-in (Guard — Mobile)**
+- Mode 1 manual ≤30s; Mode 2 ID photo + on-device OCR; Mode 3 Aadhaar QR offline (no Aadhaar# stored — Rule 13); Mode 4 pre-reg QR; Mode 5 self-service kiosk
+- Host notified via push + WA on arrival
+- During incident: VMS visitors auto-appear on evacuation board (BR-51)
 
 ---
 
 ## Stack
 
-| Layer | Technology | Justification |
-|-------|-----------|---------------|
-| API runtime | Node.js 20 + TypeScript strict | Single language across monorepo; TypeScript strict enforces correctness |
-| API framework | Express + Zod validation | Minimal, proven, easy Railway deployment |
-| Database | Supabase PostgreSQL (Pro plan) | PostgreSQL RLS = multi-tenancy at DB layer (EC-01, EC-02) |
-| DB client | Supabase JS client (service role) | Type-safe, Realtime subscriptions, Auth integration |
-| Queue | BullMQ + Upstash Redis | Serverless Redis backend; jobs survive service restarts (EC-05) |
-| Compute | Railway (4 separate services) | Independent crash cycles; independent scaling per service |
-| Mobile | Expo React Native SDK 51+ | iOS + Android from one codebase; solo-founder viable (EC-07) |
-| Mobile auth | Firebase Auth — Phone OTP | Production OTP at zero marginal cost; FCM same project |
-| Push | Firebase Cloud Messaging (FCM) | Covers APNs (iOS) + Android; free, reliable, global |
-| Web dashboards | Next.js 14 + Vercel | Server-side rendering for analytics; fast Vercel deploys |
-| WhatsApp | Meta WhatsApp Business Cloud API (direct) | Only API delivering 90%+ open rates for India ground staff (EC-11) |
-| SMS | Airtel Business SMS (DLT-registered) | TRAI compliance (EC-12); India-native fallback |
-| File storage | AWS S3 ap-south-1 | India data residency from Day 1 (NFR-11); SSE-S3 encryption |
+| Layer | Technology | Justification / Constraint |
+|-------|-----------|---------------------------|
+| API runtime | Node.js 20 LTS + TypeScript strict | Single language; correctness via types |
+| API framework | Express + Zod | Minimal; Zod schemas shared via `packages/schemas` |
+| Database | Supabase PostgreSQL Pro | RLS multi-tenancy (EC-01, EC-02); Realtime; Pro for PITR |
+| **DB API keys** | **`sb_secret_*` (server) + `sb_publishable_*` (client) — opaque tokens, NOT JWTs** | **ADR 0003**; rotation no longer mass-logouts users |
+| DB client | Supabase JS client (≥v2.40 for opaque-token compat) | Type-safe; treats key format opaquely |
+| Queue | BullMQ + Upstash Redis | Serverless Redis backend (lucky-giraffe-107825); jobs survive restarts (EC-05) |
+| Compute | Railway (4 services) | Independent crash cycles; per-service scaling |
+| Mobile | Expo React Native SDK 51+ | iOS + Android one codebase (EC-07) |
+| Mobile auth | Phone OTP (today: TEST_PHONE_PAIRS bypass; Sprint 3: Firebase Phone Auth) | OTP at zero marginal cost |
+| Push | Firebase Cloud Messaging (FCM) | iOS (APNs) + Android; project `safecommand-51499` |
+| Web dashboards | Next.js 14 + AWS Amplify ap-south-1 (dashboard); Next.js + Vercel (ops-console — pending) | India residency (NFR-11) on Amplify |
+| WhatsApp | Meta WhatsApp Business Cloud API (direct — not Twilio) | EC-11; only API delivering 90%+ open rates for India ground staff |
+| SMS | Airtel Business SMS (DLT-registered, sender SFCMND) | EC-12; TRAI compliance; ~90s WA→SMS fallback |
+| File storage | AWS S3 ap-south-1 | India residency Day 1 (NFR-11); SSE-S3 |
 | Realtime | Supabase Realtime | Zone board + incident board live updates (NFR-10) |
-| PDF generation | PDFKit | Server-side compliance PDF generation (BR-20, BR-29) |
-| OCR (VMS) | Google Cloud Vision API (or Tesseract local) | ID card name extraction for BR-41 |
-| Monitoring | Sentry (errors) + UptimeRobot (uptime) | Go-live checklist requirement |
+| PDF generation | PDFKit | Server-side compliance + post-incident reports |
+| OCR (VMS) | Google ML Kit (on-device) for ID Mode 2 | Offline-capable; no UIDAI API for Aadhaar |
+| Theming | Custom ThemeProvider (Phase A scaffold on `safecommand_v7`) | EC-17 / Rule 19; default SafeCommand brand; sparse override per `corporate_brand_configs` |
+| Monitoring | Sentry + UptimeRobot | Go-live checklist gate |
 | CI/CD | GitHub Actions | Test on every PR; deploy on merge to main |
-| Secret scanning | gitleaks pre-commit hook | Security gate from first commit |
+| Secret scanning | gitleaks pre-commit | Rule 1 |
 
 ---
 
-## Code conventions
+## Build status — current state
+
+### Sprint 1 (Foundation, Weeks 1–2 in v5 plan; complete)
+| Gate | Result |
+|------|--------|
+| Gate 1: RLS Isolation Proof | ✅ PASSED 2026-04-29 (`scripts/rls_isolation_verify_v2.sql`) — still valid under v7 |
+| Gate 2: Full Venue Creation via Ops Console | ✅ PASSED 2026-04-30 — venue + 3 floors + 12 zones + 5 templates + 1 SH |
+
+### Sprint 2 (Scheduling + Notification, partial)
+- ✅ scheduler-worker: master-tick + computeCurrentSlot live (4hr hibernation today; 60s production target)
+- ✅ FCM push wired in api `services/firebase.ts`; `health: firebase=ok`
+- ✅ Mobile E2E: phone+OTP → tasks → mark-complete with TEXT evidence (TEST_PHONE_PAIRS bypass)
+- ✅ BR-11 incident declaration mobile UI (commit `8bc2c02` on main)
+- ⏳ BR-08 escalation chain: code stub; 3-level test pending Phase B
+- ⏳ BR-10 SMS fallback: blocked on Airtel DLT
+- ⏳ BR-09 WhatsApp: blocked on Meta WABA approval
+
+### v7 Phase A (current — `safecommand_v7` branch)
+- ✅ ADR 0001 migration renumbering captured
+- ✅ ADR 0002 branching decision captured
+- ✅ ADR 0003 Supabase opaque-token migration captured
+- ✅ AWS-process-doc-IMP.md §3.3 updated for new key model
+- ✅ Security history rewrite complete (`origin/main` HEAD = `96594ad`; backup tag preserved)
+- ✅ Working branch `safecommand_v7` created from cleaned main
+- 🔄 **This file (CLAUDE.md rewrite)** — IN PROGRESS
+- ⏳ Theme scaffold (mobile): `theme/{tokens,colours,ThemeProvider}.ts` + `useBrand` + `useLabel`
+- ⏳ Layout primitives + viewport + safe-area
+- ⏳ Hamburger drawer (responsive Phase 1 deliverable from `UX-DESIGN-DECISIONS.md`)
+- ⏳ Mobile screen retrofits (PhoneScreen, OtpScreen, HomeScreen, TasksScreen, TaskDetailScreen, IncidentScreen)
+- ⏳ Dashboard ThemeProvider + Tailwind brand-vars
+- ⏳ Ops Console ThemeProvider (always SafeCommand brand per EC-14)
+- ⏳ `docs/sales/apollo-mockup-spec.md` (Path C — live working software via brand config row in Phase B)
+
+### Phase B (June 2026 unfreeze — pending)
+**Prerequisites (per `JUNE-2026-REVIEW-REQUIRED.md`):**
+1. Verify Upstash actual May burn vs projection
+2. Apply AWS Activate $1K credits (per `reference_aws_activate_safecommand.md`)
+3. Fix Railway worker Start Commands (per `2026-04-30-19:30_fix.md` G11)
+4. Set workers always-on: `WORKERS_PAUSED=false`, `MASTER_TICK_INTERVAL=60000` on scheduler
+5. Apply repo migration `009_mbv.sql` (Spec Migration 007)
+6. Apply repo migration `010_brand_roaming_drill.sql` (Spec Migration 008)
+7. Build live Apollo mockup (Path C — `apollo-demo` brand config row)
+
+**BR sequence (resume after prerequisites):**
+- BR-10 → BR-08 → BR-12 → BR-13 → BR-A → BR-B → BR-14 → BR-15/16/17 → BR-18/19 → BR-39–55 + BR-64 (VMS) → BR-57–63 (MBV operational behaviours) → BR-20/29 (compliance + post-incident PDFs) → BR-32
+
+**Pilot strategy (per Q4 decision):** Pilot 1 = single-building (clinic/boutique hotel); Pilot 2 = multi-building Hyderabad supermall. Hospital pilots blocked by Rule 12 / Phase 2 GCP migration.
+
+### Phase C (Phase 2/3 post-pilot — out of scope here)
+Roaming UI (BR-R1–R5) → Brand Layer UI (BR-83/84/86/87/88) → GCP asia-south1 migration → Corporate Governance (BR-65–80) → International data residency (BR-79, EC-21).
+
+---
+
+## 25-item Go-Live Checklist (v7 — supersedes 14-item v5 checklist)
+
+Per Business Plan §15.1 — all 25 must pass before first pilot venue live.
+
+| # | Gate | Verified by |
+|---|------|-------------|
+| 1 | RLS isolation: cross-venue query returns 0 rows | Code + DB test |
+| 2 | Building isolation: Model A guard cannot see another building's zones | Integration test |
+| 3 | SH venue-wide: sees all buildings simultaneously in tabbed view | Manual test |
+| 4 | `building_visible()` function: 3 unit tests pass (NULL record / NULL session / scope match) | Automated unit test |
+| 5 | `set_tenant_context()` called with 4 parameters including `p_building_id` | Code review |
+| 6 | `zones_building_sync` trigger fires correctly on floor building assignment | DB test |
+| 7 | `visit_inherit_building` trigger fires on `vms_visits` insert | DB test |
+| 8 | Incident declaration: ≤5 seconds (3 timed runs, all pass) | Timed manual test |
+| 9 | SEV2 building-scoped: only target building staff notified; SH/DSH notified | Integration test |
+| 10 | SEV1 venue-wide: all buildings notified regardless of declared `building_id` (Rule 17) | Integration test |
+| 11 | Offline mode: airplane mode → complete 5 tasks → reconnect → all 5 synced | Manual on physical device |
+| 12 | VMS Mode 1: guard completes manual check-in in ≤60s on Redmi 9A | Timed test on physical device |
+| 13 | VMS Mode 3: Aadhaar QR scanned and parsed correctly | Test with Aadhaar test card |
+| 14 | VMS cross-building gate pass checkout works (admin client; `venue_id` enforced) | Integration test |
+| 15 | Aadhaar audit query: `SELECT COUNT(*) FROM vms_visits WHERE LENGTH(masked_aadhaar) > 9` = 0 | DB query |
+| 16 | Meta WA: all 12 templates approved and successfully sending on test WABA | Live template test |
+| 17 | Airtel DLT: entity registered, SFCMND sender ID active, 5 DLT templates live | Live SMS test |
+| 18 | Firebase FCM: rich push delivered on iOS test device (APNs) + Android (Redmi 9A) | Physical device test |
+| 19 | Compliance PDF: generated for a single building in <60 seconds | Automated timer test |
+| 20 | Multi-building compliance PDF: separate building sections in campus PDF | Manual review |
+| 21 | 2G/3G simulation: critical flows (task, incident, evacuation) complete in <3s | Chrome DevTools + 3G SIM |
+| 22 | Pilot venue: fully configured in Ops Console — buildings, floors, zones, schedules, staff | Ops Console review |
+| 23 | Pilot venue SH: onboarded, app installed, first live task received and completed | SH walkthrough |
+| 24 | Sentry: error alerts active and tested (manual error trigger → alert received) | Alert test |
+| 25 | UptimeRobot: `api.safecommand.in/health` monitoring active; downtime alert tested | Downtime simulation |
+
+---
+
+## Code conventions (preserved from v6 — still valid)
 
 - **Language:** TypeScript strict mode everywhere — no `any`, no implicit `any`
 - **Validation:** Zod schemas in `packages/schemas/` — shared between API and frontend
 - **Naming:** camelCase for variables/functions, PascalCase for types/classes, SCREAMING_SNAKE for enums
 - **File naming:** kebab-case for files and directories
 - **DB queries:** always set tenant context before query; never bypass RLS
-- **Idempotency:** all write operations use `idempotency_key` or `ON CONFLICT DO NOTHING`
+- **Idempotency:** all write operations use `idempotency_key` or `ON CONFLICT DO NOTHING` (Rule 5)
 - **Error responses:** `{ error: { code: string, message: string } }` — never leak stack traces
-- **Env vars:** all secrets in Railway/Vercel env — never hardcode or commit
-- **i18n:** all user-visible strings via `i18next` keys from Day 1 (EC-15) — no hardcoded English
+- **Env vars:** all secrets in Railway/Vercel/Amplify env — never hardcode or commit (Rule 1)
+- **i18n:** all user-visible strings via `i18next` keys from Day 1 (EC-15 / Rule 11)
+- **Theme tokens (NEW v7):** all colours via `useBrand()`; all labels via `useLabel()` — no hardcoded `#xxx` or hardcoded English (EC-17 / Rule 19)
 - **Logging:** structured JSON to stdout (12-factor); never log PII
 - **Tests:** every API route has at least one integration test; RLS tests in `supabase/tests/`
 - **Imports:** use path aliases (`@safecommand/types`, `@safecommand/schemas`) — no deep relative imports
+- **Branch posture:** v7 transition work on `safecommand_v7`; merge to `main` before June unfreeze (ADR 0002)
+- **Migration citations:** "Spec Migration N (repo: `0NN_*.sql`)" — repo offset +2 from spec (ADR 0001)
 
 ---
 
 ## Quality requirements
 
 - All API endpoints return structured `{ error: { code, message } }` on failure — never raw exceptions
-- All inputs validated via Zod at route entry point before any DB call
+- All inputs validated via Zod (.strict()) at route entry before any DB call (Rule 10)
 - All DB queries use parameterised statements via Supabase client — no raw SQL string concatenation
-- All secrets in environment variables — gitleaks blocks commits with secrets
+- All secrets in environment variables — gitleaks blocks commits with secrets (Rule 1)
 - All critical paths have integration tests (task completion, incident declaration, escalation chain)
 - RLS isolation test: cross-venue query must return 0 rows — gate before every deploy
+- Building isolation test (Phase B): Model A guard cannot see another building's zones — gate 2 of 25
 - Idempotency test: duplicate task trigger must produce 0 new rows
-- NFR-02 gate: incident declaration → push notification ≤5 seconds — 3 timed runs required
-- NFR-24 gate: Aadhaar number must never appear in DB — automated nightly audit query
-- Offline test: airplane mode → complete task → reconnect → verify sync
+- NFR-02 gate: incident declaration → push notification ≤5s — 3 timed runs required
+- NFR-24 gate: Aadhaar number must never appear in DB — automated nightly audit query (Rule 13; gate 15 of 25)
+- NFR-32 gate: SEV1 → CXO notification ≤30s (Phase 3)
+- NFR-35 gate: WCAG 2.1 AA contrast (4.5:1) on safety-critical screens regardless of brand override (Phase A enforcement)
+- Offline test: airplane mode → complete task → reconnect → verify sync (Rule 9)
+- Brand layer test (Phase B): apollo-demo config applied → mockup screens render with Apollo logo + colours; 'Powered by SafeCommand' visible in Settings > About (Rule 20)
+- ThemeProvider test (Phase A): all colours/labels in mobile + dashboard pass through `useBrand()` / `useLabel()`; default SafeCommand brand renders correctly with no `corporate_account_id` set
 
 ---
 
-## Current sprint
+## Reference files (v7 — supersedes prior)
 
-**Building:** Sprint 1 foundation (Weeks 1–2)
+- **Business Plan v2:** `../../nexus/specs/2026-05-10_prime_business-plan-report-gen.md` (1127 lines, 91 BRs, 22 sections)
+- **Architecture v7:** `../../nexus/specs/2026-05-10_SafeCommand_Architecture_v7_Complete.md` (6089 lines, 22 ECs, 22 Hard Rules)
+- **Build state log:** `report-gen/SESSION_LOG.md` (gitignored — local only)
+- **Phase A plan + security triage:** `report-gen/2026-05-04-22:30_plan.md`
+- **ADR 0001 — Migration renumbering:** `docs/adr/0001-migration-renumbering.md`
+- **ADR 0002 — `safecommand_v7` branch:** `docs/adr/0002-safecommand-v7-branch.md`
+- **ADR 0003 — Supabase opaque-token keys:** `docs/adr/0003-supabase-publishable-secret-keys.md`
 
-**Sprint 1 BRs in scope:**
-- BR-01: Multi-tenant RLS isolation (database + API middleware)
-- BR-02: Venue Identity auto-generation (SC-[TYPE]-[CITY]-[SEQ])
-- BR-03: Operations Console scaffold (separate auth domain, venue onboarding wizard)
-- BR-04: 8-Role permission model (SH, DSH, SHIFT_COMMANDER, GM, AUDITOR, FM, FLOOR_SUPERVISOR, GROUND_STAFF)
-- BR-05: Three-tier permission middleware matrix
-
-**Sprint 1 deliverables (from Weeks 1–2 architecture plan):**
-- All Supabase migrations deployed (001_enums → 005_seed_templates)
-- Supabase Realtime enabled on `zones` + `incidents` tables
-- Railway: api service deployed — `GET /health` returns 200
-- Expo: project scaffold compiles and runs on physical iOS + Android device
-- i18next configured — all user-visible strings use translation keys
-- Upstash Redis connected — Bull queue definitions registered
-- GitHub Actions: test workflow runs on every PR
-- Auth endpoints: `send-otp`, `verify-otp`, `refresh`, `logout`
-- JWT middleware with tenant context `SET LOCAL`
-- Role permission middleware matrix
-- Audit middleware (auto-writes to `audit_logs` on mutations)
-- Ops Console: floor + zone editor, schedule template CRUD, initial SH account creation
-
-**Sprint 1 gates (must pass before Sprint 2):**
-1. RLS Isolation Proof: cross-venue query returns 0 rows, no error
-2. Full Venue Creation: 3 floors, 12 zones, 5 schedule templates, 1 SH account — all in Ops Console
-
-**Done:** Nothing yet
-
-**Blocked:** Nothing — Day-1 external actions (Meta WABA, Airtel DLT, Firebase, Supabase Pro, Railway, S3, domain) must be initiated before code work begins
+### Prior versions (kept for archaeology only — DO NOT cite for new work)
+- `../../nexus/specs/2026-05-07_prime_business-plan-report-gen.md` (superseded by v2)
+- `../../nexus/specs/2026-05-07_forge_architecture-report-gen.md` (v5/v6, superseded by v7)
+- `../../nexus/decisions/2026-05-05_prime_business-proposal-report-gen.md` (initial proposal)
 
 ---
 
-## Reference files
+## Current sprint focus
 
-- Business proposal: `../../nexus/decisions/2026-05-05_prime_business-proposal-report-gen.md`
-- Business plan: `../../nexus/specs/2026-05-07_prime_business-plan-report-gen.md`
-- Architecture (single source of truth): `../../nexus/specs/2026-05-10_forge_architecture-report-gen.md`
+**Branch:** `safecommand_v7`
+**Active work:** Phase A scaffold (theme + responsive Phase 1 + CLAUDE.md + Apollo mockup spec)
+**Next concrete step:** mobile `theme/tokens.ts` (spacing/typography/radii — design-system layer)
+**Done in Phase A so far:** ADRs 0001/0002/0003 + AWS-process-doc-IMP.md update + this CLAUDE.md rewrite + security history rewrite of `origin/main`
+**Blocked on:** nothing engineering-side; founder actions in parallel (Meta WABA / Airtel DLT / OPC / trademark / Apple Dev / domain / AWS Activate)
