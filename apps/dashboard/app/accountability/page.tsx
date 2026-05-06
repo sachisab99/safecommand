@@ -21,6 +21,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { AppShell } from '../../components/AppShell';
 import { apiFetch } from '../../lib/api';
 import { getSession } from '../../lib/auth';
@@ -248,6 +249,19 @@ function PageHeader({ roster }: { roster: RosterModel }) {
             Who owns each zone — refreshes every minute
           </p>
         </div>
+
+        {/*
+          Cross-link to the status-first companion view. Same data,
+          inverted hierarchy: person-first here vs status-first there.
+          Operator sees a name they need context on → 1-click to live
+          status of all that person's zones.
+        */}
+        <Link
+          href="/zones"
+          className="text-sm text-slate-600 hover:text-blue-700 font-medium underline-offset-4 hover:underline whitespace-nowrap"
+        >
+          View status board <span aria-hidden="true">→</span>
+        </Link>
       </div>
 
       <div className="flex items-center gap-3 sm:gap-5 text-sm flex-wrap">

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { AppShell } from '../../components/AppShell';
 import { apiFetch } from '../../lib/api';
 import { getSession } from '../../lib/auth';
@@ -262,22 +263,37 @@ function PageHeader({
           <p className="text-slate-500 text-sm mt-1">Severity-coded · refreshes every 5 seconds</p>
         </div>
 
-        {/* View mode toggle */}
-        <div className="inline-flex rounded-lg border border-slate-200 bg-white overflow-hidden text-sm shrink-0">
-          <button
-            onClick={() => onViewModeChange('list')}
-            className={`min-h-[44px] px-3 sm:px-4 font-medium transition-colors ${viewMode === 'list' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-50'}`}
-            aria-pressed={viewMode === 'list'}
+        <div className="flex items-center gap-3 flex-wrap">
+          {/*
+            Cross-link to the person-first companion view. Same data,
+            inverted hierarchy: status-first here vs person-first there.
+            Operator sees an active zone → clicks here → sees who's
+            covering it.
+          */}
+          <Link
+            href="/accountability"
+            className="text-sm text-slate-600 hover:text-blue-700 font-medium underline-offset-4 hover:underline whitespace-nowrap"
           >
-            <span aria-hidden="true">▤</span> <span className="hidden sm:inline">List</span>
-          </button>
-          <button
-            onClick={() => onViewModeChange('building')}
-            className={`min-h-[44px] px-3 sm:px-4 font-medium transition-colors ${viewMode === 'building' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-50'}`}
-            aria-pressed={viewMode === 'building'}
-          >
-            <span aria-hidden="true">🏢</span> <span className="hidden sm:inline">Building</span>
-          </button>
+            View accountability <span aria-hidden="true">→</span>
+          </Link>
+
+          {/* View mode toggle */}
+          <div className="inline-flex rounded-lg border border-slate-200 bg-white overflow-hidden text-sm shrink-0">
+            <button
+              onClick={() => onViewModeChange('list')}
+              className={`min-h-[44px] px-3 sm:px-4 font-medium transition-colors ${viewMode === 'list' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-50'}`}
+              aria-pressed={viewMode === 'list'}
+            >
+              <span aria-hidden="true">▤</span> <span className="hidden sm:inline">List</span>
+            </button>
+            <button
+              onClick={() => onViewModeChange('building')}
+              className={`min-h-[44px] px-3 sm:px-4 font-medium transition-colors ${viewMode === 'building' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-50'}`}
+              aria-pressed={viewMode === 'building'}
+            >
+              <span aria-hidden="true">🏢</span> <span className="hidden sm:inline">Building</span>
+            </button>
+          </div>
         </div>
       </div>
 
