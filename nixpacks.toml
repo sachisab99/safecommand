@@ -2,7 +2,11 @@
 nixPkgs = ["nodejs_20"]
 
 [phases.install]
-cmds = ["npm ci"]
+# --include=dev — Railway sets NODE_ENV=production which makes plain
+# `npm ci` skip devDependencies. typescript + @types/* are devDeps and
+# required at build time (tsc → dist/). Without this flag, build fails
+# with TS7016 errors.
+cmds = ["npm ci --include=dev"]
 
 [phases.build]
 cmds = [

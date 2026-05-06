@@ -1,6 +1,6 @@
 [build]
 builder = "nixpacks"
-buildCommand = "npm ci && npm run build --workspace=packages/types --workspace=packages/schemas --workspace=packages/db --workspace=packages/queue --workspace=apps/scheduler"
+buildCommand = "npm ci --include=dev && npm run build --workspace=packages/types --workspace=packages/schemas --workspace=packages/db --workspace=packages/queue --workspace=apps/scheduler"
 
 [deploy]
 startCommand = "node apps/scheduler/dist/index.js"
