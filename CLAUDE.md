@@ -67,6 +67,8 @@ Apollo India example: 65 venues × Professional + Corp Enterprise + Brand Layer 
 | **— (repo only)** | `008_comm_deliveries_nullable.sql` | Deployed 2026-04-30 | `comm_deliveries` nullable relaxation |
 | **Spec 007 (MBV)** | `009_mbv.sql` | **Pending Phase B (June 2026)** | `buildings` table, `building_visible()`, 4-param `set_tenant_context(venue, staff, role, building)`, `ADD COLUMN building_id` everywhere, `zones_building_sync` + `visit_inherit_building` triggers |
 | **Spec 008 (Brand+Roaming+Drill)** | `010_brand_roaming_drill.sql` | **Pending Phase B (June 2026)** | `corporate_brand_configs` (with CHECK `powered_by_text = 'Platform by SafeCommand'`), `roaming_staff_assignments`, `drill_sessions`, `drill_session_participants` |
+| **— (repo only)** | `011_staff_lifecycle.sql` | Deployed 2026-05-06 | 4-state lifecycle enum + status_reason + is_active becomes generated column + enforce_terminated_oneway trigger |
+| **— (repo only)** | `012_rls_schedule_template_seeds.sql` | Deployed 2026-05-06 | Security patch: enable RLS on reference table flagged by Supabase linter (`rls_disabled_in_public`) |
 
 ---
 

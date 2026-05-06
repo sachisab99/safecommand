@@ -1,0 +1,45 @@
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 012_rls_schedule_template_seeds.sql
+-- Security fix: enable RLS on `schedule_template_seeds` reference table.
+--
+-- Background:
+--   Supabase database linter flagged `public.schedule_template_seeds` for
+--   `rls_disabled_in_public` (level: ERROR) on 2026-05-06. The table holds
+--   32 rows of reference data (venue-type-specific schedule template seeds:
+--   HOSPITAL/MALL/HOTEL/CORPORATE × ~8 templates each). It was created in
+--   migration `005_seed_templates.sql` but RLS was never enabled.
+--
+-- Risk:
+--   Without RLS, the table was implicitly readable + writable by anyone with
+--   the publishable/anon API key. Read exposure is low (no PII, just template
+--   catalog). Write exposure is the concern: an attacker could tamper with
+--   seed templates → corrupted templates would propagate to every NEW venue
+--   that gets created via `provision_venue_templates(...)`. Existing venues
+--   already have their cloned `schedule_templates` rows, so they're safe.
+--
+-- Fix:
+--   Enable RLS with NO policies → only service-role (admin client) can
+--   read/write. Restrictive default; loosen only when there's a concrete need.
+--   FORCE RLS as belt-and-braces (applies even to the table owner; service-
+--   role still bypasses).
+--
+-- Current consumer audit (2026-05-06):
+--   - `provision_venue_templates(p_venue_id, p_venue_type)` function exists
+--     (defined in mig 005) but is NOT currently invoked from any code path
+--     or trigger. Orphan helper.
+--   - Ops Console venue creation in `apps/ops-console/actions/venues.ts`
+--     does NOT call it today; new venues get manually-created templates
+--     via the Templates tab.
+--
+-- Phase B June note:
+--   When `provision_venue_templates` is wired up (auto-seed templates on
+--   venue creation), it should be marked `SECURITY DEFINER` so it can read
+--   from `schedule_template_seeds` even when invoked from non-service-role
+--   contexts. Or add a permissive SELECT policy then.
+--
+-- Production already patched 2026-05-06 via direct psql; this file is for
+-- fresh-deploy-environment idempotency.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+ALTER TABLE schedule_template_seeds ENABLE ROW LEVEL SECURITY;
+ALTER TABLE schedule_template_seeds FORCE ROW LEVEL SECURITY;
