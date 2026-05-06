@@ -99,6 +99,14 @@ FROM day_shift, commander;
 --   T1-Restroom-Basement, T2-Parking-Entrance, T2-Restroom-Basement
 -- These render the dashboard /accountability coverage-gap callout.
 
+-- Note on TEST_DEMO_Security_S01:
+-- We also assign one of the existing TEST_DEMO_* staff to a zone so the
+-- founder can demo Mobile MyShift in a Loom recording without needing to
+-- update Railway's TEST_PHONE_PAIRS env (TEST_DEMO_Security_S01's phone
+-- +919000012301 is already in the bypass; the new +919999XXX phones are
+-- not). This drops uncovered from 3 → 2 — coverage-gap callout still
+-- renders meaningfully on /accountability.
+
 WITH inst AS (
   SELECT shift_instances.id FROM shift_instances
   JOIN shifts ON shifts.id = shift_instances.shift_id
@@ -107,9 +115,11 @@ WITH inst AS (
     AND shift_instances.shift_date = CURRENT_DATE
 ),
 staff_lookup AS (
+  -- Include both seeded staff (+919999*) AND the existing test staff
+  -- TEST_DEMO_Security_S01 so the Loom mobile demo works out-of-the-box
   SELECT id, name FROM staff
   WHERE venue_id = :venue_id
-    AND phone LIKE '+919999%'
+    AND (phone LIKE '+919999%' OR name = 'TEST_DEMO_Security_S01')
 ),
 zone_lookup AS (
   SELECT id, name FROM zones WHERE venue_id = :venue_id
@@ -120,15 +130,16 @@ INSERT INTO staff_zone_assignments (
 SELECT :venue_id, inst.id, s.id, z.id, 'PRIMARY'::shift_assignment_type_enum
 FROM inst, (
   VALUES
-    ('Rajesh Kumar',  'T1-Lift'),
-    ('Rajesh Kumar',  'T1-Reception'),
-    ('Rajesh Kumar',  'T2-Lift'),
-    ('Priya Sharma',  'T1-Stair'),
-    ('Priya Sharma',  'T2-Stair'),
-    ('Anil Reddy',    'T1-Parking'),
-    ('Anil Reddy',    'T1-Parking-Entrance'),
-    ('Lakshmi Iyer',  'T2-Parking'),
-    ('Vikram Singh',  'T2-Reception')
+    ('Rajesh Kumar',           'T1-Lift'),
+    ('Rajesh Kumar',           'T1-Reception'),
+    ('Rajesh Kumar',           'T2-Lift'),
+    ('Priya Sharma',           'T1-Stair'),
+    ('Priya Sharma',           'T2-Stair'),
+    ('Anil Reddy',             'T1-Parking'),
+    ('Anil Reddy',             'T1-Parking-Entrance'),
+    ('Lakshmi Iyer',           'T2-Parking'),
+    ('Vikram Singh',           'T2-Reception'),
+    ('TEST_DEMO_Security_S01', 'T2-Parking-Entrance')
 ) AS pairs(staff_name, zone_name)
 JOIN staff_lookup s ON s.name = pairs.staff_name
 JOIN zone_lookup z  ON z.name = pairs.zone_name;
