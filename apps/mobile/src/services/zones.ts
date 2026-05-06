@@ -111,3 +111,30 @@ export function groupZonesByFloor(zones: AccountableZone[]): FloorGroup[] {
       zones: g.zones.sort((a, b) => a.name.localeCompare(b.name)),
     }));
 }
+
+/**
+ * fetchMyZones — staff's own zone assignments for the active shift.
+ *
+ * Implementation note: filters /v1/zones/accountability client-side to
+ * zones where any assignment matches the given staffId. We use the
+ * existing endpoint instead of adding a new /v1/shifts/active because
+ * the api is in May freeze posture (no Railway redeploy). The richer
+ * endpoint with shift commander / crewmates / time-remaining lands in
+ * Phase B (June 2026).
+ *
+ * Known May limitation: the upstream endpoint does NOT yet filter for
+ * `shift_instances.status = 'ACTIVE'`, so if a closed shift's
+ * assignments aren't cleared, this would return them too. In practice
+ * we only run one demo shift at a time; full filter ships in Phase B.
+ */
+export async function fetchMyZones(staffId: string): Promise<{
+  zones: AccountableZone[];
+  error: string | null;
+}> {
+  const { zones, error } = await fetchZoneAccountability();
+  if (error) return { zones: [], error };
+  const mine = zones.filter((z) =>
+    z.staff_zone_assignments.some((a) => a.staff?.id === staffId),
+  );
+  return { zones: mine, error: null };
+}

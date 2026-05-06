@@ -7,6 +7,7 @@ import { IncidentScreen } from './src/screens/IncidentScreen';
 import { StaffScreen } from './src/screens/StaffScreen';
 import { ZonesScreen } from './src/screens/ZonesScreen';
 import { ZoneStatusBoardScreen } from './src/screens/ZoneStatusBoardScreen';
+import { MyShiftScreen } from './src/screens/MyShiftScreen';
 import { getStoredSession, clearSession } from './src/services/auth';
 import { initDb, syncPending } from './src/services/tasks';
 import type { AuthSession, OtpConfirmation } from './src/services/auth';
@@ -21,7 +22,8 @@ type ScreenName =
   | 'incident'
   | 'staff'
   | 'zones'
-  | 'zoneStatusBoard';
+  | 'zoneStatusBoard'
+  | 'myShift';
 
 initDb(); // initialise SQLite tables at module load
 
@@ -96,6 +98,7 @@ function AppRouter(): React.JSX.Element {
           onManageStaff={() => setScreen('staff')}
           onZoneAccountability={() => setScreen('zones')}
           onZoneStatusBoard={() => setScreen('zoneStatusBoard')}
+          onMyShift={() => setScreen('myShift')}
         />
       )}
       {screen === 'incident' && (
@@ -115,6 +118,14 @@ function AppRouter(): React.JSX.Element {
       {screen === 'zones' && <ZonesScreen onBack={() => setScreen('tasks')} />}
       {screen === 'zoneStatusBoard' && (
         <ZoneStatusBoardScreen onBack={() => setScreen('tasks')} />
+      )}
+      {screen === 'myShift' && session && (
+        <MyShiftScreen
+          staffId={session.staff.id}
+          staffName={session.staff.name}
+          staffRole={session.staff.role}
+          onBack={() => setScreen('tasks')}
+        />
       )}
     </>
   );

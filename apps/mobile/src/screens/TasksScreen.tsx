@@ -113,6 +113,7 @@ interface Props {
   onManageStaff: () => void;
   onZoneAccountability: () => void;
   onZoneStatusBoard: () => void;
+  onMyShift: () => void;
 }
 
 export function TasksScreen({
@@ -122,6 +123,7 @@ export function TasksScreen({
   onManageStaff,
   onZoneAccountability,
   onZoneStatusBoard,
+  onMyShift,
 }: Props): React.JSX.Element {
   const c = useColours();
   const brand = useBrand();
@@ -221,6 +223,16 @@ export function TasksScreen({
       title: 'Primary',
       items: [
         { key: 'tasks', label: 'My Tasks', icon: '📋', selected: true, onPress: () => undefined },
+        // BR-04 / BR-19 — "My Shift" focuses on the staff's own coverage.
+        // Sits next to My Tasks because both are "what I personally do today";
+        // the venue-wide Zone Status / Zone Accountability views below are for
+        // command roles. A GS opens this first to know which zones are theirs.
+        {
+          key: 'myShift',
+          label: 'My Shift',
+          icon: '🪪',
+          onPress: onMyShift,
+        },
         // BR-18 Zone Status Board — "Where are the problems right now?" Status-first
         // view, severity-coded, refreshes every 30s (NFR-10). Companion to Zone
         // Accountability below; both surfaces are essential — Status answers urgency,
