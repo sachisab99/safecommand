@@ -11,8 +11,6 @@
  */
 
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
-import { cookies } from 'next/headers';
 import { getAdminClient } from '@/lib/supabase';
 
 interface VenueRow {
@@ -60,11 +58,9 @@ async function getStats() {
 }
 
 export default async function HomePage() {
-  // Auth gate — bounce to /login if not authenticated. Pre-existing pages
-  // didn't enforce this consistently; we close the gap on the home route.
-  const cookieStore = await cookies();
-  if (!cookieStore.has('ops_auth')) redirect('/login');
-
+  // Auth gate is enforced globally by `proxy.ts` (Next 16's middleware
+  // equivalent — every request is checked before reaching any page).
+  // No per-page cookie check needed.
   const stats = await getStats();
 
   return (
