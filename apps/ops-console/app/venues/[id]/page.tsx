@@ -16,9 +16,31 @@ import {
   reactivateStaffAction,
   updateStaffAction,
 } from '@/actions/venues';
-import type { Venue, Floor, Zone, ScheduleTemplate, StaffRole, FrequencyType, EvidenceType } from '@safecommand/types';
+import {
+  createShiftAction,
+  updateShiftAction,
+  deactivateShiftAction,
+  reactivateShiftAction,
+  createShiftInstanceAction,
+  activateShiftInstanceAction,
+  closeShiftInstanceAction,
+  replaceZoneAssignmentsAction,
+} from '@/actions/shifts';
+import { ZoneAssignmentGrid } from '@/components/ZoneAssignmentGrid';
+import type {
+  Venue,
+  Floor,
+  Zone,
+  ScheduleTemplate,
+  StaffRole,
+  FrequencyType,
+  EvidenceType,
+  Shift,
+  ShiftInstance,
+  StaffZoneAssignment,
+} from '@safecommand/types';
 
-type Tab = 'floors' | 'templates' | 'staff';
+type Tab = 'floors' | 'templates' | 'staff' | 'shifts';
 
 interface Staff {
   id: string;
@@ -33,14 +55,21 @@ interface FloorWithZones extends Floor {
   zones: Zone[];
 }
 
-async function getData(id: string) {
+async function getData(id: string, rosterDate: string) {
   const client = getAdminClient();
-  const [venueRes, floorsRes, zonesRes, templatesRes, staffRes] = await Promise.all([
+  const [
+    venueRes, floorsRes, zonesRes, templatesRes, staffRes,
+    shiftsRes, shiftInstancesRes, assignmentsRes,
+  ] = await Promise.all([
     client.from('venues').select('*').eq('id', id).single(),
     client.from('floors').select('*').eq('venue_id', id).order('floor_number'),
     client.from('zones').select('*').eq('venue_id', id).order('name'),
     client.from('schedule_templates').select('*').eq('venue_id', id).order('title'),
     client.from('staff').select('id,name,phone,role,is_active,firebase_auth_id').eq('venue_id', id).order('name'),
+    client.from('shifts').select('*').eq('venue_id', id).order('start_time'),
+    client.from('shift_instances').select('*').eq('venue_id', id).eq('shift_date', rosterDate),
+    // Pull all assignments for shift_instances on this date — small set, single round-trip
+    client.from('staff_zone_assignments').select('*').eq('venue_id', id),
   ]);
 
   if (venueRes.error || !venueRes.data) return null;
@@ -55,9 +84,21 @@ async function getData(id: string) {
   return {
     venue: venueRes.data as Venue,
     floors: floorsWithZones,
+    zones,
     templates: (templatesRes.data ?? []) as ScheduleTemplate[],
     staff: (staffRes.data ?? []) as Staff[],
+    shifts: (shiftsRes.data ?? []) as Shift[],
+    shiftInstances: (shiftInstancesRes.data ?? []) as ShiftInstance[],
+    assignments: (assignmentsRes.data ?? []) as StaffZoneAssignment[],
   };
+}
+
+/** Today's date in venue timezone. For May freeze we use server time + IST. */
+function todayIST(): string {
+  const now = new Date();
+  // Asia/Kolkata is +5:30, no DST. Format as YYYY-MM-DD in that zone.
+  const istMs = now.getTime() + (5.5 * 60 * 60 * 1000);
+  return new Date(istMs).toISOString().slice(0, 10);
 }
 
 /* ─── Reference data ─────────────────────────────────────────────────────── */
@@ -145,15 +186,19 @@ export default async function VenueDetailPage({
     view_zone?: string;  edit_zone?: string;
     view_tpl?: string;   edit_tpl?: string;
     view_staff?: string; edit_staff?: string;
+    edit_shift?: string;
+    /** YYYY-MM-DD — date to view roster for. Defaults to today (IST). */
+    roster_date?: string;
   }>;
 }) {
   const { id } = await params;
   const sp = await searchParams;
   const activeTab = ((sp.tab ?? 'floors') as Tab);
-  const data = await getData(id);
+  const rosterDate = sp.roster_date ?? todayIST();
+  const data = await getData(id, rosterDate);
   if (!data) notFound();
 
-  const { venue, floors, templates, staff } = data;
+  const { venue, floors, zones, templates, staff, shifts, shiftInstances, assignments } = data;
   const totalZones = floors.reduce((acc, f) => acc + f.zones.length, 0);
 
   return (
@@ -188,16 +233,17 @@ export default async function VenueDetailPage({
       <div className="bg-white border-b border-gray-200">
         <div className="max-w-6xl mx-auto px-6">
           <nav className="flex gap-6">
-            {(['floors', 'Schedule Templates', 'Staff'] as const).map((_, i) => {
-              const tabs: [Tab, string][] = [['floors', 'Floors & Zones'], ['templates', 'Schedule Templates'], ['staff', 'Staff']];
-              const [t, label] = tabs[i]!;
-              return (
-                <Link key={t} href={`/venues/${id}?tab=${t}`}
-                  className={`py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === t ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-900'}`}>
-                  {label}
-                </Link>
-              );
-            })}
+            {([
+              ['floors', 'Floors & Zones'],
+              ['templates', 'Schedule Templates'],
+              ['staff', 'Staff'],
+              ['shifts', 'Shifts & Roster'],
+            ] as [Tab, string][]).map(([t, label]) => (
+              <Link key={t} href={`/venues/${id}?tab=${t}`}
+                className={`py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === t ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-900'}`}>
+                {label}
+              </Link>
+            ))}
           </nav>
         </div>
       </div>
@@ -220,6 +266,19 @@ export default async function VenueDetailPage({
           <StaffTab
             venue={venue} staff={staff}
             viewStaff={sp.view_staff} editStaff={sp.edit_staff}
+          />
+        )}
+        {activeTab === 'shifts' && (
+          <ShiftsTab
+            venue={venue}
+            shifts={shifts}
+            shiftInstances={shiftInstances}
+            assignments={assignments}
+            staff={staff}
+            floors={floors}
+            zones={zones}
+            rosterDate={rosterDate}
+            editShift={sp.edit_shift}
           />
         )}
       </main>
@@ -1051,6 +1110,416 @@ function TemplateFormFields({ template }: { template?: ScheduleTemplate }) {
         </div>
       </div>
     </>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SHIFTS & ROSTER TAB
+   Shift templates (recurring CRUD) + Today's Roster (instance + assignments)
+═══════════════════════════════════════════════════════════════════════════ */
+
+function ShiftsTab({
+  venue,
+  shifts,
+  shiftInstances,
+  assignments,
+  staff,
+  floors,
+  zones,
+  rosterDate,
+  editShift,
+}: {
+  venue: Venue;
+  shifts: Shift[];
+  shiftInstances: ShiftInstance[];
+  assignments: StaffZoneAssignment[];
+  staff: Staff[];
+  floors: FloorWithZones[];
+  zones: Zone[];
+  rosterDate: string;
+  editShift?: string;
+}) {
+  const closeUrl = `/venues/${venue.id}?tab=shifts`;
+  const editingShift = shifts.find((s) => s.id === editShift);
+  const activeStaff = staff.filter((s) => s.is_active);
+
+  // Format date as readable
+  const dateLabel = new Date(rosterDate + 'T00:00:00+05:30').toLocaleDateString(
+    'en-IN',
+    { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' },
+  );
+
+  return (
+    <div className="space-y-8">
+      {/* ── Section 1: Shift templates ── */}
+      <section>
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">Shift Templates</h2>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Recurring shift definitions. Each becomes a daily instance you assign staff to.
+            </p>
+          </div>
+        </div>
+
+        {/* Edit panel */}
+        {editingShift && (
+          <div className="bg-white rounded-2xl border border-amber-200 overflow-hidden mb-4">
+            <div className="flex items-center justify-between px-6 py-3 bg-amber-50 border-b border-amber-100">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-amber-600 uppercase tracking-wider">
+                  Editing Shift
+                </span>
+                <span className="text-gray-400">·</span>
+                <span className="font-medium text-gray-900">{editingShift.name}</span>
+              </div>
+              <Link href={closeUrl} className="text-sm text-gray-400 hover:text-gray-700">
+                ✕ Cancel
+              </Link>
+            </div>
+            <form action={updateShiftAction} className="p-6">
+              <input type="hidden" name="id" value={editingShift.id} />
+              <input type="hidden" name="venue_id" value={venue.id} />
+              <div className="flex gap-4 items-end flex-wrap">
+                <div className="flex-[2] min-w-36">
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Shift name *
+                  </label>
+                  <input
+                    name="name"
+                    required
+                    defaultValue={editingShift.name}
+                    className={inputCls}
+                  />
+                </div>
+                <div className="flex-1 min-w-24">
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Start *
+                  </label>
+                  <input
+                    name="start_time"
+                    type="time"
+                    required
+                    defaultValue={editingShift.start_time.slice(0, 5)}
+                    className={inputCls}
+                  />
+                </div>
+                <div className="flex-1 min-w-24">
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    End *
+                  </label>
+                  <input
+                    name="end_time"
+                    type="time"
+                    required
+                    defaultValue={editingShift.end_time.slice(0, 5)}
+                    className={inputCls}
+                  />
+                </div>
+                <button type="submit" className={saveBtnCls}>Save</button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {/* Add shift form */}
+        <div className="bg-white rounded-2xl border border-gray-200 p-6 mb-4">
+          <h3 className="text-sm font-semibold text-gray-900 mb-3">Add shift template</h3>
+          <form action={createShiftAction} className="flex gap-4 items-end flex-wrap">
+            <input type="hidden" name="venue_id" value={venue.id} />
+            <div className="flex-[2] min-w-36">
+              <label className="block text-xs font-medium text-gray-700 mb-1">Name *</label>
+              <input
+                name="name"
+                required
+                placeholder="e.g. Day Shift"
+                className={inputCls}
+              />
+            </div>
+            <div className="flex-1 min-w-24">
+              <label className="block text-xs font-medium text-gray-700 mb-1">Start *</label>
+              <input name="start_time" type="time" required className={inputCls} />
+            </div>
+            <div className="flex-1 min-w-24">
+              <label className="block text-xs font-medium text-gray-700 mb-1">End *</label>
+              <input name="end_time" type="time" required className={inputCls} />
+            </div>
+            <button type="submit" className={btnCls}>Add</button>
+          </form>
+          <p className="text-xs text-gray-500 mt-2">
+            End time before start time = wraps midnight (e.g. 22:00–06:00 night shift).
+          </p>
+        </div>
+
+        {/* Templates list */}
+        {shifts.length === 0 ? (
+          <div className="text-center py-12 text-gray-400 text-sm bg-white border border-dashed border-gray-200 rounded-2xl">
+            No shift templates yet. Add one above to define a recurring shift.
+          </div>
+        ) : (
+          <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+            <table className="w-full">
+              <thead>
+                <tr>
+                  <th className={thCls}>Name</th>
+                  <th className={thCls}>Time</th>
+                  <th className={thCls}>Status</th>
+                  <th className={`${thCls} text-right`}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {shifts.map((shift) => (
+                  <tr key={shift.id} className="border-t border-gray-100">
+                    <td className="px-6 py-3 text-sm text-gray-900 font-medium">
+                      {shift.name}
+                    </td>
+                    <td className="px-6 py-3 text-sm text-gray-600 font-mono">
+                      {shift.start_time.slice(0, 5)} → {shift.end_time.slice(0, 5)}
+                      {shift.end_time < shift.start_time && (
+                        <span className="ml-2 text-xs text-amber-600">↺ wraps</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-3 text-sm">
+                      {shift.is_active ? (
+                        <span className="text-emerald-700 text-xs font-medium px-2 py-0.5 rounded bg-emerald-50">
+                          Active
+                        </span>
+                      ) : (
+                        <span className="text-gray-500 text-xs font-medium px-2 py-0.5 rounded bg-gray-100">
+                          Inactive
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-6 py-3 text-right">
+                      <div className="flex justify-end gap-2">
+                        <Link
+                          href={`/venues/${venue.id}?tab=shifts&edit_shift=${shift.id}`}
+                          className={editLinkCls}
+                        >
+                          Edit
+                        </Link>
+                        {shift.is_active ? (
+                          <form action={deactivateShiftAction} className="inline">
+                            <input type="hidden" name="venue_id" value={venue.id} />
+                            <input type="hidden" name="id" value={shift.id} />
+                            <button type="submit" className={removeBtnCls}>
+                              Deactivate
+                            </button>
+                          </form>
+                        ) : (
+                          <form action={reactivateShiftAction} className="inline">
+                            <input type="hidden" name="venue_id" value={venue.id} />
+                            <input type="hidden" name="id" value={shift.id} />
+                            <button
+                              type="submit"
+                              className="px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded hover:bg-green-700"
+                            >
+                              Enable
+                            </button>
+                          </form>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {/* ── Section 2: Today's Roster ── */}
+      <section>
+        <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">Today's Roster</h2>
+            <p className="text-xs text-gray-500 mt-0.5">{dateLabel}</p>
+          </div>
+          <form className="flex items-center gap-2">
+            <input type="hidden" name="tab" value="shifts" />
+            <label className="text-xs font-medium text-gray-700">Roster date</label>
+            <input
+              type="date"
+              name="roster_date"
+              defaultValue={rosterDate}
+              className={`${inputCls} w-40`}
+            />
+            <button type="submit" className={btnCls}>View</button>
+          </form>
+        </div>
+
+        {shifts.filter((s) => s.is_active).length === 0 ? (
+          <div className="text-center py-12 text-gray-400 text-sm bg-white border border-dashed border-gray-200 rounded-2xl">
+            No active shift templates. Add one above to start rostering.
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {shifts
+              .filter((s) => s.is_active)
+              .map((shift) => {
+                const instance = shiftInstances.find((si) => si.shift_id === shift.id);
+                const instanceAssignments = instance
+                  ? assignments.filter((a) => a.shift_instance_id === instance.id)
+                  : [];
+                const commander = instance?.commander_staff_id
+                  ? staff.find((s) => s.id === instance.commander_staff_id)
+                  : null;
+                return (
+                  <ShiftRosterCard
+                    key={shift.id}
+                    venueId={venue.id}
+                    shift={shift}
+                    rosterDate={rosterDate}
+                    instance={instance ?? null}
+                    commander={commander ?? null}
+                    instanceAssignments={instanceAssignments}
+                    staff={staff}
+                    activeStaff={activeStaff}
+                    floors={floors}
+                    zones={zones}
+                  />
+                );
+              })}
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+/* ─── ShiftRosterCard — one card per shift_template + its today instance ─── */
+
+function ShiftRosterCard({
+  venueId,
+  shift,
+  rosterDate,
+  instance,
+  commander,
+  instanceAssignments,
+  staff,
+  activeStaff,
+  floors,
+  zones,
+}: {
+  venueId: string;
+  shift: Shift;
+  rosterDate: string;
+  instance: ShiftInstance | null;
+  commander: Staff | null;
+  instanceAssignments: StaffZoneAssignment[];
+  staff: Staff[];
+  activeStaff: Staff[];
+  floors: FloorWithZones[];
+  zones: Zone[];
+}) {
+  const commanderEligible = activeStaff.filter((s) =>
+    ['SH', 'DSH', 'SHIFT_COMMANDER'].includes(s.role),
+  );
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+      {/* Card header */}
+      <div className="px-6 py-4 bg-gray-50 border-b border-gray-200 flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3 flex-wrap">
+          <div>
+            <div className="font-semibold text-gray-900">{shift.name}</div>
+            <div className="text-xs text-gray-500 font-mono">
+              {shift.start_time.slice(0, 5)} → {shift.end_time.slice(0, 5)}
+            </div>
+          </div>
+          {instance && (
+            <span
+              className={`text-xs font-bold uppercase tracking-wide px-2 py-0.5 rounded ${
+                instance.status === 'ACTIVE'
+                  ? 'bg-emerald-100 text-emerald-700'
+                  : instance.status === 'CLOSED'
+                    ? 'bg-gray-200 text-gray-600'
+                    : 'bg-amber-100 text-amber-700'
+              }`}
+            >
+              {instance.status}
+            </span>
+          )}
+          {commander && (
+            <span className="text-xs text-gray-600">
+              Commander: <span className="font-semibold text-gray-900">{commander.name}</span>
+            </span>
+          )}
+        </div>
+
+        {/* Action buttons depend on instance state */}
+        {!instance && (
+          <form action={createShiftInstanceAction} className="inline">
+            <input type="hidden" name="venue_id" value={venueId} />
+            <input type="hidden" name="shift_id" value={shift.id} />
+            <input type="hidden" name="shift_date" value={rosterDate} />
+            <button type="submit" className={btnCls}>
+              Create instance for {rosterDate}
+            </button>
+          </form>
+        )}
+
+        {instance && instance.status === 'PENDING' && (
+          <form action={activateShiftInstanceAction} className="inline flex items-center gap-2">
+            <input type="hidden" name="venue_id" value={venueId} />
+            <input type="hidden" name="id" value={instance.id} />
+            <select name="commander_staff_id" required className={`${selectCls} w-44`}>
+              <option value="">Select commander…</option>
+              {commanderEligible.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name} ({s.role})
+                </option>
+              ))}
+            </select>
+            <button type="submit" className={btnCls}>
+              Activate
+            </button>
+          </form>
+        )}
+
+        {instance && instance.status === 'ACTIVE' && (
+          <form action={closeShiftInstanceAction} className="inline">
+            <input type="hidden" name="venue_id" value={venueId} />
+            <input type="hidden" name="id" value={instance.id} />
+            <button type="submit" className={removeBtnCls}>
+              Close shift
+            </button>
+          </form>
+        )}
+      </div>
+
+      {/* Card body — assignment grid (only when ACTIVE) */}
+      {instance && instance.status === 'ACTIVE' && (
+        <div className="p-6">
+          <ZoneAssignmentGrid
+            venueId={venueId}
+            shiftInstanceId={instance.id}
+            staff={activeStaff.filter((s) => !['GM', 'AUDITOR'].includes(s.role))}
+            floors={floors}
+            zones={zones}
+            existingAssignments={instanceAssignments.map((a) => ({
+              staff_id: a.staff_id,
+              zone_id: a.zone_id,
+              assignment_type: a.assignment_type,
+            }))}
+            onSubmit={replaceZoneAssignmentsAction}
+          />
+        </div>
+      )}
+
+      {instance && instance.status === 'PENDING' && (
+        <div className="px-6 py-4 text-sm text-gray-500">
+          Activate this shift to assign staff to zones.
+        </div>
+      )}
+
+      {instance && instance.status === 'CLOSED' && (
+        <div className="px-6 py-4 text-sm text-gray-500">
+          Shift closed. {instanceAssignments.length} historical assignment
+          {instanceAssignments.length === 1 ? '' : 's'} preserved.
+        </div>
+      )}
+    </div>
   );
 }
 

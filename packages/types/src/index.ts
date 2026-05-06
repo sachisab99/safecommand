@@ -144,6 +144,51 @@ export interface TaskInstance {
   updated_at: string;
 }
 
+// ─── Shift / roster types ────────────────────────────────────────────────────
+// Backed by `shifts`, `shift_instances`, `staff_zone_assignments` tables.
+// MBV-aware via `building_id` (post-mig 009 — Rule 15 nullable; NULL = venue-wide).
+
+export type ShiftInstanceStatus = 'PENDING' | 'ACTIVE' | 'CLOSED';
+
+export type ShiftAssignmentType = 'PRIMARY' | 'SECONDARY' | 'BACKUP';
+
+/** Recurring shift definition (the template — e.g. "Day Shift 09:00–18:00") */
+export interface Shift {
+  id: string;
+  venue_id: string;
+  building_id: string | null;
+  name: string;
+  start_time: string; // HH:MM:SS
+  end_time: string;   // HH:MM:SS — wraps midnight if end_time < start_time
+  is_active: boolean;
+  created_at: string;
+}
+
+/** A single day's instance of a shift template */
+export interface ShiftInstance {
+  id: string;
+  venue_id: string;
+  building_id: string | null;
+  shift_id: string;
+  shift_date: string; // YYYY-MM-DD
+  commander_staff_id: string | null;
+  status: ShiftInstanceStatus;
+  activated_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Staff member's zone coverage for a specific shift_instance */
+export interface StaffZoneAssignment {
+  id: string;
+  venue_id: string;
+  shift_instance_id: string;
+  staff_id: string;
+  zone_id: string;
+  assignment_type: ShiftAssignmentType;
+  created_at: string;
+}
+
 export interface Incident {
   id: string;
   venue_id: string;
