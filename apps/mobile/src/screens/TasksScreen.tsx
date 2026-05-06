@@ -114,6 +114,7 @@ interface Props {
   onZoneAccountability: () => void;
   onZoneStatusBoard: () => void;
   onMyShift: () => void;
+  onIncidentDetail: (incidentId: string) => void;
 }
 
 export function TasksScreen({
@@ -124,6 +125,7 @@ export function TasksScreen({
   onZoneAccountability,
   onZoneStatusBoard,
   onMyShift,
+  onIncidentDetail,
 }: Props): React.JSX.Element {
   const c = useColours();
   const brand = useBrand();
@@ -398,6 +400,7 @@ export function TasksScreen({
           resolving={resolving === incident.id}
           onMarkSafe={() => handleMarkSafe(incident)}
           onResolve={() => handleResolve(incident)}
+          onOpenDetail={() => onIncidentDetail(incident.id)}
         />
       ))}
 
@@ -486,6 +489,7 @@ interface IncidentBannerProps {
   resolving: boolean;
   onMarkSafe: () => void;
   onResolve: () => void;
+  onOpenDetail: () => void;
 }
 
 function IncidentBanner({
@@ -494,6 +498,7 @@ function IncidentBanner({
   resolving,
   onMarkSafe,
   onResolve,
+  onOpenDetail,
 }: IncidentBannerProps): React.JSX.Element {
   const c = useColours();
   const sevColor = severityColour(c, incident.severity);
@@ -511,16 +516,30 @@ function IncidentBanner({
           <Text style={[bs.sevPillText, { color: sevColor }]}>{incident.severity}</Text>
         </View>
       </View>
-      <View style={bs.bannerMid}>
+      {/*
+       * The mid section (icon + type/zone + time) is the tap target for
+       * navigating to the detail screen. Action buttons below remain
+       * scoped (so accidental taps on those don't navigate).
+       */}
+      <TouchableOpacity
+        style={bs.bannerMid}
+        onPress={onOpenDetail}
+        accessibilityRole="button"
+        accessibilityLabel={`Open ${incident.incident_type} incident detail`}
+        activeOpacity={0.7}
+        hitSlop={touch.hitSlop}
+      >
         <Text style={bs.bannerIcon}>{icon}</Text>
         <View style={bs.bannerMidText}>
           <Text style={[bs.bannerType, { color: c.textPrimary }]}>
             {incident.incident_type.charAt(0) + incident.incident_type.slice(1).toLowerCase()}
             {incident.zones ? ` · ${incident.zones.name}` : ''}
           </Text>
-          <Text style={[bs.bannerTime, { color: c.textMuted }]}>{elapsedStr}</Text>
+          <Text style={[bs.bannerTime, { color: c.textMuted }]}>
+            {elapsedStr} · Tap for timeline →
+          </Text>
         </View>
-      </View>
+      </TouchableOpacity>
       <View style={bs.bannerActions}>
         <TouchableOpacity
           style={[

@@ -8,6 +8,7 @@ import { StaffScreen } from './src/screens/StaffScreen';
 import { ZonesScreen } from './src/screens/ZonesScreen';
 import { ZoneStatusBoardScreen } from './src/screens/ZoneStatusBoardScreen';
 import { MyShiftScreen } from './src/screens/MyShiftScreen';
+import { IncidentDetailScreen } from './src/screens/IncidentDetailScreen';
 import { getStoredSession, clearSession } from './src/services/auth';
 import { initDb, syncPending } from './src/services/tasks';
 import type { AuthSession, OtpConfirmation } from './src/services/auth';
@@ -23,7 +24,8 @@ type ScreenName =
   | 'staff'
   | 'zones'
   | 'zoneStatusBoard'
-  | 'myShift';
+  | 'myShift'
+  | 'incidentDetail';
 
 initDb(); // initialise SQLite tables at module load
 
@@ -42,6 +44,9 @@ function AppRouter(): React.JSX.Element {
   const [confirmation, setConfirmation] = useState<OtpConfirmation | null>(null);
   const [session, setSession] = useState<AuthSession | null>(null);
   const [, setLastIncidentId] = useState<string | null>(null);
+  // Currently-viewed incident for detail screen — distinct from the
+  // "I just declared this" announcement state above
+  const [viewIncidentId, setViewIncidentId] = useState<string | null>(null);
 
   useEffect(() => {
     getStoredSession().then((s) => {
@@ -99,6 +104,10 @@ function AppRouter(): React.JSX.Element {
           onZoneAccountability={() => setScreen('zones')}
           onZoneStatusBoard={() => setScreen('zoneStatusBoard')}
           onMyShift={() => setScreen('myShift')}
+          onIncidentDetail={(id) => {
+            setViewIncidentId(id);
+            setScreen('incidentDetail');
+          }}
         />
       )}
       {screen === 'incident' && (
@@ -124,6 +133,12 @@ function AppRouter(): React.JSX.Element {
           staffId={session.staff.id}
           staffName={session.staff.name}
           staffRole={session.staff.role}
+          onBack={() => setScreen('tasks')}
+        />
+      )}
+      {screen === 'incidentDetail' && viewIncidentId && (
+        <IncidentDetailScreen
+          incidentId={viewIncidentId}
           onBack={() => setScreen('tasks')}
         />
       )}
