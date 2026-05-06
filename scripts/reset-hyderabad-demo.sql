@@ -63,6 +63,10 @@ WHERE venue_id = :venue_id AND name LIKE '[DEMO] %';
 DELETE FROM staff
 WHERE venue_id = :venue_id AND phone LIKE '+919999%';
 
+-- 8. Remove seed equipment items
+DELETE FROM equipment_items
+WHERE venue_id = :venue_id AND name LIKE '[DEMO]%';
+
 -- ─── Summary ────────────────────────────────────────────────────────────────
 \echo ''
 \echo '═══════════════════════════════════════════════════════════════'
@@ -88,6 +92,9 @@ SELECT 'incidents (seed remaining)', COUNT(*) FROM incidents
   WHERE venue_id = :venue_id AND description LIKE '[DEMO] %'
 UNION ALL
 SELECT 'incident_timeline events', COUNT(*) FROM incident_timeline
-  WHERE venue_id = :venue_id;
+  WHERE venue_id = :venue_id
+UNION ALL
+SELECT 'equipment items (seed remaining)', COUNT(*) FROM equipment_items
+  WHERE venue_id = :venue_id AND name LIKE '[DEMO]%';
 
 COMMIT;

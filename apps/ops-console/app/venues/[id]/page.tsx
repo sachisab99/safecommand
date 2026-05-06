@@ -26,6 +26,12 @@ import {
   closeShiftInstanceAction,
   replaceZoneAssignmentsAction,
 } from '@/actions/shifts';
+import {
+  createEquipmentAction,
+  updateEquipmentAction,
+  deactivateEquipmentAction,
+  reactivateEquipmentAction,
+} from '@/actions/equipment';
 import { ZoneAssignmentGrid } from '@/components/ZoneAssignmentGrid';
 import type {
   Venue,
@@ -38,9 +44,10 @@ import type {
   Shift,
   ShiftInstance,
   StaffZoneAssignment,
+  EquipmentItem,
 } from '@safecommand/types';
 
-type Tab = 'floors' | 'templates' | 'staff' | 'shifts';
+type Tab = 'floors' | 'templates' | 'staff' | 'shifts' | 'equipment';
 
 interface Staff {
   id: string;
@@ -60,6 +67,7 @@ async function getData(id: string, rosterDate: string) {
   const [
     venueRes, floorsRes, zonesRes, templatesRes, staffRes,
     shiftsRes, shiftInstancesRes, assignmentsRes,
+    equipmentRes,
   ] = await Promise.all([
     client.from('venues').select('*').eq('id', id).single(),
     client.from('floors').select('*').eq('venue_id', id).order('floor_number'),
@@ -70,6 +78,7 @@ async function getData(id: string, rosterDate: string) {
     client.from('shift_instances').select('*').eq('venue_id', id).eq('shift_date', rosterDate),
     // Pull all assignments for shift_instances on this date — small set, single round-trip
     client.from('staff_zone_assignments').select('*').eq('venue_id', id),
+    client.from('equipment_items').select('*').eq('venue_id', id).order('next_service_due'),
   ]);
 
   if (venueRes.error || !venueRes.data) return null;
@@ -90,6 +99,7 @@ async function getData(id: string, rosterDate: string) {
     shifts: (shiftsRes.data ?? []) as Shift[],
     shiftInstances: (shiftInstancesRes.data ?? []) as ShiftInstance[],
     assignments: (assignmentsRes.data ?? []) as StaffZoneAssignment[],
+    equipment: (equipmentRes.data ?? []) as EquipmentItem[],
   };
 }
 
@@ -189,6 +199,7 @@ export default async function VenueDetailPage({
     edit_shift?: string;
     /** YYYY-MM-DD — date to view roster for. Defaults to today (IST). */
     roster_date?: string;
+    edit_eq?: string;
   }>;
 }) {
   const { id } = await params;
@@ -198,7 +209,7 @@ export default async function VenueDetailPage({
   const data = await getData(id, rosterDate);
   if (!data) notFound();
 
-  const { venue, floors, zones, templates, staff, shifts, shiftInstances, assignments } = data;
+  const { venue, floors, zones, templates, staff, shifts, shiftInstances, assignments, equipment } = data;
   const totalZones = floors.reduce((acc, f) => acc + f.zones.length, 0);
 
   return (
@@ -234,15 +245,16 @@ export default async function VenueDetailPage({
       {/* Tabs */}
       <div className="bg-white border-b border-gray-200">
         <div className="max-w-6xl mx-auto px-6">
-          <nav className="flex gap-6">
+          <nav className="flex gap-6 overflow-x-auto">
             {([
               ['floors', 'Floors & Zones'],
               ['templates', 'Schedule Templates'],
               ['staff', 'Staff'],
               ['shifts', 'Shifts & Roster'],
+              ['equipment', 'Equipment'],
             ] as [Tab, string][]).map(([t, label]) => (
               <Link key={t} href={`/venues/${id}?tab=${t}`}
-                className={`py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === t ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-900'}`}>
+                className={`py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${activeTab === t ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-900'}`}>
                 {label}
               </Link>
             ))}
@@ -282,6 +294,9 @@ export default async function VenueDetailPage({
             rosterDate={rosterDate}
             editShift={sp.edit_shift}
           />
+        )}
+        {activeTab === 'equipment' && (
+          <EquipmentTab venue={venue} equipment={equipment} editEq={sp.edit_eq} />
         )}
       </main>
     </div>
@@ -1521,6 +1536,374 @@ function ShiftRosterCard({
           {instanceAssignments.length === 1 ? '' : 's'} preserved.
         </div>
       )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   EQUIPMENT TAB (BR-21 partial)
+   Safety equipment with next-service-due tracking. 90/30/7-day expiry alerts
+   computed at render time. Dashboard Health Score Breakdown's Equipment row
+   activates with this data once the api endpoint ships in Phase B (June).
+═══════════════════════════════════════════════════════════════════════════ */
+
+const EQUIPMENT_CATEGORIES: Array<[string, string]> = [
+  ['FIRE_EXTINGUISHER', 'Fire Extinguisher'],
+  ['AED', 'AED (Defibrillator)'],
+  ['SMOKE_DETECTOR', 'Smoke Detector'],
+  ['EMERGENCY_LIGHT', 'Emergency Light'],
+  ['FIRST_AID_KIT', 'First Aid Kit'],
+  ['ALARM_PANEL', 'Alarm Panel'],
+  ['EVACUATION_SIGN', 'Evacuation Sign'],
+  ['OTHER', 'Other'],
+];
+
+const CATEGORY_LABEL: Record<string, string> = Object.fromEntries(EQUIPMENT_CATEGORIES);
+
+/** Days until next_service_due (negative = past due) */
+function daysUntilDue(dueDate: string): number {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const due = new Date(dueDate + 'T00:00:00+05:30');
+  return Math.floor((due.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
+}
+
+interface ExpiryStatus {
+  label: string;
+  cls: string; // tailwind classes
+  rank: number; // sort order (higher = more urgent)
+}
+
+function expiryStatus(daysUntil: number): ExpiryStatus {
+  if (daysUntil < 0) return { label: `OVERDUE ${Math.abs(daysUntil)}d`, cls: 'bg-red-700 text-white', rank: 5 };
+  if (daysUntil <= 7) return { label: `Due in ${daysUntil}d`, cls: 'bg-red-100 text-red-700 border border-red-200', rank: 4 };
+  if (daysUntil <= 30) return { label: `Due in ${daysUntil}d`, cls: 'bg-orange-100 text-orange-700 border border-orange-200', rank: 3 };
+  if (daysUntil <= 90) return { label: `Due in ${daysUntil}d`, cls: 'bg-amber-100 text-amber-700 border border-amber-200', rank: 2 };
+  return { label: 'OK', cls: 'bg-emerald-50 text-emerald-700 border border-emerald-200', rank: 1 };
+}
+
+function EquipmentTab({
+  venue,
+  equipment,
+  editEq,
+}: {
+  venue: Venue;
+  equipment: EquipmentItem[];
+  editEq?: string;
+}) {
+  const closeUrl = `/venues/${venue.id}?tab=equipment`;
+  const editing = equipment.find((e) => e.id === editEq);
+
+  // Compliance summary — what the future api endpoint will compute
+  const active = equipment.filter((e) => e.is_active);
+  const stats = {
+    total: active.length,
+    overdue: active.filter((e) => daysUntilDue(e.next_service_due) < 0).length,
+    due7: active.filter((e) => {
+      const d = daysUntilDue(e.next_service_due);
+      return d >= 0 && d <= 7;
+    }).length,
+    due30: active.filter((e) => {
+      const d = daysUntilDue(e.next_service_due);
+      return d > 7 && d <= 30;
+    }).length,
+    due90: active.filter((e) => {
+      const d = daysUntilDue(e.next_service_due);
+      return d > 30 && d <= 90;
+    }).length,
+    ok: active.filter((e) => daysUntilDue(e.next_service_due) > 90).length,
+  };
+  const complianceScore = active.length === 0
+    ? 100
+    : Math.round((stats.ok / active.length) * 100);
+
+  // Sort: most urgent first, then by next_service_due ascending
+  const sorted = [...active].sort((a, b) => {
+    const ra = expiryStatus(daysUntilDue(a.next_service_due)).rank;
+    const rb = expiryStatus(daysUntilDue(b.next_service_due)).rank;
+    if (ra !== rb) return rb - ra;
+    return a.next_service_due.localeCompare(b.next_service_due);
+  });
+
+  return (
+    <div className="space-y-6">
+      {/* Compliance summary strip */}
+      <section className="bg-white rounded-2xl border border-gray-200 p-5">
+        <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">Equipment Compliance</h2>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Tracks safety equipment with next-service-due dates · 90 / 30 / 7-day expiry windows
+            </p>
+          </div>
+          <div className="text-right">
+            <div
+              className={`text-3xl font-black ${
+                complianceScore >= 80
+                  ? 'text-emerald-700'
+                  : complianceScore >= 60
+                    ? 'text-amber-700'
+                    : 'text-red-700'
+              }`}
+            >
+              {complianceScore}
+            </div>
+            <div className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
+              compliance score
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+          <StatTile label="Total" value={stats.total} tone="neutral" />
+          <StatTile label="OK (>90d)" value={stats.ok} tone={stats.ok > 0 ? 'good' : 'neutral'} />
+          <StatTile label="Due 30-90d" value={stats.due90} tone={stats.due90 > 0 ? 'warn' : 'neutral'} />
+          <StatTile label="Due 7-30d" value={stats.due30} tone={stats.due30 > 0 ? 'warn' : 'neutral'} />
+          <StatTile
+            label="Due ≤7d / overdue"
+            value={stats.due7 + stats.overdue}
+            tone={stats.due7 + stats.overdue > 0 ? 'bad' : 'neutral'}
+          />
+        </div>
+
+        <p className="text-xs text-gray-400 mt-3">
+          Activates the Equipment row (10% weight) of the venue Health Score in Phase B (June 2026).
+        </p>
+      </section>
+
+      {/* Edit panel */}
+      {editing && (
+        <div className="bg-white rounded-2xl border border-amber-200 overflow-hidden">
+          <div className="flex items-center justify-between px-6 py-3 bg-amber-50 border-b border-amber-100">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-amber-600 uppercase tracking-wider">
+                Editing Equipment
+              </span>
+              <span className="text-gray-400">·</span>
+              <span className="font-medium text-gray-900">{editing.name}</span>
+            </div>
+            <Link href={closeUrl} className="text-sm text-gray-400 hover:text-gray-700">
+              ✕ Cancel
+            </Link>
+          </div>
+          <form action={updateEquipmentAction} className="p-6">
+            <input type="hidden" name="id" value={editing.id} />
+            <input type="hidden" name="venue_id" value={venue.id} />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Name *</label>
+                <input
+                  name="name"
+                  required
+                  defaultValue={editing.name}
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Category *</label>
+                <select name="category" required defaultValue={editing.category} className={selectCls}>
+                  {EQUIPMENT_CATEGORIES.map(([v, label]) => (
+                    <option key={v} value={v}>{label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-medium text-gray-700 mb-1">Location</label>
+                <input
+                  name="location_description"
+                  defaultValue={editing.location_description ?? ''}
+                  placeholder="e.g. T1 Reception, beside lift"
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Last serviced</label>
+                <input
+                  name="last_serviced_at"
+                  type="date"
+                  defaultValue={editing.last_serviced_at ?? ''}
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Next service due *</label>
+                <input
+                  name="next_service_due"
+                  type="date"
+                  required
+                  defaultValue={editing.next_service_due}
+                  className={inputCls}
+                />
+              </div>
+            </div>
+            <button type="submit" className={saveBtnCls}>Save changes</button>
+          </form>
+        </div>
+      )}
+
+      {/* Add form */}
+      <section className="bg-white rounded-2xl border border-gray-200 p-5">
+        <h3 className="text-sm font-semibold text-gray-900 mb-3">Add equipment</h3>
+        <form action={createEquipmentAction} className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+          <input type="hidden" name="venue_id" value={venue.id} />
+          <div className="sm:col-span-3">
+            <label className="block text-xs font-medium text-gray-700 mb-1">Name *</label>
+            <input
+              name="name"
+              required
+              placeholder="e.g. FE-001 (5kg ABC)"
+              className={inputCls}
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="block text-xs font-medium text-gray-700 mb-1">Category *</label>
+            <select name="category" required className={selectCls}>
+              {EQUIPMENT_CATEGORIES.map(([v, label]) => (
+                <option key={v} value={v}>{label}</option>
+              ))}
+            </select>
+          </div>
+          <div className="sm:col-span-3">
+            <label className="block text-xs font-medium text-gray-700 mb-1">Location</label>
+            <input name="location_description" placeholder="T1 Reception" className={inputCls} />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="block text-xs font-medium text-gray-700 mb-1">Last serviced</label>
+            <input name="last_serviced_at" type="date" className={inputCls} />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="block text-xs font-medium text-gray-700 mb-1">Next due *</label>
+            <input name="next_service_due" type="date" required className={inputCls} />
+          </div>
+          <div className="sm:col-span-12">
+            <button type="submit" className={btnCls}>Add equipment</button>
+          </div>
+        </form>
+      </section>
+
+      {/* List */}
+      {equipment.length === 0 ? (
+        <div className="text-center py-12 text-gray-400 text-sm bg-white border border-dashed border-gray-200 rounded-2xl">
+          No equipment registered yet. Add fire extinguishers, AEDs, smoke detectors,
+          emergency lights, etc above.
+        </div>
+      ) : (
+        <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+          <table className="w-full">
+            <thead>
+              <tr>
+                <th className={thCls}>Name</th>
+                <th className={thCls}>Category</th>
+                <th className={thCls}>Location</th>
+                <th className={thCls}>Next Due</th>
+                <th className={thCls}>Status</th>
+                <th className={`${thCls} text-right`}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((eq) => {
+                const days = daysUntilDue(eq.next_service_due);
+                const status = expiryStatus(days);
+                return (
+                  <tr key={eq.id} className="border-t border-gray-100">
+                    <td className="px-6 py-3 text-sm text-gray-900 font-medium">{eq.name}</td>
+                    <td className="px-6 py-3 text-sm text-gray-600">
+                      {CATEGORY_LABEL[eq.category] ?? eq.category}
+                    </td>
+                    <td className="px-6 py-3 text-sm text-gray-500">
+                      {eq.location_description ?? '—'}
+                    </td>
+                    <td className="px-6 py-3 text-sm text-gray-700 font-mono">
+                      {eq.next_service_due}
+                    </td>
+                    <td className="px-6 py-3 text-sm">
+                      <span className={`text-xs font-bold px-2 py-0.5 rounded ${status.cls}`}>
+                        {status.label}
+                      </span>
+                    </td>
+                    <td className="px-6 py-3 text-right">
+                      <div className="flex justify-end gap-2">
+                        <Link
+                          href={`/venues/${venue.id}?tab=equipment&edit_eq=${eq.id}`}
+                          className={editLinkCls}
+                        >
+                          Edit
+                        </Link>
+                        <form action={deactivateEquipmentAction} className="inline">
+                          <input type="hidden" name="venue_id" value={venue.id} />
+                          <input type="hidden" name="id" value={eq.id} />
+                          <button type="submit" className={removeBtnCls}>
+                            Deactivate
+                          </button>
+                        </form>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+              {/* Inactive (deactivated) equipment shown muted at the bottom */}
+              {equipment
+                .filter((e) => !e.is_active)
+                .map((eq) => (
+                  <tr key={eq.id} className="border-t border-gray-100 opacity-50">
+                    <td className="px-6 py-3 text-sm text-gray-500 font-medium">{eq.name}</td>
+                    <td className="px-6 py-3 text-sm text-gray-500">
+                      {CATEGORY_LABEL[eq.category] ?? eq.category}
+                    </td>
+                    <td className="px-6 py-3 text-sm text-gray-400">
+                      {eq.location_description ?? '—'}
+                    </td>
+                    <td className="px-6 py-3 text-sm text-gray-400 font-mono">
+                      {eq.next_service_due}
+                    </td>
+                    <td className="px-6 py-3 text-sm">
+                      <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
+                        Deactivated
+                      </span>
+                    </td>
+                    <td className="px-6 py-3 text-right">
+                      <form action={reactivateEquipmentAction} className="inline">
+                        <input type="hidden" name="venue_id" value={venue.id} />
+                        <input type="hidden" name="id" value={eq.id} />
+                        <button
+                          type="submit"
+                          className="px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded hover:bg-green-700"
+                        >
+                          Reactivate
+                        </button>
+                      </form>
+                    </td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StatTile({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone: 'good' | 'warn' | 'bad' | 'neutral';
+}) {
+  const toneClass = {
+    good: 'text-emerald-700',
+    warn: 'text-amber-700',
+    bad: 'text-red-700',
+    neutral: 'text-gray-900',
+  }[tone];
+  return (
+    <div className="bg-gray-50 rounded-lg px-3 py-2">
+      <div className={`text-2xl font-bold ${toneClass}`}>{value}</div>
+      <div className="text-[10px] font-medium uppercase tracking-wide text-gray-500">
+        {label}
+      </div>
     </div>
   );
 }

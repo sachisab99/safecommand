@@ -292,7 +292,27 @@ SELECT :venue_id ::uuid, sec_inc.id, 'NOTE', priya.id,
        '{"text":"Continuing to monitor T2 parking area for next 4 hrs as precaution."}'::jsonb
 FROM sec_inc, priya;
 
--- ─── 7. Summary ─────────────────────────────────────────────────────────────
+-- ─── 7. Equipment items (BR-21 demo data) ─────────────────────────────────
+-- Realistic compliance state: most green (>90d to next service), one each
+-- expiring at the 90/30/7-day thresholds, plus one OVERDUE — exercises the
+-- full expiry-status colour ramp on the Equipment tab. Idempotent guard:
+-- name LIKE '[DEMO]%' marker (matches reset-script delete filter).
+
+INSERT INTO equipment_items (
+  venue_id, name, category, location_description, last_serviced_at, next_service_due, is_active
+)
+VALUES
+  (:venue_id, '[DEMO] FE-T1-001', 'FIRE_EXTINGUISHER', 'T1 Reception, beside lift', CURRENT_DATE - INTERVAL '60 days', CURRENT_DATE + INTERVAL '305 days', TRUE),
+  (:venue_id, '[DEMO] FE-T1-002', 'FIRE_EXTINGUISHER', 'T1 Stair, ground level', CURRENT_DATE - INTERVAL '90 days', CURRENT_DATE + INTERVAL '275 days', TRUE),
+  (:venue_id, '[DEMO] FE-T2-001', 'FIRE_EXTINGUISHER', 'T2 Reception', CURRENT_DATE - INTERVAL '300 days', CURRENT_DATE + INTERVAL '65 days', TRUE),
+  (:venue_id, '[DEMO] FE-T2-PARK-01', 'FIRE_EXTINGUISHER', 'T2 Parking, level B1', CURRENT_DATE - INTERVAL '335 days', CURRENT_DATE + INTERVAL '20 days', TRUE),
+  (:venue_id, '[DEMO] AED-T1-MAIN', 'AED', 'T1 Reception desk', CURRENT_DATE - INTERVAL '150 days', CURRENT_DATE + INTERVAL '215 days', TRUE),
+  (:venue_id, '[DEMO] SD-T1-G1-A', 'SMOKE_DETECTOR', 'T1 Ground Floor — corridor west', CURRENT_DATE - INTERVAL '358 days', CURRENT_DATE + INTERVAL '6 days', TRUE),
+  (:venue_id, '[DEMO] EL-T2-STAIR-1', 'EMERGENCY_LIGHT', 'T2 Stair, exit door', CURRENT_DATE - INTERVAL '730 days', CURRENT_DATE - INTERVAL '12 days', TRUE),
+  (:venue_id, '[DEMO] FAK-T1-RECEP', 'FIRST_AID_KIT', 'T1 Reception under desk', CURRENT_DATE - INTERVAL '40 days', CURRENT_DATE + INTERVAL '325 days', TRUE),
+  (:venue_id, '[DEMO] FAK-T2-RECEP', 'FIRST_AID_KIT', 'T2 Reception under desk', CURRENT_DATE - INTERVAL '40 days', CURRENT_DATE + INTERVAL '325 days', TRUE);
+
+-- ─── 8. Summary ─────────────────────────────────────────────────────────────
 \echo ''
 \echo '═══════════════════════════════════════════════════════════════'
 \echo '  Seed complete'
@@ -317,6 +337,9 @@ SELECT 'incidents ([DEMO])', COUNT(*) FROM incidents
   WHERE venue_id = :venue_id AND description LIKE '[DEMO] %'
 UNION ALL
 SELECT 'incident_timeline events', COUNT(*) FROM incident_timeline
-  WHERE venue_id = :venue_id;
+  WHERE venue_id = :venue_id
+UNION ALL
+SELECT 'equipment items ([DEMO])', COUNT(*) FROM equipment_items
+  WHERE venue_id = :venue_id AND name LIKE '[DEMO]%';
 
 COMMIT;

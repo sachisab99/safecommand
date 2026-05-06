@@ -178,6 +178,43 @@ export interface ShiftInstance {
   updated_at: string;
 }
 
+// ─── Equipment compliance types (BR-21) ─────────────────────────────────────
+// Tracks safety equipment with expiry / next-service-due dates. Drives the
+// Equipment component (10% weight) of the BR-14 health score.
+
+/** Open category — extensible without enum migration */
+export type EquipmentCategory =
+  | 'FIRE_EXTINGUISHER'
+  | 'AED'
+  | 'SMOKE_DETECTOR'
+  | 'EMERGENCY_LIGHT'
+  | 'FIRST_AID_KIT'
+  | 'ALARM_PANEL'
+  | 'EVACUATION_SIGN'
+  | 'OTHER';
+
+/** Derived from next_service_due — not stored, computed at read time */
+export type EquipmentStatus =
+  | 'OK'         // ≥90 days until next service
+  | 'DUE_90'     // 30-90 days
+  | 'DUE_30'     // 7-30 days
+  | 'DUE_7'      // ≤7 days
+  | 'OVERDUE';   // past due
+
+export interface EquipmentItem {
+  id: string;
+  venue_id: string;
+  building_id: string | null;
+  name: string;
+  category: string; // text in DB; EquipmentCategory enum at app layer
+  location_description: string | null;
+  last_serviced_at: string | null; // YYYY-MM-DD
+  next_service_due: string;        // YYYY-MM-DD
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 /** Staff member's zone coverage for a specific shift_instance */
 export interface StaffZoneAssignment {
   id: string;
