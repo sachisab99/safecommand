@@ -633,7 +633,7 @@ Incident declared → POST /incidents → DB write → return 201 <200ms
 - ⏳ BR-09 WhatsApp: blocked on Meta WABA approval
 
 ### v7 Phase A — COMPLETE + ITERATION (on `safecommand_v7` branch — pending merge to `main`)
-All 12 Phase A steps + polish + post-handoff iteration landed 2026-05-05. **29 commits ahead of main on `origin/safecommand_v7`** (HEAD `3af6c7b`). Workers paused.
+All 12 Phase A steps + polish + post-handoff iteration + 2026-05-06 deploy + hotfix + zone-symmetry surfaces landed. **33 commits ahead of main on `safecommand_v7`** (HEAD `7511561`). Workers paused.
 
 **Foundational artefacts:**
 - ✅ ADR 0001 migration renumbering captured
@@ -671,6 +671,11 @@ All 12 Phase A steps + polish + post-handoff iteration landed 2026-05-05. **29 c
 - ✅ **BR-04/BR-13 Staff add via mobile (SH/DSH)** — full E2E flow: Manage Staff drawer item → list + slide-up Add modal → industry-leading keyboard handling (auto-focus, tab order, real-time validation, drag handle) → server allow-list (DSH/SC/FS/GS/FM only; blocks SH/GM/AUDITOR creation by SH/DSH). Validated end-to-end against CA Firm TEST-CA venue.
 - ✅ **Staff lifecycle Phase 1 surface** — Ops Console Enable button (polymorphic action: red Deactivate when active; green Enable when inactive). Phase B replaces this with 4-state lifecycle + 4 endpoints.
 - ✅ **API L1 governance** — `docs/api/conventions.md` (18 sections + §19 entity lifecycle pattern) — every Phase B endpoint has a checklist to satisfy.
+
+**Capability extensions (2026-05-06 evening):**
+- ✅ **Production schema deploy (Path B)** — migrations 009 + 010 + 011 deployed to Supabase production. Verified via row counts unchanged + CHECK constraint enforcement + generated column rejection tests. (`9a52a58`)
+- ✅ **Mig 009 hotfix** — production-broke after deploy: 4-arg `set_tenant_context` did NOT replace 3-arg version; PostgREST RPC failed `PGRST203`. Fix: `DROP FUNCTION set_tenant_context(uuid,uuid,text)` on live schema; patched mig 009 source with explicit `DROP FUNCTION IF EXISTS` before `CREATE OR REPLACE`. (`4fd7964`)
+- ✅ **BR-18 Zone Status Board on mobile + BR-19 Zone Accountability on dashboard** — symmetric primary surfaces on both platforms. Mobile drawer PRIMARY: 🚦 Zone Status (NEW) + 🗺️ Zone Accountability (existing). Dashboard sidebar Primary: 🚦 Zone Status (renamed from "Zone Board") + 🗺 Zone Accountability (NEW `/accountability` route, person-first roster grid with coverage-gap callout). Both surfaces consume same `/v1/zones/accountability` + `/incidents` endpoints. Identical DisplayState derivation across mobile + dashboard. (`7511561`)
 
 **Sales artefacts (validation gate readiness):**
 - ✅ `docs/sales/validation-script.md` — print-friendly 5-question script + scoring rubrics + GO/NO-GO decision tree per Plan §22
@@ -787,7 +792,8 @@ Per Business Plan §15.1 — all 25 must pass before first pilot venue live.
 
 ## Current sprint focus (as of 2026-05-05 evening)
 
-**Branch:** `safecommand_v7` — **29 commits ahead of main**; HEAD `3af6c7b`; pending merge to main at June unfreeze
+**Branch:** `safecommand_v7` — **33 commits ahead of main**; HEAD `7511561`; pending merge to main at June unfreeze
+**Production schema:** post mig 009 + 010 + 011 deployed 2026-05-06; hotfix `4fd7964` (drop 3-arg `set_tenant_context` overload to fix PostgREST PGRST203) applied to live schema and patched into mig 009 source
 **Workers:** PAUSED (`WORKERS_PAUSED=true` on all 4 services — May freeze)
 **Phase A:** ✅ Complete (12 steps + polish + iteration + Phase B pre-writes)
 **Phase B:** ⏳ Pending June 2 unfreeze — see `JUNE-2026-REVIEW-REQUIRED.md` for the canonical action sequence
