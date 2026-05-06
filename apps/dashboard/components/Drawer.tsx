@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { clearSession, getSession } from '../lib/auth';
+import { clearSession, getSession, type DashboardSession } from '../lib/auth';
 import { NAV_GROUPS, STAFF_ROLE_AVATAR_BG, type NavItem } from '../lib/nav-config';
 import { getPinned, setPinned } from '../lib/drawer-state';
 
@@ -15,14 +15,21 @@ interface DrawerProps {
 export function Drawer({ isOpen, onClose }: DrawerProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const session = getSession();
 
   // Desktop pin state — persisted in localStorage, default = pinned
   const [pinned, setPinnedState] = useState<boolean>(true);
 
-  // Hydrate pin state from localStorage on mount (avoid SSR mismatch)
+  // Session state — read from localStorage AFTER mount only.
+  // Calling getSession() during render causes a hydration mismatch
+  // (server returns null because window/localStorage is undefined; client
+  // returns the actual session, so the JSX trees differ). We mirror the
+  // same useState+useEffect pattern as `pinned` above.
+  const [session, setSession] = useState<DashboardSession | null>(null);
+
+  // Hydrate pin + session state from localStorage on mount (avoid SSR mismatch)
   useEffect(() => {
     setPinnedState(getPinned());
+    setSession(getSession());
   }, []);
 
   const togglePin = () => {
@@ -85,7 +92,7 @@ export function Drawer({ isOpen, onClose }: DrawerProps) {
         aria-label="Main navigation"
       >
         {/* Header — sticky, GM/venue/health context */}
-        <DrawerHeader pinned={pinned} onTogglePin={togglePin} />
+        <DrawerHeader pinned={pinned} onTogglePin={togglePin} session={session} />
 
         {/* Nav groups — scrollable */}
         <div className="flex-1 overflow-y-auto px-3 py-3 space-y-4">
@@ -132,9 +139,15 @@ export function Drawer({ isOpen, onClose }: DrawerProps) {
 
 /* ─── Drawer subcomponents ───────────────────────────────────────────────── */
 
-function DrawerHeader({ pinned, onTogglePin }: { pinned: boolean; onTogglePin: () => void }) {
-  const session = getSession();
-
+function DrawerHeader({
+  pinned,
+  onTogglePin,
+  session,
+}: {
+  pinned: boolean;
+  onTogglePin: () => void;
+  session: DashboardSession | null;
+}) {
   return (
     <div className="px-4 py-4 border-b border-slate-800 shrink-0">
       <div className="flex items-center gap-2.5">
