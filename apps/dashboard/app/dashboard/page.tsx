@@ -45,6 +45,190 @@ function HealthRing({ score }: { score: number }) {
   );
 }
 
+/* ─── HealthScoreBreakdown — BR-14 component visualisation ──────────────────
+ *
+ * Five-component breakdown per Architecture v7 BR-14:
+ *   Tasks 40 / Incidents 25 / Certs 15 / Equipment 10 / Drills 10
+ *
+ * Phase 1 (May 2026): Tasks and Incidents are LIVE (computed client-side
+ * from /analytics/dashboard payload). The remaining three components
+ * render as Phase B placeholders with explicit "ships June" badge.
+ *
+ * Phase B June: api endpoint will be updated to return the full 5-component
+ * weighted score; this component swaps to read from it instead of computing.
+ */
+
+interface ComponentScore {
+  key: 'tasks' | 'incidents' | 'certifications' | 'equipment' | 'drills';
+  label: string;
+  weight: number;          // % weight in the BR-14 formula
+  score: number | null;    // 0-100 if live; null if Phase B not-yet-wired
+  status: 'live' | 'pending';
+  detail?: string;
+}
+
+function computeIncidentScore(actives: { severity: string }[]): number {
+  // Penalty model:
+  //   SEV1 = -30 each, SEV2 = -15 each, SEV3 = -5 each
+  // The api filters to ACTIVE+CONTAINED before returning; we apply uniform
+  // penalty here as a conservative client-side approximation. Phase B api
+  // update will return per-incident status so we can split ACTIVE vs
+  // CONTAINED precisely.
+  const sev1 = actives.filter((i) => i.severity === 'SEV1').length;
+  const sev2 = actives.filter((i) => i.severity === 'SEV2').length;
+  const sev3 = actives.filter((i) => i.severity === 'SEV3').length;
+  return Math.max(0, 100 - sev1 * 30 - sev2 * 15 - sev3 * 5);
+}
+
+function HealthScoreBreakdown({ data }: { data: AnalyticsSummary }) {
+  const taskScore = data.tasks_today.compliance_rate;
+  const incidentScore = computeIncidentScore(
+    data.active_incident_list.map((i) => ({ severity: i.severity })),
+  );
+
+  const components: ComponentScore[] = [
+    {
+      key: 'tasks',
+      label: 'Tasks',
+      weight: 40,
+      score: taskScore,
+      status: 'live',
+      detail:
+        data.tasks_today.total === 0
+          ? 'No tasks scheduled today'
+          : `${data.tasks_today.complete}/${data.tasks_today.total} complete today`,
+    },
+    {
+      key: 'incidents',
+      label: 'Incidents',
+      weight: 25,
+      score: incidentScore,
+      status: 'live',
+      // api returns ACTIVE+CONTAINED in active_incidents count; "open" is the
+      // accurate term covering both states.
+      detail:
+        data.active_incidents === 0
+          ? 'No open incidents'
+          : `${data.active_incidents} open`,
+    },
+    {
+      key: 'certifications',
+      label: 'Certifications',
+      weight: 15,
+      score: null,
+      status: 'pending',
+      detail: 'Module activates Phase B (June)',
+    },
+    {
+      key: 'equipment',
+      label: 'Equipment',
+      weight: 10,
+      score: null,
+      status: 'pending',
+      detail: 'Module activates Phase B (June)',
+    },
+    {
+      key: 'drills',
+      label: 'Drills',
+      weight: 10,
+      score: null,
+      status: 'pending',
+      detail: 'Module activates Phase B (June)',
+    },
+  ];
+
+  const liveWeight = components
+    .filter((c) => c.status === 'live')
+    .reduce((sum, c) => sum + c.weight, 0);
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-slate-100">
+      <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-100 flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <h2 className="font-bold text-slate-900">Health Score Breakdown</h2>
+          <p className="text-slate-500 text-xs mt-0.5">
+            Component weighting per BR-14 — Architecture v7
+          </p>
+        </div>
+        <div className="text-xs text-slate-500 flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-emerald-500" />
+          {liveWeight}% of full surface live
+        </div>
+      </div>
+
+      <div className="divide-y divide-slate-50">
+        {components.map((c) => (
+          <ComponentRow key={c.key} component={c} />
+        ))}
+      </div>
+
+      <div className="px-4 sm:px-6 py-3 bg-slate-50 border-t border-slate-100 text-xs text-slate-500">
+        <span className="font-medium text-slate-700">Tasks + Incidents</span> compute
+        live today. Certifications, Equipment and Drills modules ship in Phase B
+        (June 2026) per <span className="font-mono">JUNE-2026-REVIEW-REQUIRED.md</span>.
+      </div>
+    </div>
+  );
+}
+
+function ComponentRow({ component }: { component: ComponentScore }) {
+  const isLive = component.status === 'live';
+  const score = component.score ?? 0;
+  const barColor =
+    !isLive
+      ? 'bg-slate-200'
+      : score >= 80
+        ? 'bg-emerald-500'
+        : score >= 60
+          ? 'bg-amber-500'
+          : 'bg-red-500';
+  const scoreText = !isLive ? '—' : `${score}`;
+  const scoreColor = !isLive
+    ? 'text-slate-400'
+    : score >= 80
+      ? 'text-emerald-700'
+      : score >= 60
+        ? 'text-amber-700'
+        : 'text-red-700';
+
+  return (
+    <div className="px-4 sm:px-6 py-3 sm:py-4 flex items-center gap-3 sm:gap-4">
+      {/* Label + weight */}
+      <div className="w-32 sm:w-40 shrink-0">
+        <div className="font-semibold text-slate-900 text-sm">{component.label}</div>
+        <div className="text-xs text-slate-500">{component.weight}% weight</div>
+      </div>
+
+      {/* Progress bar */}
+      <div className="flex-1 min-w-0">
+        <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+          <div
+            className={`h-2 rounded-full transition-all ${barColor} ${
+              !isLive ? 'opacity-30' : ''
+            }`}
+            style={{ width: isLive ? `${score}%` : '100%' }}
+          />
+        </div>
+        <div className="text-xs text-slate-500 mt-1 truncate">{component.detail}</div>
+      </div>
+
+      {/* Score + status */}
+      <div className="text-right shrink-0">
+        <div className={`text-2xl font-black ${scoreColor}`}>{scoreText}</div>
+        {isLive ? (
+          <span className="text-[10px] font-bold uppercase tracking-wide text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">
+            Live
+          </span>
+        ) : (
+          <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+            Phase B
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function elapsed(iso: string) {
   const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60_000);
   if (mins < 60) return `${mins}m ago`;
@@ -154,6 +338,11 @@ export default function DashboardPage() {
                 <p className="text-3xl font-black text-slate-900">{data.staff.active}</p>
                 <p className="text-slate-500 text-sm">of {data.staff.total} total active</p>
               </div>
+            </div>
+
+            {/* BR-14 Health Score Breakdown — 5-component visualisation */}
+            <div className="mb-4 sm:mb-6">
+              <HealthScoreBreakdown data={data} />
             </div>
 
             {/* Active incident list */}
