@@ -1,16 +1,20 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { AppShell } from '../../components/AppShell';
 import { apiFetch } from '../../lib/api';
 
 interface AnalyticsSummary {
   health_score: number;
+  // api returns count of ACTIVE+CONTAINED (filter `.in('status', ['ACTIVE','CONTAINED'])`).
+  // The label "active_incidents" is the api field name; we differentiate at render time.
   active_incidents: number;
   active_incident_list: {
     id: string;
     incident_type: string;
     severity: string;
+    status: 'ACTIVE' | 'CONTAINED'; // status IS in the api response (select includes it)
     declared_at: string;
     zones: { name: string } | null;
   }[];
@@ -269,18 +273,48 @@ export default function DashboardPage() {
 
         {data && (
           <>
-            {/* Active incident alert banner */}
-            {data.active_incidents > 0 && (
-              <div className="mb-4 sm:mb-6 bg-red-600 rounded-2xl p-4 flex items-center gap-3 shadow-lg shadow-red-900/20">
-                <span className="text-2xl shrink-0">🚨</span>
-                <div className="min-w-0 flex-1">
-                  <div className="text-white font-bold truncate">
-                    {data.active_incidents} Active Incident{data.active_incidents > 1 ? 's' : ''}
+            {/*
+             * Open-incident alert banner.
+             *
+             * Differentiated by actual status:
+             *  - Any ACTIVE   → red, alarm icon, urgent tone
+             *  - Only CONTAINED → amber, monitoring icon, "under control" tone
+             *  - Mix          → red banner showing both counts
+             *
+             * The api endpoint returns ACTIVE+CONTAINED together as
+             * `active_incidents` count; we use the per-row status from
+             * `active_incident_list` to derive the right tone.
+             */}
+            {(() => {
+              const activeCount = data.active_incident_list.filter(i => i.status === 'ACTIVE').length;
+              const containedCount = data.active_incident_list.filter(i => i.status === 'CONTAINED').length;
+              if (activeCount === 0 && containedCount === 0) return null;
+
+              const hasActive = activeCount > 0;
+              return (
+                <div
+                  className={`mb-4 sm:mb-6 rounded-2xl p-4 flex items-center gap-3 shadow-lg ${
+                    hasActive
+                      ? 'bg-red-600 shadow-red-900/20'
+                      : 'bg-amber-500 shadow-amber-900/20'
+                  }`}
+                >
+                  <span className="text-2xl shrink-0">{hasActive ? '🚨' : '👁️'}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-white font-bold truncate">
+                      {hasActive
+                        ? `${activeCount} Active${containedCount > 0 ? `, ${containedCount} Contained` : ''} Incident${activeCount + containedCount > 1 ? 's' : ''}`
+                        : `${containedCount} Contained Incident${containedCount > 1 ? 's' : ''} — under monitoring`}
+                    </div>
+                    <div className={`text-sm ${hasActive ? 'text-red-200' : 'text-amber-100'}`}>
+                      {hasActive
+                        ? 'Tap Incidents in menu for detail'
+                        : 'Threat mitigated; logged for audit. Tap any row below for timeline.'}
+                    </div>
                   </div>
-                  <div className="text-red-200 text-sm">Tap Incidents in menu for detail</div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* KPI row — vertical stack on tiny phones, 2-col tablet, 4-col desktop */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-4 sm:mb-6 lg:grid-cols-4">
@@ -345,25 +379,47 @@ export default function DashboardPage() {
               <HealthScoreBreakdown data={data} />
             </div>
 
-            {/* Active incident list */}
+            {/* Open incidents list — ACTIVE + CONTAINED. Each row links to /incidents/[id] */}
             {data.active_incident_list.length > 0 && (
               <div className="bg-white rounded-2xl shadow-sm border border-slate-100">
-                <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-100">
-                  <h2 className="font-bold text-slate-900">Active Incidents</h2>
+                <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-100 flex items-center justify-between">
+                  <h2 className="font-bold text-slate-900">Open Incidents</h2>
+                  <span className="text-xs text-slate-500">
+                    {data.active_incident_list.length} open · ACTIVE + CONTAINED
+                  </span>
                 </div>
                 <div className="divide-y divide-slate-50">
-                  {data.active_incident_list.map(inc => (
-                    <div key={inc.id} className="px-4 sm:px-6 py-3 sm:py-4 flex items-center gap-3 sm:gap-4">
-                      <span className="text-2xl shrink-0" aria-hidden="true">{TYPE_ICON[inc.incident_type] ?? '⚠️'}</span>
-                      <div className="flex-1 min-w-0">
-                        <div className="font-semibold text-slate-900 truncate">{inc.incident_type}</div>
-                        <div className="text-slate-500 text-xs sm:text-sm truncate">{inc.zones?.name ?? 'Unspecified zone'} · {elapsed(inc.declared_at)}</div>
-                      </div>
-                      <span className={`px-2 py-1 sm:px-3 rounded-full text-[10px] sm:text-xs font-bold border shrink-0 ${SEV_BG[inc.severity] ?? ''}`}>
-                        {inc.severity}
-                      </span>
-                    </div>
-                  ))}
+                  {data.active_incident_list.map(inc => {
+                    const isActive = inc.status === 'ACTIVE';
+                    return (
+                      <Link
+                        key={inc.id}
+                        href={`/incidents/${inc.id}`}
+                        className="px-4 sm:px-6 py-3 sm:py-4 flex items-center gap-3 sm:gap-4 hover:bg-slate-50 transition-colors"
+                      >
+                        <span className="text-2xl shrink-0" aria-hidden="true">{TYPE_ICON[inc.incident_type] ?? '⚠️'}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-semibold text-slate-900 truncate">{inc.incident_type}</div>
+                          <div className="text-slate-500 text-xs sm:text-sm truncate">{inc.zones?.name ?? 'Unspecified zone'} · {elapsed(inc.declared_at)}</div>
+                        </div>
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold border shrink-0 ${
+                            isActive
+                              ? 'bg-red-50 text-red-700 border-red-200'
+                              : 'bg-amber-50 text-amber-700 border-amber-200'
+                          }`}
+                        >
+                          {isActive && (
+                            <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse mr-1 align-middle" />
+                          )}
+                          {inc.status}
+                        </span>
+                        <span className={`px-2 py-1 sm:px-3 rounded-full text-[10px] sm:text-xs font-bold border shrink-0 ${SEV_BG[inc.severity] ?? ''}`}>
+                          {inc.severity}
+                        </span>
+                      </Link>
+                    );
+                  })}
                 </div>
               </div>
             )}
