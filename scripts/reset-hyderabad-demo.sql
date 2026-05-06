@@ -85,6 +85,9 @@ SELECT 'zones in ATTENTION', COUNT(*) FROM zones
   WHERE venue_id = :venue_id AND current_status = 'ATTENTION'
 UNION ALL
 SELECT 'incidents (seed remaining)', COUNT(*) FROM incidents
-  WHERE venue_id = :venue_id AND description LIKE '[DEMO] %';
+  WHERE venue_id = :venue_id AND description LIKE '[DEMO] %'
+UNION ALL
+SELECT 'incident_timeline events', COUNT(*) FROM incident_timeline
+  WHERE venue_id = :venue_id;
 
 COMMIT;

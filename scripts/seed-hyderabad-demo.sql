@@ -193,6 +193,105 @@ SELECT :venue_id ::uuid, t2_park_ent.id, 'SECURITY'::incident_type_enum, 'SEV3':
        NULL
 FROM t2_park_ent, gs_staff;
 
+-- ─── 6b. Timeline events for both demo incidents ───────────────────────────
+-- BR-29 / EC-10: every incident lifecycle action is timeline-logged
+-- (append-only via RLS). For the deep-dive page (/incidents/:id) to show
+-- a meaningful narrative arc, we seed realistic events per incident.
+--
+-- FIRE drill (RESOLVED 2hr ago):
+--   DECLARED by SH → BROADCAST_SENT → STAFF_ON_SITE (Rajesh) →
+--   STAFF_ACK (Lakshmi) → RESOLVED by SH
+--
+-- SECURITY check (CONTAINED 30min ago):
+--   DECLARED by Anil → STAFF_ON_SITE (Anil) → ESCALATED_LEVEL_1 →
+--   STAFF_ON_SITE (Priya) → STAFF_ACK (Lakshmi, Vikram) →
+--   CONTAINED by Priya → NOTE by Priya
+
+WITH fire_inc AS (
+  SELECT id FROM incidents
+  WHERE venue_id = :venue_id AND incident_type='FIRE'
+    AND description LIKE '[DEMO] Fire alarm test%' LIMIT 1
+),
+sec_inc AS (
+  SELECT id FROM incidents
+  WHERE venue_id = :venue_id AND incident_type='SECURITY'
+    AND description LIKE '[DEMO] Suspicious package%' LIMIT 1
+),
+sh AS (
+  SELECT id FROM staff
+  WHERE venue_id = :venue_id AND role='SH' AND is_active=TRUE
+  ORDER BY created_at ASC LIMIT 1
+),
+rajesh AS (SELECT id FROM staff WHERE venue_id=:venue_id AND name='Rajesh Kumar'),
+priya  AS (SELECT id FROM staff WHERE venue_id=:venue_id AND name='Priya Sharma'),
+anil   AS (SELECT id FROM staff WHERE venue_id=:venue_id AND name='Anil Reddy'),
+lakshmi AS (SELECT id FROM staff WHERE venue_id=:venue_id AND name='Lakshmi Iyer'),
+vikram AS (SELECT id FROM staff WHERE venue_id=:venue_id AND name='Vikram Singh')
+INSERT INTO incident_timeline (
+  venue_id, incident_id, event_type, actor_staff_id, occurred_at, metadata
+)
+-- FIRE drill (5 events)
+SELECT :venue_id ::uuid, fire_inc.id, 'DECLARED', sh.id,
+       NOW() - INTERVAL '2 hours',
+       '{"severity":"SEV2","drill":true,"description":"Fire alarm test triggered"}'::jsonb
+FROM fire_inc, sh
+UNION ALL
+SELECT :venue_id ::uuid, fire_inc.id, 'BROADCAST_SENT', NULL,
+       NOW() - INTERVAL '1 hour 59 minutes',
+       '{"channel":"FCM","scope":"venue-wide","recipients":6,"delivered":6}'::jsonb
+FROM fire_inc
+UNION ALL
+SELECT :venue_id ::uuid, fire_inc.id, 'STAFF_ON_SITE', rajesh.id,
+       NOW() - INTERVAL '1 hour 55 minutes',
+       '{"location":"T1-Stair","note":"Floor cleared, drill in progress"}'::jsonb
+FROM fire_inc, rajesh
+UNION ALL
+SELECT :venue_id ::uuid, fire_inc.id, 'STAFF_ACK', lakshmi.id,
+       NOW() - INTERVAL '1 hour 50 minutes',
+       '{"ack_type":"i_am_safe","via":"app"}'::jsonb
+FROM fire_inc, lakshmi
+UNION ALL
+SELECT :venue_id ::uuid, fire_inc.id, 'RESOLVED', sh.id,
+       NOW() - INTERVAL '1 hour 45 minutes',
+       '{"resolution":"Drill completed successfully. All staff accounted for."}'::jsonb
+FROM fire_inc, sh
+-- SECURITY check (7 events)
+UNION ALL
+SELECT :venue_id ::uuid, sec_inc.id, 'DECLARED', anil.id,
+       NOW() - INTERVAL '30 minutes',
+       '{"severity":"SEV3","description":"Unattended package near T2 parking entrance"}'::jsonb
+FROM sec_inc, anil
+UNION ALL
+SELECT :venue_id ::uuid, sec_inc.id, 'STAFF_ON_SITE', anil.id,
+       NOW() - INTERVAL '28 minutes',
+       '{"location":"T2-Parking-Entrance","note":"Visual inspection underway"}'::jsonb
+FROM sec_inc, anil
+UNION ALL
+SELECT :venue_id ::uuid, sec_inc.id, 'ESCALATED_LEVEL_1', NULL,
+       NOW() - INTERVAL '25 minutes',
+       '{"reason":"awaiting senior verification","escalated_to":"FLOOR_SUPERVISOR"}'::jsonb
+FROM sec_inc
+UNION ALL
+SELECT :venue_id ::uuid, sec_inc.id, 'STAFF_ON_SITE', priya.id,
+       NOW() - INTERVAL '22 minutes',
+       '{"location":"T2-Parking-Entrance","note":"Cross-checked with CCTV; identified owner"}'::jsonb
+FROM sec_inc, priya
+UNION ALL
+SELECT :venue_id ::uuid, sec_inc.id, 'STAFF_ACK', vikram.id,
+       NOW() - INTERVAL '20 minutes',
+       '{"ack_type":"i_am_safe","via":"app"}'::jsonb
+FROM sec_inc, vikram
+UNION ALL
+SELECT :venue_id ::uuid, sec_inc.id, 'CONTAINED', priya.id,
+       NOW() - INTERVAL '18 minutes',
+       '{"resolution":"False alarm. Package belongs to T2 retail tenant employee."}'::jsonb
+FROM sec_inc, priya
+UNION ALL
+SELECT :venue_id ::uuid, sec_inc.id, 'NOTE', priya.id,
+       NOW() - INTERVAL '10 minutes',
+       '{"text":"Continuing to monitor T2 parking area for next 4 hrs as precaution."}'::jsonb
+FROM sec_inc, priya;
+
 -- ─── 7. Summary ─────────────────────────────────────────────────────────────
 \echo ''
 \echo '═══════════════════════════════════════════════════════════════'
@@ -215,6 +314,9 @@ SELECT 'zones in ATTENTION', COUNT(*) FROM zones
   WHERE venue_id = :venue_id AND current_status = 'ATTENTION'
 UNION ALL
 SELECT 'incidents ([DEMO])', COUNT(*) FROM incidents
-  WHERE venue_id = :venue_id AND description LIKE '[DEMO] %';
+  WHERE venue_id = :venue_id AND description LIKE '[DEMO] %'
+UNION ALL
+SELECT 'incident_timeline events', COUNT(*) FROM incident_timeline
+  WHERE venue_id = :venue_id;
 
 COMMIT;

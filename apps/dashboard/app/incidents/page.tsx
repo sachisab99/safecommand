@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { AppShell } from '../../components/AppShell';
 import { apiFetch } from '../../lib/api';
 
@@ -87,7 +88,11 @@ export default function IncidentsPage() {
           {incidents.map(inc => {
             const sev = SEV_CONFIG[inc.severity];
             return (
-              <div key={inc.id} className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+              <Link
+                key={inc.id}
+                href={`/incidents/${inc.id}`}
+                className="block bg-white rounded-2xl shadow-sm border border-slate-100 p-5 hover:border-slate-300 hover:shadow-md transition-all"
+              >
                 <div className="flex items-start gap-4">
                   <span className="text-3xl shrink-0">{TYPE_ICON[inc.incident_type] ?? '⚠️'}</span>
                   <div className="flex-1 min-w-0">
@@ -107,11 +112,16 @@ export default function IncidentsPage() {
                       <span>{elapsed(inc.declared_at)}</span>
                     </div>
                   </div>
-                  <div className="text-xs text-slate-400 shrink-0 text-right">
-                    {inc.id.slice(0, 8).toUpperCase()}
+                  <div className="flex flex-col items-end gap-1 shrink-0 text-right">
+                    <span className="text-xs text-slate-400 font-mono">
+                      {inc.id.slice(0, 8).toUpperCase()}
+                    </span>
+                    <span className="text-xs text-blue-600 font-medium">
+                      View timeline →
+                    </span>
                   </div>
                 </div>
-              </div>
+              </Link>
             );
           })}
         </div>
