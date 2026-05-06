@@ -633,7 +633,7 @@ Incident declared → POST /incidents → DB write → return 201 <200ms
 - ⏳ BR-09 WhatsApp: blocked on Meta WABA approval
 
 ### v7 Phase A — COMPLETE + ITERATION (on `safecommand_v7` branch — pending merge to `main`)
-All 12 Phase A steps + polish + post-handoff iteration + 2026-05-06 deploy + hotfix + zone-symmetry surfaces landed. **33 commits ahead of main on `safecommand_v7`** (HEAD `7511561`). Workers paused.
+All 12 Phase A steps + polish + post-handoff iteration + 2026-05-06 deploy + hotfix + zone-symmetry surfaces + Shifts & Roster module + Ops Console nav + MyShiftScreen landed. **38 commits ahead of main on `safecommand_v7`** (HEAD `5b53b0a`). Workers paused.
 
 **Foundational artefacts:**
 - ✅ ADR 0001 migration renumbering captured
@@ -676,6 +676,9 @@ All 12 Phase A steps + polish + post-handoff iteration + 2026-05-06 deploy + hot
 - ✅ **Production schema deploy (Path B)** — migrations 009 + 010 + 011 deployed to Supabase production. Verified via row counts unchanged + CHECK constraint enforcement + generated column rejection tests. (`9a52a58`)
 - ✅ **Mig 009 hotfix** — production-broke after deploy: 4-arg `set_tenant_context` did NOT replace 3-arg version; PostgREST RPC failed `PGRST203`. Fix: `DROP FUNCTION set_tenant_context(uuid,uuid,text)` on live schema; patched mig 009 source with explicit `DROP FUNCTION IF EXISTS` before `CREATE OR REPLACE`. (`4fd7964`)
 - ✅ **BR-18 Zone Status Board on mobile + BR-19 Zone Accountability on dashboard** — symmetric primary surfaces on both platforms. Mobile drawer PRIMARY: 🚦 Zone Status (NEW) + 🗺️ Zone Accountability (existing). Dashboard sidebar Primary: 🚦 Zone Status (renamed from "Zone Board") + 🗺 Zone Accountability (NEW `/accountability` route, person-first roster grid with coverage-gap callout). Both surfaces consume same `/v1/zones/accountability` + `/incidents` endpoints. Identical DisplayState derivation across mobile + dashboard. (`7511561`)
+- ✅ **Phase 5.1 — Ops Console Shifts & Roster module** (`807a255`) — `apps/ops-console/actions/shifts.ts` (340 lines) server actions for shift template CRUD + shift_instance lifecycle (PENDING → ACTIVE → CLOSED) + bulk-replace zone assignment pattern; `apps/ops-console/components/ZoneAssignmentGrid.tsx` (320 lines) client component with real-time 2-person validation and per-staff cards with floor-grouped zone toggles; `apps/ops-console/app/venues/[id]/page.tsx` 4th tab "Shifts & Roster" with Templates section + Today's Roster section (date picker, instance state machine, assignment grid per ACTIVE instance). Pure additive on Ops Console; existing tabs untouched. Industry pattern: Quinyx / Deputy / When I Work bulk-replace.
+- ✅ **Ops Console home + global nav** (`a77fb9d` + `fb5d573`) — replaced `app/page.tsx` redirect with real Operations Overview dashboard (platform-wide stats: venues / staff / zones / incidents-today + recent venues + quick actions). New `components/TopNav.tsx` server component reads `ops_auth` cookie and renders persistent nav (logo→home, Home, Venues, Sign out) only when authed. Login page stays chrome-free. Auth gate pre-existed at `proxy.ts` (Next 16 renamed `middleware.ts` → `proxy.ts`); documented inline + added login-already-authed redirect for UX polish.
+- ✅ **Phase 5.2 — Mobile MyShiftScreen** (`5b53b0a`) — `apps/mobile/src/screens/MyShiftScreen.tsx` (380 lines) staff-personal "my zones" view with identity header (avatar + role) + stats strip (zones / active / attention / clear / 2-person) + per-floor groups + friendly empty state. New `fetchMyZones(staffId)` service helper filters existing `/v1/zones/accountability` response client-side (NO Railway redeploy). Drawer PRIMARY group order: My Tasks → 🪪 My Shift (NEW) → 🚦 Zone Status → 🗺️ Zone Accountability → Declare Incident. Closes the loop end-to-end: SC Ops creates roster via Ops Console → mobile staff opens My Shift → sees their zones with status. **E2E validated** via DB simulation (assigned GS to 3 zones, SH to 2 different; verified filter returns exactly the matching zones per staff_id).
 
 **Sales artefacts (validation gate readiness):**
 - ✅ `docs/sales/validation-script.md` — print-friendly 5-question script + scoring rubrics + GO/NO-GO decision tree per Plan §22
@@ -792,8 +795,9 @@ Per Business Plan §15.1 — all 25 must pass before first pilot venue live.
 
 ## Current sprint focus (as of 2026-05-05 evening)
 
-**Branch:** `safecommand_v7` — **33 commits ahead of main**; HEAD `7511561`; pending merge to main at June unfreeze
+**Branch:** `safecommand_v7` — **38 commits ahead of main**; HEAD `5b53b0a`; pending merge to main at June unfreeze
 **Production schema:** post mig 009 + 010 + 011 deployed 2026-05-06; hotfix `4fd7964` (drop 3-arg `set_tenant_context` overload to fix PostgREST PGRST203) applied to live schema and patched into mig 009 source
+**Roster/accountability loop:** end-to-end live (local) — Ops Console Shifts tab creates rosters → mobile MyShift + venue-wide Zone Status / Accountability surfaces auto-populate via existing `/v1/zones/accountability`
 **Workers:** PAUSED (`WORKERS_PAUSED=true` on all 4 services — May freeze)
 **Phase A:** ✅ Complete (12 steps + polish + iteration + Phase B pre-writes)
 **Phase B:** ⏳ Pending June 2 unfreeze — see `JUNE-2026-REVIEW-REQUIRED.md` for the canonical action sequence
