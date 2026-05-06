@@ -26,6 +26,8 @@
 - `DAILY-OPS.md` — daily start/end-of-day routine
 - `upstash_redis.md` — Redis cost analysis + tick-rate tiers
 - `JUNE-2026-REVIEW-REQUIRED.md` — time-sensitive review marker (delete after 2026-06-02 review)
+- `docs/STATE_OF_WORK.md` — comprehensive state snapshot (build status, BR matrix, NFR/EC/Hard Rule adherence, recent session log)
+- `docs/security/POSTURE_AND_ROADMAP.md` — security + compliance posture, audit trail, 16-category gap analysis, prioritised roadmap (DPDP / NABH / Fire NOC / TRAI-DLT)
 - `docs/adr/` — Architecture Decision Records (0001 migrations, 0002 branch, 0003 Supabase keys)
 
 ---
