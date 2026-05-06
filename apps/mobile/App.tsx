@@ -9,6 +9,7 @@ import { ZonesScreen } from './src/screens/ZonesScreen';
 import { ZoneStatusBoardScreen } from './src/screens/ZoneStatusBoardScreen';
 import { MyShiftScreen } from './src/screens/MyShiftScreen';
 import { IncidentDetailScreen } from './src/screens/IncidentDetailScreen';
+import { EquipmentScreen } from './src/screens/EquipmentScreen';
 import { getStoredSession, clearSession } from './src/services/auth';
 import { initDb, syncPending } from './src/services/tasks';
 import type { AuthSession, OtpConfirmation } from './src/services/auth';
@@ -25,7 +26,8 @@ type ScreenName =
   | 'zones'
   | 'zoneStatusBoard'
   | 'myShift'
-  | 'incidentDetail';
+  | 'incidentDetail'
+  | 'equipment';
 
 initDb(); // initialise SQLite tables at module load
 
@@ -108,6 +110,7 @@ function AppRouter(): React.JSX.Element {
             setViewIncidentId(id);
             setScreen('incidentDetail');
           }}
+          onEquipment={() => setScreen('equipment')}
         />
       )}
       {screen === 'incident' && (
@@ -141,6 +144,9 @@ function AppRouter(): React.JSX.Element {
           incidentId={viewIncidentId}
           onBack={() => setScreen('tasks')}
         />
+      )}
+      {screen === 'equipment' && (
+        <EquipmentScreen onBack={() => setScreen('tasks')} />
       )}
     </>
   );

@@ -115,6 +115,7 @@ interface Props {
   onZoneStatusBoard: () => void;
   onMyShift: () => void;
   onIncidentDetail: (incidentId: string) => void;
+  onEquipment: () => void;
 }
 
 export function TasksScreen({
@@ -126,6 +127,7 @@ export function TasksScreen({
   onZoneStatusBoard,
   onMyShift,
   onIncidentDetail,
+  onEquipment,
 }: Props): React.JSX.Element {
   const c = useColours();
   const brand = useBrand();
@@ -286,6 +288,15 @@ export function TasksScreen({
       key: 'COMPLIANCE',
       title: 'Compliance',
       items: [
+        // BR-21 Equipment & Maintenance Tracker — venue-wide compliance
+        // view. Visible to all roles; SH/DSH/FM can manage in Phase B
+        // (writes blocked to those roles via api requireRole).
+        {
+          key: 'equipment',
+          label: 'Equipment',
+          icon: '🛠️',
+          onPress: onEquipment,
+        },
         {
           key: 'certs',
           label: 'My Certifications',

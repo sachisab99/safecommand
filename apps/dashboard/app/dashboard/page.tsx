@@ -21,6 +21,18 @@ interface AnalyticsSummary {
   tasks_today: { total: number; complete: number; missed: number; pending: number; compliance_rate: number };
   staff: { total: number; active: number };
   zones: { total: number; all_clear: number; attention: number; incident_active: number };
+  // Optional — present once api is deployed with Phase 5.10 changes.
+  // Local-dev (api still on old code) returns response without this field;
+  // HealthScoreBreakdown defensively shows "Phase B" placeholder if absent.
+  equipment?: {
+    total: number;
+    ok: number;
+    due_90: number;
+    due_30: number;
+    due_7: number;
+    overdue: number;
+    compliance_score: number;
+  };
 }
 
 const TYPE_ICON: Record<string, string> = {
@@ -123,14 +135,33 @@ function HealthScoreBreakdown({ data }: { data: AnalyticsSummary }) {
       status: 'pending',
       detail: 'Module activates Phase B (June)',
     },
-    {
-      key: 'equipment',
-      label: 'Equipment',
-      weight: 10,
-      score: null,
-      status: 'pending',
-      detail: 'Module activates Phase B (June)',
-    },
+    // Equipment activates LIVE once the api endpoint deploy lands. Until
+    // then `data.equipment` is undefined → falls back to Phase B placeholder.
+    data.equipment
+      ? {
+          key: 'equipment' as const,
+          label: 'Equipment',
+          weight: 10,
+          score: data.equipment.compliance_score,
+          status: 'live' as const,
+          detail:
+            data.equipment.total === 0
+              ? 'No equipment registered yet'
+              : `${data.equipment.ok}/${data.equipment.total} ≥90d to next service` +
+                (data.equipment.overdue > 0
+                  ? ` · ${data.equipment.overdue} OVERDUE`
+                  : data.equipment.due_7 > 0
+                    ? ` · ${data.equipment.due_7} due ≤7d`
+                    : ''),
+        }
+      : {
+          key: 'equipment' as const,
+          label: 'Equipment',
+          weight: 10,
+          score: null,
+          status: 'pending' as const,
+          detail: 'Module activates Phase B (June)',
+        },
     {
       key: 'drills',
       label: 'Drills',
