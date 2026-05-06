@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Geist } from 'next/font/google';
 import './globals.css';
 import { ThemeProvider } from '../lib/theme';
+import { TopNav } from '../components/TopNav';
 
 const geist = Geist({ subsets: ['latin'], variable: '--font-geist' });
 
@@ -20,7 +21,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
          * configures Apollo's brand_config, the surrounding console chrome
          * stays as SafeCommand to prevent cross-brand confusion.
          */}
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          {/* Persistent global nav. Renders nothing on /login (no ops_auth cookie). */}
+          <TopNav />
+          {children}
+        </ThemeProvider>
       </body>
     </html>
   );

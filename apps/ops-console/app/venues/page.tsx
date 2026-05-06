@@ -1,5 +1,4 @@
 import Link from 'next/link';
-import { logoutAction } from '@/actions/auth';
 import { getAdminClient } from '@/lib/supabase';
 import type { Venue } from '@safecommand/types';
 
@@ -24,24 +23,13 @@ export default async function VenuesPage() {
 
   return (
     <div className="min-h-screen">
-      {/* Header */}
-      <header className="bg-white border-b border-gray-200">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center">
-              <span className="text-white font-bold text-sm">SC</span>
-            </div>
-            <span className="font-semibold text-gray-900">Ops Console</span>
-          </div>
-          <form action={logoutAction}>
-            <button className="text-sm text-gray-500 hover:text-gray-900 transition-colors">
-              Sign out
-            </button>
-          </form>
-        </div>
-      </header>
-
       <main className="max-w-6xl mx-auto px-6 py-8">
+        {/* Breadcrumb */}
+        <nav className="flex items-center gap-2 text-sm text-gray-500 mb-3">
+          <Link href="/" className="hover:text-gray-900">Home</Link>
+          <span>/</span>
+          <span className="text-gray-900 font-medium">Venues</span>
+        </nav>
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-xl font-semibold text-gray-900">Venues</h1>
