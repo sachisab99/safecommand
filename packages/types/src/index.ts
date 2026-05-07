@@ -215,6 +215,59 @@ export interface EquipmentItem {
   updated_at: string;
 }
 
+// ─── Drill compliance types (BR-A) ──────────────────────────────────────────
+// Drill Management Module — schedule/run/time/document. Auto-generates
+// timed Fire NOC compliance reports. Per-building separate records (MBV).
+
+export type DrillType =
+  | 'FIRE_EVACUATION'
+  | 'EARTHQUAKE'
+  | 'BOMB_THREAT'
+  | 'MEDICAL_EMERGENCY'
+  | 'PARTIAL_EVACUATION'
+  | 'FULL_EVACUATION'
+  | 'OTHER';
+
+export type DrillStatus = 'SCHEDULED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+
+export type DrillParticipantStatus =
+  | 'NOTIFIED'
+  | 'ACKNOWLEDGED'
+  | 'SAFE_CONFIRMED'
+  | 'MISSED';
+
+export interface DrillSession {
+  id: string;
+  venue_id: string;
+  building_id: string | null;
+  drill_type: DrillType;
+  status: DrillStatus;
+  scheduled_for: string;
+  started_at: string | null;
+  ended_at: string | null;
+  started_by_staff_id: string | null;
+  total_staff_expected: number;
+  total_staff_acknowledged: number;
+  total_staff_safe: number;
+  total_staff_missed: number;
+  duration_seconds: number | null;
+  notes: string | null;
+  report_pdf_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DrillSessionParticipant {
+  id: string;
+  drill_session_id: string;
+  staff_id: string;
+  status: DrillParticipantStatus;
+  notified_at: string;
+  acknowledged_at: string | null;
+  safe_confirmed_at: string | null;
+  ack_latency_seconds: number | null;
+}
+
 /** Staff member's zone coverage for a specific shift_instance */
 export interface StaffZoneAssignment {
   id: string;

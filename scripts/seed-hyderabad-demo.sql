@@ -312,7 +312,38 @@ VALUES
   (:venue_id, '[DEMO] FAK-T1-RECEP', 'FIRST_AID_KIT', 'T1 Reception under desk', CURRENT_DATE - INTERVAL '40 days', CURRENT_DATE + INTERVAL '325 days', TRUE),
   (:venue_id, '[DEMO] FAK-T2-RECEP', 'FIRST_AID_KIT', 'T2 Reception under desk', CURRENT_DATE - INTERVAL '40 days', CURRENT_DATE + INTERVAL '325 days', TRUE);
 
--- ─── 8. Summary ─────────────────────────────────────────────────────────────
+-- ─── 8. Drill sessions (BR-A demo data) ────────────────────────────────────
+-- Realistic compliance state: 1 COMPLETED 60d ago (gives drill_score=100) +
+-- 1 SCHEDULED 30d future (shows ongoing program) + 1 COMPLETED 240d ago
+-- (older record for history). Marker: notes LIKE '[DEMO]%'.
+
+INSERT INTO drill_sessions (
+  venue_id, drill_type, status, scheduled_for, started_at, ended_at,
+  total_staff_expected, total_staff_acknowledged, total_staff_safe,
+  total_staff_missed, duration_seconds, notes
+)
+VALUES
+  -- Most recent completed — drives compliance_score = 100
+  (:venue_id, 'FIRE_EVACUATION', 'COMPLETED',
+   NOW() - INTERVAL '60 days',
+   NOW() - INTERVAL '60 days' + INTERVAL '5 minutes',
+   NOW() - INTERVAL '60 days' + INTERVAL '13 minutes 22 seconds',
+   8, 8, 7, 1, 502,
+   '[DEMO] Quarterly fire evacuation drill — Tower 1. Target: <15 min full evacuation. Achieved 13:22.'),
+  -- Older completed — for history depth
+  (:venue_id, 'FULL_EVACUATION', 'COMPLETED',
+   NOW() - INTERVAL '240 days',
+   NOW() - INTERVAL '240 days' + INTERVAL '2 minutes',
+   NOW() - INTERVAL '240 days' + INTERVAL '18 minutes 45 seconds',
+   6, 6, 6, 0, 1003,
+   '[DEMO] Annual full-venue evacuation drill — both towers. Achieved 18:45 (target 20 min). All clear.'),
+  -- Upcoming — shows the ongoing programme
+  (:venue_id, 'EARTHQUAKE', 'SCHEDULED',
+   NOW() + INTERVAL '30 days',
+   NULL, NULL, 0, 0, 0, 0, NULL,
+   '[DEMO] Earthquake response drill scheduled. Pre-brief 1 week before. Building-wide drop-cover-hold.');
+
+-- ─── 9. Summary ─────────────────────────────────────────────────────────────
 \echo ''
 \echo '═══════════════════════════════════════════════════════════════'
 \echo '  Seed complete'
@@ -340,6 +371,9 @@ SELECT 'incident_timeline events', COUNT(*) FROM incident_timeline
   WHERE venue_id = :venue_id
 UNION ALL
 SELECT 'equipment items ([DEMO])', COUNT(*) FROM equipment_items
-  WHERE venue_id = :venue_id AND name LIKE '[DEMO]%';
+  WHERE venue_id = :venue_id AND name LIKE '[DEMO]%'
+UNION ALL
+SELECT 'drill sessions ([DEMO])', COUNT(*) FROM drill_sessions
+  WHERE venue_id = :venue_id AND notes LIKE '[DEMO]%';
 
 COMMIT;

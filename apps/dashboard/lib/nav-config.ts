@@ -44,6 +44,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'Compliance',
     items: [
       { id: 'equipment',       label: 'Equipment',       icon: '🛠', href: '/equipment',       enabled: true },
+      { id: 'drills',          label: 'Drills',          icon: '🔥', href: '/drills',          enabled: true },
       { id: 'certifications',  label: 'Certifications',  icon: '📜', href: '/certifications',  enabled: false },
       { id: 'audit',           label: 'Audit Logs',      icon: '🔍', href: '/audit',           enabled: false },
       { id: 'compliance-exports', label: 'Compliance Exports', icon: '📄', href: '/compliance/exports', enabled: false },

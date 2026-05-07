@@ -32,6 +32,12 @@ import {
   deactivateEquipmentAction,
   reactivateEquipmentAction,
 } from '@/actions/equipment';
+import {
+  scheduleDrillAction,
+  startDrillAction,
+  endDrillAction,
+  cancelDrillAction,
+} from '@/actions/drills';
 import { ZoneAssignmentGrid } from '@/components/ZoneAssignmentGrid';
 import type {
   Venue,
@@ -45,9 +51,10 @@ import type {
   ShiftInstance,
   StaffZoneAssignment,
   EquipmentItem,
+  DrillSession,
 } from '@safecommand/types';
 
-type Tab = 'floors' | 'templates' | 'staff' | 'shifts' | 'equipment';
+type Tab = 'floors' | 'templates' | 'staff' | 'shifts' | 'equipment' | 'drills';
 
 interface Staff {
   id: string;
@@ -67,7 +74,7 @@ async function getData(id: string, rosterDate: string) {
   const [
     venueRes, floorsRes, zonesRes, templatesRes, staffRes,
     shiftsRes, shiftInstancesRes, assignmentsRes,
-    equipmentRes,
+    equipmentRes, drillsRes,
   ] = await Promise.all([
     client.from('venues').select('*').eq('id', id).single(),
     client.from('floors').select('*').eq('venue_id', id).order('floor_number'),
@@ -79,6 +86,7 @@ async function getData(id: string, rosterDate: string) {
     // Pull all assignments for shift_instances on this date — small set, single round-trip
     client.from('staff_zone_assignments').select('*').eq('venue_id', id),
     client.from('equipment_items').select('*').eq('venue_id', id).order('next_service_due'),
+    client.from('drill_sessions').select('*').eq('venue_id', id).order('scheduled_for', { ascending: false }),
   ]);
 
   if (venueRes.error || !venueRes.data) return null;
@@ -100,6 +108,7 @@ async function getData(id: string, rosterDate: string) {
     shiftInstances: (shiftInstancesRes.data ?? []) as ShiftInstance[],
     assignments: (assignmentsRes.data ?? []) as StaffZoneAssignment[],
     equipment: (equipmentRes.data ?? []) as EquipmentItem[],
+    drills: (drillsRes.data ?? []) as DrillSession[],
   };
 }
 
@@ -209,7 +218,7 @@ export default async function VenueDetailPage({
   const data = await getData(id, rosterDate);
   if (!data) notFound();
 
-  const { venue, floors, zones, templates, staff, shifts, shiftInstances, assignments, equipment } = data;
+  const { venue, floors, zones, templates, staff, shifts, shiftInstances, assignments, equipment, drills } = data;
   const totalZones = floors.reduce((acc, f) => acc + f.zones.length, 0);
 
   return (
@@ -252,6 +261,7 @@ export default async function VenueDetailPage({
               ['staff', 'Staff'],
               ['shifts', 'Shifts & Roster'],
               ['equipment', 'Equipment'],
+              ['drills', 'Drills'],
             ] as [Tab, string][]).map(([t, label]) => (
               <Link key={t} href={`/venues/${id}?tab=${t}`}
                 className={`py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${activeTab === t ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-900'}`}>
@@ -297,6 +307,9 @@ export default async function VenueDetailPage({
         )}
         {activeTab === 'equipment' && (
           <EquipmentTab venue={venue} equipment={equipment} editEq={sp.edit_eq} />
+        )}
+        {activeTab === 'drills' && (
+          <DrillsTab venue={venue} drills={drills} staff={staff} />
         )}
       </main>
     </div>
@@ -1903,6 +1916,384 @@ function StatTile({
       <div className={`text-2xl font-bold ${toneClass}`}>{value}</div>
       <div className="text-[10px] font-medium uppercase tracking-wide text-gray-500">
         {label}
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   DRILLS TAB (BR-A)
+   Schedule + run + document drills. Compliance score (10% of BR-14 Health
+   Score) computed from recency of last completed drill.
+═══════════════════════════════════════════════════════════════════════════ */
+
+const DRILL_TYPES: Array<[string, string]> = [
+  ['FIRE_EVACUATION', 'Fire Evacuation'],
+  ['EARTHQUAKE', 'Earthquake'],
+  ['BOMB_THREAT', 'Bomb Threat'],
+  ['MEDICAL_EMERGENCY', 'Medical Emergency'],
+  ['PARTIAL_EVACUATION', 'Partial Evacuation'],
+  ['FULL_EVACUATION', 'Full Evacuation'],
+  ['OTHER', 'Other'],
+];
+
+const DRILL_TYPE_LABEL: Record<string, string> = Object.fromEntries(DRILL_TYPES);
+
+const DRILL_TYPE_ICON: Record<string, string> = {
+  FIRE_EVACUATION: '🔥',
+  EARTHQUAKE: '🌍',
+  BOMB_THREAT: '💣',
+  MEDICAL_EMERGENCY: '🏥',
+  PARTIAL_EVACUATION: '🚪',
+  FULL_EVACUATION: '🚨',
+  OTHER: '⚠️',
+};
+
+const DRILL_STATUS_PILL: Record<string, string> = {
+  SCHEDULED: 'bg-blue-100 text-blue-700 border border-blue-200',
+  IN_PROGRESS: 'bg-amber-100 text-amber-700 border border-amber-200',
+  COMPLETED: 'bg-emerald-100 text-emerald-700 border border-emerald-200',
+  CANCELLED: 'bg-gray-100 text-gray-500 border border-gray-200',
+};
+
+function daysSince(iso: string): number {
+  return Math.floor((Date.now() - new Date(iso).getTime()) / (24 * 60 * 60 * 1000));
+}
+
+function formatDateTime(iso: string): string {
+  return new Date(iso).toLocaleString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function formatDuration(seconds: number | null): string {
+  if (seconds === null || seconds < 0) return '—';
+  if (seconds < 60) return `${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  if (m < 60) return `${m}m ${s}s`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m`;
+}
+
+/** Drill compliance score formula — recency of last COMPLETED drill */
+function computeDrillScore(drills: DrillSession[]): number {
+  const completed = drills
+    .filter((d) => d.status === 'COMPLETED' && d.ended_at !== null)
+    .sort((a, b) => (b.ended_at ?? '').localeCompare(a.ended_at ?? ''));
+  if (completed.length === 0) return 0;
+  const days = daysSince(completed[0].ended_at!);
+  if (days <= 90) return 100;
+  if (days <= 180) return 75;
+  if (days <= 270) return 50;
+  if (days <= 365) return 25;
+  return 0;
+}
+
+function DrillsTab({
+  venue,
+  drills,
+  staff,
+}: {
+  venue: Venue;
+  drills: DrillSession[];
+  staff: Staff[];
+}) {
+  // Default scheduled_for to 7 days from now at 10am IST
+  const defaultScheduled = (() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 7);
+    d.setHours(10, 0, 0, 0);
+    return d.toISOString().slice(0, 16);
+  })();
+
+  // Categorise drills
+  const upcoming = drills.filter((d) => d.status === 'SCHEDULED');
+  const inProgress = drills.filter((d) => d.status === 'IN_PROGRESS');
+  const completed = drills.filter((d) => d.status === 'COMPLETED');
+  const cancelled = drills.filter((d) => d.status === 'CANCELLED');
+
+  const score = computeDrillScore(drills);
+  const lastCompleted = completed.sort((a, b) =>
+    (b.ended_at ?? '').localeCompare(a.ended_at ?? ''),
+  )[0];
+  const daysSinceLast = lastCompleted?.ended_at ? daysSince(lastCompleted.ended_at) : null;
+
+  const commanderEligible = staff.filter(
+    (s) => s.is_active && ['SH', 'DSH', 'SHIFT_COMMANDER'].includes(s.role),
+  );
+
+  return (
+    <div className="space-y-6">
+      {/* Compliance summary */}
+      <section className="bg-white rounded-2xl border border-gray-200 p-5">
+        <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">Drill Compliance</h2>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Schedule + run + document. Score = recency of last completed drill (best-practice quarterly cadence).
+            </p>
+          </div>
+          <div className="text-right">
+            <div
+              className={`text-3xl font-black ${
+                score >= 80
+                  ? 'text-emerald-700'
+                  : score >= 60
+                    ? 'text-amber-700'
+                    : 'text-red-700'
+              }`}
+            >
+              {score}
+            </div>
+            <div className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
+              compliance score
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <DrillStatTile
+            label="Last drill"
+            value={daysSinceLast === null ? '—' : `${daysSinceLast}d ago`}
+            tone={
+              daysSinceLast === null || daysSinceLast > 180
+                ? 'bad'
+                : daysSinceLast > 90
+                  ? 'warn'
+                  : 'good'
+            }
+          />
+          <StatTile label="Upcoming" value={upcoming.length} tone={upcoming.length > 0 ? 'good' : 'neutral'} />
+          <StatTile label="Completed" value={completed.length} tone="neutral" />
+          <StatTile label="Total" value={drills.length} tone="neutral" />
+        </div>
+
+        <p className="text-xs text-gray-400 mt-3">
+          Activates the Drills row (10% weight) of the venue Health Score.
+        </p>
+      </section>
+
+      {/* Schedule new drill */}
+      <section className="bg-white rounded-2xl border border-gray-200 p-5">
+        <h3 className="text-sm font-semibold text-gray-900 mb-3">Schedule a new drill</h3>
+        <form action={scheduleDrillAction} className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+          <input type="hidden" name="venue_id" value={venue.id} />
+          <div className="sm:col-span-3">
+            <label className="block text-xs font-medium text-gray-700 mb-1">Drill type *</label>
+            <select name="drill_type" required defaultValue="FIRE_EVACUATION" className={selectCls}>
+              {DRILL_TYPES.map(([v, label]) => (
+                <option key={v} value={v}>{label}</option>
+              ))}
+            </select>
+          </div>
+          <div className="sm:col-span-3">
+            <label className="block text-xs font-medium text-gray-700 mb-1">Scheduled for *</label>
+            <input
+              name="scheduled_for"
+              type="datetime-local"
+              required
+              defaultValue={defaultScheduled}
+              className={inputCls}
+            />
+          </div>
+          <div className="sm:col-span-4">
+            <label className="block text-xs font-medium text-gray-700 mb-1">Notes</label>
+            <input
+              name="notes"
+              placeholder="Optional — internal notes / drill scenario"
+              className={inputCls}
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <button type="submit" className={btnCls}>Schedule</button>
+          </div>
+        </form>
+      </section>
+
+      {/* In progress (rare — at most 1) */}
+      {inProgress.length > 0 && (
+        <section>
+          <h3 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+            In progress
+          </h3>
+          <div className="space-y-2">
+            {inProgress.map((d) => (
+              <DrillCard key={d.id} drill={d} venue={venue} commanderEligible={commanderEligible} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Upcoming */}
+      {upcoming.length > 0 && (
+        <section>
+          <h3 className="text-sm font-semibold text-gray-900 mb-3">
+            Upcoming ({upcoming.length})
+          </h3>
+          <div className="space-y-2">
+            {upcoming.map((d) => (
+              <DrillCard key={d.id} drill={d} venue={venue} commanderEligible={commanderEligible} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Completed */}
+      {completed.length > 0 && (
+        <section>
+          <h3 className="text-sm font-semibold text-gray-900 mb-3">
+            Completed ({completed.length})
+          </h3>
+          <div className="space-y-2">
+            {completed.slice(0, 10).map((d) => (
+              <DrillCard key={d.id} drill={d} venue={venue} commanderEligible={commanderEligible} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Cancelled — collapsed by default to reduce noise */}
+      {cancelled.length > 0 && (
+        <details className="text-sm">
+          <summary className="cursor-pointer text-gray-500 hover:text-gray-700">
+            Cancelled ({cancelled.length})
+          </summary>
+          <div className="space-y-2 mt-3">
+            {cancelled.map((d) => (
+              <DrillCard key={d.id} drill={d} venue={venue} commanderEligible={commanderEligible} />
+            ))}
+          </div>
+        </details>
+      )}
+
+      {drills.length === 0 && (
+        <div className="text-center py-12 text-gray-400 text-sm bg-white border border-dashed border-gray-200 rounded-2xl">
+          No drills yet. Schedule your first drill above to start tracking compliance.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DrillStatTile({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone: 'good' | 'warn' | 'bad' | 'neutral';
+}) {
+  const toneClass = {
+    good: 'text-emerald-700',
+    warn: 'text-amber-700',
+    bad: 'text-red-700',
+    neutral: 'text-gray-900',
+  }[tone];
+  return (
+    <div className="bg-gray-50 rounded-lg px-3 py-2">
+      <div className={`text-lg font-bold ${toneClass}`}>{value}</div>
+      <div className="text-[10px] font-medium uppercase tracking-wide text-gray-500">
+        {label}
+      </div>
+    </div>
+  );
+}
+
+function DrillCard({
+  drill,
+  venue,
+  commanderEligible,
+}: {
+  drill: DrillSession;
+  venue: Venue;
+  commanderEligible: Staff[];
+}) {
+  const icon = DRILL_TYPE_ICON[drill.drill_type] ?? '⚠️';
+  const ackPercent =
+    drill.total_staff_expected > 0
+      ? Math.round((drill.total_staff_safe / drill.total_staff_expected) * 100)
+      : 0;
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 p-4">
+      <div className="flex items-start gap-3 flex-wrap">
+        <span className="text-2xl shrink-0">{icon}</span>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap mb-1">
+            <span className="font-semibold text-gray-900">
+              {DRILL_TYPE_LABEL[drill.drill_type] ?? drill.drill_type}
+            </span>
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${DRILL_STATUS_PILL[drill.status]}`}>
+              {drill.status}
+            </span>
+          </div>
+          <div className="text-xs text-gray-500 flex flex-wrap gap-x-4 gap-y-1">
+            <span>📅 Scheduled: {formatDateTime(drill.scheduled_for)}</span>
+            {drill.started_at && <span>▶ Started: {formatDateTime(drill.started_at)}</span>}
+            {drill.ended_at && <span>⏹ Ended: {formatDateTime(drill.ended_at)}</span>}
+            {drill.duration_seconds !== null && (
+              <span>⏱ {formatDuration(drill.duration_seconds)}</span>
+            )}
+          </div>
+          {drill.status === 'COMPLETED' && drill.total_staff_expected > 0 && (
+            <div className="text-xs mt-1.5 flex flex-wrap gap-x-3">
+              <span className="text-gray-700 font-medium">
+                Participation: {ackPercent}% ({drill.total_staff_safe}/{drill.total_staff_expected})
+              </span>
+              {drill.total_staff_missed > 0 && (
+                <span className="text-red-600 font-medium">
+                  {drill.total_staff_missed} missed
+                </span>
+              )}
+            </div>
+          )}
+          {drill.notes && (
+            <p className="text-xs text-gray-600 mt-1.5 italic">"{drill.notes.replace(/^\[DEMO\]\s*/, '')}"</p>
+          )}
+        </div>
+
+        {/* Action buttons by status */}
+        <div className="flex flex-col gap-2 shrink-0">
+          {drill.status === 'SCHEDULED' && (
+            <>
+              <form action={startDrillAction} className="inline">
+                <input type="hidden" name="venue_id" value={venue.id} />
+                <input type="hidden" name="id" value={drill.id} />
+                {commanderEligible[0] && (
+                  <input
+                    type="hidden"
+                    name="started_by_staff_id"
+                    value={commanderEligible[0].id}
+                  />
+                )}
+                <button type="submit" className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-medium rounded">
+                  ▶ Start drill
+                </button>
+              </form>
+              <form action={cancelDrillAction} className="inline">
+                <input type="hidden" name="venue_id" value={venue.id} />
+                <input type="hidden" name="id" value={drill.id} />
+                <button type="submit" className={removeBtnCls}>Cancel</button>
+              </form>
+            </>
+          )}
+          {drill.status === 'IN_PROGRESS' && (
+            <form action={endDrillAction} className="inline">
+              <input type="hidden" name="venue_id" value={venue.id} />
+              <input type="hidden" name="id" value={drill.id} />
+              <button type="submit" className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium rounded">
+                ⏹ End drill
+              </button>
+            </form>
+          )}
+        </div>
       </div>
     </div>
   );

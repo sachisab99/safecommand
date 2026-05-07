@@ -10,6 +10,7 @@ import { ZoneStatusBoardScreen } from './src/screens/ZoneStatusBoardScreen';
 import { MyShiftScreen } from './src/screens/MyShiftScreen';
 import { IncidentDetailScreen } from './src/screens/IncidentDetailScreen';
 import { EquipmentScreen } from './src/screens/EquipmentScreen';
+import { DrillsScreen } from './src/screens/DrillsScreen';
 import { getStoredSession, clearSession } from './src/services/auth';
 import { initDb, syncPending } from './src/services/tasks';
 import type { AuthSession, OtpConfirmation } from './src/services/auth';
@@ -27,7 +28,8 @@ type ScreenName =
   | 'zoneStatusBoard'
   | 'myShift'
   | 'incidentDetail'
-  | 'equipment';
+  | 'equipment'
+  | 'drills';
 
 initDb(); // initialise SQLite tables at module load
 
@@ -111,6 +113,7 @@ function AppRouter(): React.JSX.Element {
             setScreen('incidentDetail');
           }}
           onEquipment={() => setScreen('equipment')}
+          onDrills={() => setScreen('drills')}
         />
       )}
       {screen === 'incident' && (
@@ -147,6 +150,9 @@ function AppRouter(): React.JSX.Element {
       )}
       {screen === 'equipment' && (
         <EquipmentScreen onBack={() => setScreen('tasks')} />
+      )}
+      {screen === 'drills' && (
+        <DrillsScreen onBack={() => setScreen('tasks')} />
       )}
     </>
   );

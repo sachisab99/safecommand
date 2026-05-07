@@ -67,6 +67,10 @@ WHERE venue_id = :venue_id AND phone LIKE '+919999%';
 DELETE FROM equipment_items
 WHERE venue_id = :venue_id AND name LIKE '[DEMO]%';
 
+-- 9. Remove seed drill sessions (cascades to drill_session_participants via FK)
+DELETE FROM drill_sessions
+WHERE venue_id = :venue_id AND notes LIKE '[DEMO]%';
+
 -- ─── Summary ────────────────────────────────────────────────────────────────
 \echo ''
 \echo '═══════════════════════════════════════════════════════════════'
@@ -95,6 +99,9 @@ SELECT 'incident_timeline events', COUNT(*) FROM incident_timeline
   WHERE venue_id = :venue_id
 UNION ALL
 SELECT 'equipment items (seed remaining)', COUNT(*) FROM equipment_items
-  WHERE venue_id = :venue_id AND name LIKE '[DEMO]%';
+  WHERE venue_id = :venue_id AND name LIKE '[DEMO]%'
+UNION ALL
+SELECT 'drill sessions (seed remaining)', COUNT(*) FROM drill_sessions
+  WHERE venue_id = :venue_id AND notes LIKE '[DEMO]%';
 
 COMMIT;

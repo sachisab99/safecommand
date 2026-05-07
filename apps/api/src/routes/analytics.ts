@@ -14,7 +14,7 @@ analyticsRouter.get(
     const venueId = req.auth.venue_id;
     const today = new Date().toISOString().slice(0, 10);
 
-    const [incidents, tasks, staff, zones, equipment] = await Promise.all([
+    const [incidents, tasks, staff, zones, equipment, drills] = await Promise.all([
       db.from('incidents').select('id, severity, incident_type, status, declared_at, zones(name)')
         .eq('venue_id', venueId).in('status', ['ACTIVE', 'CONTAINED']).order('declared_at', { ascending: false }),
       db.from('task_instances').select('id, status')
@@ -29,6 +29,11 @@ analyticsRouter.get(
       // Empty (no equipment registered) → 100 (no compliance penalty).
       db.from('equipment_items').select('id, next_service_due, is_active')
         .eq('venue_id', venueId).eq('is_active', true),
+      // BR-A drills rollup — drives Health Score Breakdown Drills row
+      // (Phase 5.11). Recency-of-last-completed-drill formula.
+      db.from('drill_sessions').select('id, status, ended_at, scheduled_for')
+        .eq('venue_id', venueId)
+        .order('scheduled_for', { ascending: false }),
     ]);
 
     const taskData = tasks.data ?? [];
@@ -67,6 +72,29 @@ analyticsRouter.get(
     const equipTotal = equipData.length;
     const equipScore = equipTotal === 0 ? 100 : Math.round((equipBuckets.ok / equipTotal) * 100);
 
+    // ─── Drill compliance rollup (BR-A) ─────────────────────────────────────
+    // Score = recency of last COMPLETED drill (best-practice quarterly).
+    // Empty (never had a drill) = 0 — drills missing IS a compliance penalty.
+    const drillData = drills.data ?? [];
+    const completedDrills = drillData
+      .filter((d) => d.status === 'COMPLETED' && d.ended_at !== null)
+      .sort((a, b) => (b.ended_at ?? '').localeCompare(a.ended_at ?? ''));
+    const lastCompleted = completedDrills[0];
+    let drillScore = 0;
+    let daysSinceLastDrill: number | null = null;
+    if (lastCompleted?.ended_at) {
+      const days = Math.floor(
+        (todayMs - new Date(lastCompleted.ended_at).getTime()) / 86_400_000,
+      );
+      daysSinceLastDrill = days;
+      if (days <= 90) drillScore = 100;
+      else if (days <= 180) drillScore = 75;
+      else if (days <= 270) drillScore = 50;
+      else if (days <= 365) drillScore = 25;
+      else drillScore = 0;
+    }
+    const upcomingDrills = drillData.filter((d) => d.status === 'SCHEDULED').length;
+
     res.json({
       health_score: healthScore,
       active_incidents: incidentData.length,
@@ -96,6 +124,13 @@ analyticsRouter.get(
         due_7: equipBuckets.due_7,
         overdue: equipBuckets.overdue,
         compliance_score: equipScore,
+      },
+      drills: {
+        total: drillData.length,
+        completed: completedDrills.length,
+        upcoming: upcomingDrills,
+        days_since_last: daysSinceLastDrill,
+        compliance_score: drillScore,
       },
     });
   },

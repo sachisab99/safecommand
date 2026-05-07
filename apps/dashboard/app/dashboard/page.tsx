@@ -33,6 +33,14 @@ interface AnalyticsSummary {
     overdue: number;
     compliance_score: number;
   };
+  // Phase 5.11 — drills rollup. Same defensive optionality.
+  drills?: {
+    total: number;
+    completed: number;
+    upcoming: number;
+    days_since_last: number | null;
+    compliance_score: number;
+  };
 }
 
 const TYPE_ICON: Record<string, string> = {
@@ -162,14 +170,32 @@ function HealthScoreBreakdown({ data }: { data: AnalyticsSummary }) {
           status: 'pending' as const,
           detail: 'Module activates Phase B (June)',
         },
-    {
-      key: 'drills',
-      label: 'Drills',
-      weight: 10,
-      score: null,
-      status: 'pending',
-      detail: 'Module activates Phase B (June)',
-    },
+    // Drills activates LIVE once api endpoint deploy lands. Same pattern as
+    // equipment above — defensive fallback to Phase B placeholder if data
+    // not yet returned.
+    data.drills
+      ? {
+          key: 'drills' as const,
+          label: 'Drills',
+          weight: 10,
+          score: data.drills.compliance_score,
+          status: 'live' as const,
+          detail:
+            data.drills.days_since_last === null
+              ? data.drills.upcoming > 0
+                ? `${data.drills.upcoming} upcoming · no completed yet`
+                : 'No drills run yet'
+              : `Last drill ${data.drills.days_since_last}d ago` +
+                (data.drills.upcoming > 0 ? ` · ${data.drills.upcoming} upcoming` : ''),
+        }
+      : {
+          key: 'drills' as const,
+          label: 'Drills',
+          weight: 10,
+          score: null,
+          status: 'pending' as const,
+          detail: 'Module activates Phase B (June)',
+        },
   ];
 
   const liveWeight = components

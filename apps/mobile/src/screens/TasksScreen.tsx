@@ -116,6 +116,7 @@ interface Props {
   onMyShift: () => void;
   onIncidentDetail: (incidentId: string) => void;
   onEquipment: () => void;
+  onDrills: () => void;
 }
 
 export function TasksScreen({
@@ -128,6 +129,7 @@ export function TasksScreen({
   onMyShift,
   onIncidentDetail,
   onEquipment,
+  onDrills,
 }: Props): React.JSX.Element {
   const c = useColours();
   const brand = useBrand();
@@ -296,6 +298,14 @@ export function TasksScreen({
           label: 'Equipment',
           icon: '🛠️',
           onPress: onEquipment,
+        },
+        // BR-A Drill Management — read-only on mobile in Phase 1; SH/DSH
+        // schedule + run drills via Ops Console.
+        {
+          key: 'drills',
+          label: 'Drills',
+          icon: '🔥',
+          onPress: onDrills,
         },
         {
           key: 'certs',
