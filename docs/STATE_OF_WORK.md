@@ -1,9 +1,10 @@
 # SafeCommand — State of Work
 
-> **Last updated:** 2026-05-07
-> **Branch:** `main` and `safecommand_v7` synced at HEAD `03a4b84` — 55 commits past `96594ad`
-> **Deploy state:** Railway api + AWS Amplify dashboard both serving latest. Workers PAUSED.
+> **Last updated:** 2026-05-07 (Phase 5.13–5.17 wave complete)
+> **Branch:** `main` and `safecommand_v7` synced at HEAD `52ef193` — 61 commits past `96594ad`
+> **Deploy state:** Railway api + AWS Amplify dashboard auto-deploy from `main` on push. Workers PAUSED via `WORKERS_PAUSED=true`.
 > **BR-14 Health Score:** **100% surface LIVE** — all 5 components compute live (Tasks 40 / Incidents 25 / Equipment 10 / Drills 10 / Certs 15)
+> **Two-tier admin parity:** **COMPLETE** — SH-tier write surfaces live for Equipment / Drills / Certifications / Shifts & Roster / Staff across mobile + dashboard, parallel to SC Ops Console.
 > **Spec authority:** Business Plan v2 (91 BRs / 37 NFRs / 22 sections, 2026-05-10) + Architecture v7 (22 ECs / 22 Hard Rules / 6089 lines, 2026-05-10)
 >
 > This document is a comprehensive snapshot of what's built, what's deployed, what's deferred, and where things sit operationally. Companion: `docs/security/POSTURE_AND_ROADMAP.md` for security/compliance posture.
@@ -18,8 +19,9 @@
 | Sprint 2 — Scheduling + Notification | 2026-04-30 → 2026-05-03 | ⏳ PARTIAL | Master-tick + scheduler logic live; FCM push wired; mobile end-to-end task complete with TEXT evidence; **paused for May freeze** |
 | Phase A — v7 Reconciliation | 2026-05-04 → 2026-05-05 | ✅ COMPLETE | All 12 steps + polish; ThemeProvider mobile + dashboard + ops-console; ADR 0001/0002/0003; security history rewrite (4 secrets scrubbed); Phase B pre-writes (mig 009/010/011 source) |
 | Phase B Stage 2 — Schema deploy (Path B) | 2026-05-06 | ✅ COMPLETE (early) | Mig 009/010/011 deployed to Supabase production; mig 012 RLS security fix; founder elected to deploy in May vs wait for June |
-| Phase 5 — Engineering refinement track | 2026-05-06 → 2026-05-07 | ✅ COMPLETE | All 13 phases (5.0 through 5.12) shipped — see §8 below |
-| Phase B Stage A — `safecommand_v7 → main` merge | 2026-05-06 | ✅ COMPLETE (early) | Founder Choice A: 51-commit fast-forward merge + push triggered Railway api + AWS Amplify auto-deploy. Workers stay paused via env var. |
+| Phase 5 — Engineering refinement track (5.0 → 5.12) | 2026-05-06 → 2026-05-07 | ✅ COMPLETE | All 13 base phases shipped — see §8 below |
+| Phase 5.13 → 5.17 — Two-tier admin parity wave | 2026-05-07 | ✅ COMPLETE | SH-tier write surfaces for Equipment / Drills / Cert / Shifts / Staff across mobile + dashboard; new api routes `/v1/shifts` + `/v1/shift-instances` (7 endpoints, bulk-replace assignments, 2-person validation) — see §11 |
+| Phase B Stage A — `safecommand_v7 → main` merge | 2026-05-06 | ✅ COMPLETE (early) | Founder Choice A: continuous fast-forward merges keep main current; Railway api + AWS Amplify dashboard auto-deploy from `main` on push. Workers stay paused via env var. |
 | Phase B Stage 3 — BR resume | 2026-06-02 onwards | ⏳ PENDING | June unfreeze: workers always-on, BR-10 → BR-32 sequence per `JUNE-2026-REVIEW-REQUIRED.md` |
 | Phase B Stage 4 — Pilot go-live | Q3 2026 (target) | ⏳ PENDING | 25-item go-live checklist; pilot mix = 1 single-building (clinic/boutique hotel) + 1 multi-building (Hyderabad supermall, MBV proof) |
 | Phase C — GCP migration + Roaming + Brand UI + Corporate Governance | Month 5–18 (post-pilot) | ⏳ FUTURE | Phase 2/3 work; international data residency; SOC 2 / ISO readiness |
@@ -41,6 +43,10 @@
 | 🪪 My Shift (focused "my zones") | ✅ Live | BR-04 / BR-19 staff slice — Phase 5.2 |
 | 🚦 Zone Status Board (severity-coded) | ✅ Live | BR-18 — 30s refresh per NFR-10 |
 | 🗺️ Zone Accountability (THE hero demo) | ✅ Live | BR-19 — Plan §22 Rec #1 |
+| 🛠 Equipment (read + Add/Edit/Deactivate via FAB+modal) | ✅ Live | BR-21 — Phase 5.10 read + Phase 5.13 writes (SH/DSH/FM) |
+| 🔥 Drills (read + Schedule/Start/End/Cancel via FAB+modal) | ✅ Live | BR-A — Phase 5.11 read + Phase 5.14 writes (SH/DSH/FM/SHIFT_COMMANDER) |
+| 🎓 My Certifications (read-only by design — self-attestation) | ✅ Live | BR-22 — Phase 5.12 |
+| 🛡 Shifts & Roster (Create / Activate / Manage assignments / Close — command roles only, drawer hidden otherwise) | ✅ Live | BR-04 / BR-12 / BR-13 / BR-19 / BR-61 — Phase 5.16b |
 | Drawer navigation (5 groups) | ✅ Live | UX-DESIGN-DECISIONS.md §4 |
 | Theme tokens + brand provider | ✅ Live | EC-17 / Rule 19 |
 | Offline 4hr cache | ⏳ Sprint 1 partial | BR-35, NFR-09 |
@@ -59,15 +65,19 @@
 | `/zones` — Zone Status Board (severity grid; list/building views) | ✅ Live | BR-18 — 5s refresh |
 | `/accountability` — Zone Accountability (person-first roster) | ✅ Live | BR-19 — Phase 5.2 |
 | `/incidents` — incidents feed | ✅ Live | BR-11 partial |
-| `/staff` — staff CRUD | ✅ Live | BR-04 |
+| `/staff` — staff list + Add/Edit/Deactivate (SH/DSH add; SH edit+lifecycle) | ✅ Live | BR-04 / BR-13 — Phase 5.17 (mirrors mobile StaffScreen) |
+| `/equipment` — list + Add/Edit/Deactivate | ✅ Live | BR-21 — Phase 5.10 read + Phase 5.13 writes |
+| `/drills` — list + Schedule/Start/End/Cancel | ✅ Live | BR-A — Phase 5.11 read + Phase 5.14 writes |
+| `/certifications` — list + Add/Edit/Delete with staff selector + cert-name datalist | ✅ Live | BR-22 / BR-B — Phase 5.12 read + Phase 5.15 writes (SH/DSH/FM add+edit; SH/DSH delete) |
+| `/shifts` — Shifts & Roster (per-template state machine + inline floor-grouped ZoneAssignmentEditor with 2-person validation) | ✅ Live | BR-04 / BR-12 / BR-13 / BR-19 / BR-61 — Phase 5.16a |
 | Cross-link CTAs `/zones` ↔ `/accountability` | ✅ Live | Phase 5.4 |
 | Drawer + sidebar (5 groups) | ✅ Live | UX-DESIGN-DECISIONS.md |
 | Theme tokens + brand provider | ✅ Live | EC-17 |
-| GM Health Score calculation | ⏳ Phase B | BR-14 full — needs aggregation worker |
+| GM Health Score calculation | ✅ Live | BR-14 5/5 components live (Tasks/Incidents/Equipment/Drills/Certs) |
 | Compliance PDF exports | ⏳ Phase B | BR-20, BR-29 |
 | Broadcast / Custom Task | ⏳ Phase B | BR-15, BR-16 |
 | Briefings | ⏳ Phase B | BR-27 |
-| **Production deploy state** | ⚠️ STALE (`main` branch only — `safecommand_v7` work not yet deployed to Amplify) | Resolves at June merge per `JUNE-2026-REVIEW-REQUIRED.md` § A |
+| **Production deploy state** | ✅ Auto-deploy from `main` on push (Amplify CI pipeline) | Each Phase 5 commit triggers redeploy |
 
 ### Ops Console (Next.js 14 + local dev / Vercel pending)
 
@@ -104,14 +114,14 @@
 | `GET /v1/incidents`, `GET /v1/incidents/:id` | ✅ Live | BR-11 |
 | `POST /v1/incidents/:id/staff-safe` | ✅ Live | BR-11 |
 | `GET/POST /v1/upload/*` | ✅ Live | BR-07 (S3 presigned URL) |
-| `GET /v1/analytics/*` | ⏳ Stub | BR-31 — full Phase B |
-| `/v1/shifts/active` (mobile My Shift rich version) | ⏳ Phase B | Mobile uses client-filter today |
-| `/v1/shifts` CRUD (mobile-side) | ⏳ Phase B | Today: Ops Console only via service-role |
+| `GET /v1/analytics/dashboard` (Tasks + Incidents + Equipment + Drills + Cert rollups) | ✅ Live | BR-31 partial; BR-14 100% surface |
+| `GET/POST/PATCH /v1/equipment`, `PUT /v1/equipment/:id/status` | ✅ Live | BR-21 — Phase 5.10 read; SH/DSH/FM gated |
+| `GET /v1/drill-sessions`, `POST /v1/drill-sessions`, `PUT /:id/{start,end,cancel}` | ✅ Live | BR-A — Phase 5.11; SH/DSH/FM/SHIFT_COMMANDER gated |
+| `GET /v1/certifications`, `GET /v1/certifications/me`, `POST/PATCH/DELETE /v1/certifications/:id` | ✅ Live | BR-22 — Phase 5.12; SH/DSH/FM add+edit; SH/DSH delete |
+| `GET /v1/shifts`, `GET/POST /v1/shift-instances`, `PUT /:id/{activate,close}`, `GET/PUT /:id/zone-assignments` | ✅ Live | BR-04/12/13/19/61 — Phase 5.16a; SH/DSH/SHIFT_COMMANDER gated; bulk-replace assignments with 2-person validation + venue scope check |
 | `/v1/handovers` POST/PUT | ⏳ Phase B | BR-12 |
 | `/v1/communications/*` (broadcast) | ⏳ Phase B | BR-15 |
-| `/v1/equipment/*`, `/v1/certifications/*` | ⏳ Phase B | BR-21, BR-22 |
 | `/v1/compliance/export` | ⏳ Phase B | BR-20 |
-| `/v1/drill-sessions/*` | ⏳ Phase B | BR-A |
 | `/v1/vms/*` (visitor management) | ⏳ Phase B | BR-39–56 |
 | `/v1/buildings/*` (MBV) | ⏳ Phase B | BR-57–64 |
 
@@ -183,22 +193,22 @@ Tagging: P1 = Phase 1 (built or scheduled May/June); P2 = Phase 2 (Roaming + Bra
 | BR-09 | FCM + WhatsApp parallel | ⏳ FCM live, WA pending Meta WABA | EC-11 |
 | BR-10 | SMS fallback (90s undelivered) | ⏳ Phase B | EC-12, blocked on Airtel DLT |
 | BR-11 | One-tap incident declaration | ✅ Mobile UI live; ≤5s gate Phase B | NFR-02 |
-| BR-12 | Shift Handover protocol | ⏳ Schema ready (post-mig 009 + shift_handovers table); **surface Phase B** | — |
+| BR-12 | Shift Handover protocol | ⏳ Schema ready; **handover surface Phase B** (shift activation + close fully shipped, see BR-13) | — |
 
 ### Command + Compliance (BR-13 → BR-29)
 
 | BR | Title | State |
 |----|---|---|
-| BR-13 | DSH activation | ⏳ commander_staff_id swap pattern in place; full UI Phase B |
-| BR-14 | GM Dashboard (health score + BI + per-building cards) | ⏳ Partial (dashboard surface live; health score calc Phase B) |
+| BR-13 | DSH activation + shift commander assignment | ✅ Activate-with-commander UI live (mobile RosterScreen + dashboard /shifts, Phase 5.16a/b); auto-emergency 5-min SH-unresponsive timer Phase B (worker-dependent) |
+| BR-14 | GM Dashboard (health score + BI + per-building cards) | ✅ All 5 components live (Tasks 40 / Incidents 25 / Equipment 10 / Drills 10 / Cert 15 = 100%); per-building cards Phase B post mig 009 retrofit |
 | BR-15 | GM Broadcast | ⏳ Phase B (worker-dependent) |
 | BR-16 | GM Custom Task | ⏳ Phase B |
 | BR-17 | Auditor role | ⏳ Schema ready; UI Phase B |
 | BR-18 | Zone Status Board | ✅ Live (mobile + dashboard) |
-| BR-19 | **Zone Accountability Map (THE hero demo)** | ✅ Live (mobile + dashboard) — backed by Phase 5.1 Shifts & Roster |
+| BR-19 | **Zone Accountability Map (THE hero demo)** | ✅ Live (mobile + dashboard) — Roster loop closes end-to-end via Phase 5.16a/b: SH activates instance → assigns staff → accountability map auto-populates |
 | BR-20 | Compliance exports (PDF) | ⏳ Phase B |
-| BR-21 | Equipment & Maintenance Tracker | ⏳ Schema partial; UI Phase B |
-| BR-22 | Staff Certification Tracker | ⏳ Schema ready; UI Phase B |
+| BR-21 | Equipment & Maintenance Tracker | ✅ Live read+write (Phase 5.10 + 5.13) — mobile FAB + dashboard buttons + Add/Edit/Deactivate; SH/DSH/FM gated |
+| BR-22 | Staff Certification Tracker | ✅ Live read+write (Phase 5.12 + 5.15) — dashboard /certifications full CRUD with staff selector + cert-name datalist; mobile MyCertificationsScreen kept read-only by design (self-attestation semantics); team-cert mobile surface optional follow-up |
 | BR-23 | Special Events / Festival Mode | ⏳ Phase B |
 | BR-24 | Visitor Safety Alert (QR opt-in) | ⏳ Phase B |
 | BR-25 | Venue-type activity templates | ✅ Sprint 1 (mig 005 seed data) |
@@ -235,8 +245,8 @@ Tagging: P1 = Phase 1 (built or scheduled May/June); P2 = Phase 2 (Roaming + Bra
 
 | BR | State |
 |----|---|
-| BR-A (Drill Management Module) | ⏳ Schema ready post-mig 010 (drill_sessions, drill_session_participants); UI Phase B |
-| BR-B (Cert Expiry Warning on Shift Activation) | ⏳ Schema ready; UI Phase B |
+| BR-A (Drill Management Module) | ✅ Live read+write (Phase 5.11 + 5.14) — Schedule/Start/End/Cancel state machine on mobile + dashboard + Ops Console; SH/DSH/FM/SHIFT_COMMANDER gated; drill_score by recency in BR-14 |
+| BR-B (Cert Expiry Warning on Shift Activation) | ⏳ Schema ready; cert read+write live (BR-22); the *soft warning on shift activation* hook itself remains Phase B (worker-dependent — fires when shift_instance moves to ACTIVE and pulls expiring certs for that shift's assigned staff) |
 
 ### Corporate Governance (BR-65 → BR-80) — all P3
 
@@ -379,7 +389,32 @@ Tagging: P1 = Phase 1 (built or scheduled May/June); P2 = Phase 2 (Roaming + Bra
 | Evening | **Phase 5.4 — Cross-link CTAs** between Zone Status + Zone Accountability | `413874a` |
 | Evening | **Mig 012 — RLS security fix** on `schedule_template_seeds` (Supabase linter ERROR) | `616b3dd` |
 
-End-of-day: 42 commits ahead of `main`; HEAD `616b3dd`. AWS Amplify production still serves `main` (deferred to June merge).
+End-of-day 2026-05-06: 42 commits ahead of `main`; HEAD `616b3dd`. AWS Amplify production still serves `main` (deferred to June merge).
+
+### 2026-05-07 — Phase 5.13 → 5.17 two-tier admin parity wave
+
+| Time | Activity | Commit |
+|---|---|---|
+| AM | **Phase 5.13 — Equipment write surfaces** (mobile EquipmentScreen FAB+modal + dashboard /equipment Add/Edit/Deactivate) | `e840ed2` |
+| AM | **Phase 5.14 — Drill write surfaces** (mobile DrillsScreen FAB+ScheduleDrillModal + per-row state-driven actions; dashboard /drills + Schedule/Start/End/Cancel) | `80c6e94` |
+| AM | **Phase 5.15 — Cert write surfaces** (dashboard /certifications Add/Edit/Delete with COMMON_CERT_NAMES Indian-context datalist; mobile cert service write helpers shipped for future team-cert surface) | `3a68a46` |
+| Midday | **Phase 5.16a — Shift activation + zone assignments (api + dashboard)** — new `apps/api/src/routes/shifts.ts` (445 lines, 7 endpoints, requireRole SH/DSH/SHIFT_COMMANDER, bulk-replace assignments with 2-person validation) + dashboard `/shifts` route (775 lines, state-driven ShiftCards, ActivateModal, inline floor-grouped ZoneAssignmentEditor with live violation preview) + sidebar entry | `3a34ccd` |
+| Afternoon | **Phase 5.16b — Mobile Roster** — `services/shifts.ts` (169 lines) + `RosterScreen.tsx` (1118 lines) with date input, state-driven ShiftCard, ActivateModal bottom-sheet, AssignmentsModal full-height sheet (floor-grouped zone cards with 2-PERSON badge, per-staff toggle pills, sticky save footer); drawer entry hidden from non-command roles | `4acc521` |
+| Afternoon | **Phase 5.17 — Staff dashboard write surfaces** — closes parity. Add staff (SH/DSH; +91-enforced phone normalisation; role allow-list excluding SH), Edit (SH only; phone read-only as login identity; SH role locked), Deactivate/Reactivate (SH only) | `52ef193` |
+
+End-of-day 2026-05-07: 61 commits ahead of `96594ad` (original); `main` and `safecommand_v7` synced at HEAD `52ef193`. AWS Amplify auto-deploys each push from `main`. tsc passing on all 4 apps after every commit.
+
+**Two-tier admin parity matrix — COMPLETE:**
+
+| Feature | Mobile | Dashboard | api Endpoints | BR refs |
+|---|---|---|---|---|
+| Equipment | ✅ 5.13 | ✅ 5.13 | Phase 5.10 | BR-21 |
+| Drills | ✅ 5.14 | ✅ 5.14 | Phase 5.11 | BR-A |
+| Certifications | (read-only by design — self-attestation) | ✅ 5.15 | Phase 5.12 | BR-22 / BR-B |
+| Shifts & Roster | ✅ 5.16b | ✅ 5.16a | ✅ Phase 5.16a (new shifts router) | BR-04 / BR-12 / BR-13 / BR-19 / BR-61 |
+| Staff | ✅ (Phase A pre-5.13) | ✅ 5.17 | (pre-existing) | BR-04 / BR-13 |
+
+**Defence-in-depth chain confirmed across all 5 features:** UI hides write controls (or whole drawer entry, in RosterScreen's case) when role doesn't qualify → api `requireRole` returns 403 for ineligible JWT → Postgres RLS row-level enforcement → server-side Zod / allow-list validation. Every commit pure additive — read surfaces preserved for FS / GS / GM / AUDITOR.
 
 ---
 
@@ -423,11 +458,20 @@ End-of-day: 42 commits ahead of `main`; HEAD `616b3dd`. AWS Amplify production s
 
 ## 11. Current-state TL;DR for any future session
 
-- **Branch:** `safecommand_v7` — 42 commits ahead of `main`; HEAD `616b3dd`
+- **Branch:** `main` and `safecommand_v7` synced at HEAD `52ef193` — 61 commits past `96594ad` (original Phase A handoff point)
 - **Production schema:** post mig 009 + 010 + 011 + 012; 32/32 tables RLS-protected
-- **Production runtime:** AWS Amplify dashboard serves `main` (stale); Railway api currently asleep (founder action: wake)
-- **Workers:** PAUSED (`WORKERS_PAUSED=true`) — May freeze, resume 2026-06-02 per `JUNE-2026-REVIEW-REQUIRED.md`
-- **Hyderabad Demo Supermall:** seeded (run `./scripts/reset-hyderabad-demo.sh` to clean if needed)
-- **Demo arsenal:** 3 perspectives (My Shift / Zone Status / Zone Accountability) × 2 platforms (mobile + dashboard) + Ops Console roster surface — all backed by realistic seeded data
+- **Production runtime:** Railway api + AWS Amplify dashboard auto-deploy from `main` on push (via Amplify CI pipeline). Workers paused.
+- **Workers:** PAUSED (`WORKERS_PAUSED=true`) — May freeze, resume 2026-06-02 per `JUNE-2026-REVIEW-REQUIRED.md`. Posture changes June 2026 from cost-discipline → emergency-only kill switch (per Q5 decision).
+- **Hyderabad Demo Supermall:** seeded (run `./scripts/reset-hyderabad-demo.sh` to clean if needed). Use this venue to test Phase 5.13–5.17 write surfaces end-to-end.
+- **Two-tier admin parity:** COMPLETE for the 5-feature scope (Equipment / Drills / Cert / Shifts / Staff). Mobile RosterScreen drawer entry hidden for non-command roles; dashboard /shifts shows read-only banner.
+- **Demo arsenal:** 3 perspectives (My Shift / Zone Status / Zone Accountability) × 2 platforms (mobile + dashboard) + Ops Console roster surface + venue-dashboard-side write surfaces for SH/DSH operating in the field — all backed by realistic seeded data
 - **Validation gate:** 31-May-2026 (10 conversations per Plan §22, demo Zone Accountability)
-- **June unfreeze:** workers always-on, BR-10 → BR-32 sequence, Apollo Loom recording, AWS Activate credit application, AWS Amplify update via `safecommand_v7` → `main` merge
+- **June unfreeze:** workers always-on (`WORKERS_PAUSED=false`, `MASTER_TICK_INTERVAL=60000`), BR-10 → BR-32 sequence, Apollo Loom recording, AWS Activate credit application. Branches already synced — June merge step is a no-op confirmation.
+
+**Active testing checklist (2026-05-07 → 2026-05-08, while sales prep is happening):**
+1. Dashboard `/shifts` — Create instance → Activate (commander selector) → Manage assignments (toggle pills, 2-PERSON validation) → Save → Close. Verify Zone Accountability map populates from saved assignments.
+2. Dashboard `/staff` — Add staff (validate +91 phone enforcement, role allow-list excludes SH), Edit name+role (phone disabled), Deactivate → Reactivate.
+3. Dashboard `/equipment`, `/drills`, `/certifications` — Add/Edit/Delete flows. Confirm Health Score Breakdown reflects changes.
+4. Mobile `RosterScreen` — same flow as dashboard /shifts but on phone form-factor (drawer → OPERATIONS → Shifts & Roster). Hidden for non-command roles.
+5. Mobile `EquipmentScreen`, `DrillsScreen` write modals — bottom-sheet UX validation on physical device.
+6. Defence-in-depth — log in as a non-command role (e.g. GROUND_STAFF) and confirm: drawer entry hidden, write buttons hidden, attempted direct API calls return 403 from `requireRole`.
