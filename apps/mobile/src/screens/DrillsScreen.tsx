@@ -105,9 +105,11 @@ interface Props {
    */
   staffRole: string;
   onBack: () => void;
+  /** Phase 5.18 — navigate to per-drill audit-grade detail screen */
+  onDrillDetail?: (drillId: string) => void;
 }
 
-export function DrillsScreen({ staffRole, onBack }: Props): React.JSX.Element {
+export function DrillsScreen({ staffRole, onBack, onDrillDetail }: Props): React.JSX.Element {
   const c = useColours();
   const brand = useBrand();
   const [drills, setDrills] = useState<DrillSession[]>([]);
@@ -292,6 +294,7 @@ export function DrillsScreen({ staffRole, onBack }: Props): React.JSX.Element {
                 onStart={canWrite ? () => handleStart(item.drill.id) : undefined}
                 onEnd={canWrite ? () => handleEnd(item.drill.id) : undefined}
                 onCancel={canWrite ? () => handleCancel(item.drill.id) : undefined}
+                onPress={onDrillDetail ? () => onDrillDetail(item.drill.id) : undefined}
               />
             )
           }
@@ -446,6 +449,7 @@ function DrillRow({
   onStart,
   onEnd,
   onCancel,
+  onPress,
 }: {
   drill: DrillSession;
   colours: Colours;
@@ -454,6 +458,7 @@ function DrillRow({
   onStart?: () => void;
   onEnd?: () => void;
   onCancel?: () => void;
+  onPress?: () => void;
 }) {
   const style = STATUS_STYLE[drill.status];
   const fg = style.fg(c);
@@ -467,8 +472,15 @@ function DrillRow({
   const showActions =
     canWrite && (drill.status === 'SCHEDULED' || drill.status === 'IN_PROGRESS');
 
+  // Phase 5.18 — make the row tappable to open detail. Falsy onPress
+  // (used in legacy mounting) keeps the row inert.
+  const Wrapper = onPress ? TouchableOpacity : View;
+  const wrapperProps = onPress
+    ? { onPress, activeOpacity: 0.7, accessibilityRole: 'button' as const }
+    : {};
+
   return (
-    <View style={[rs.row, { backgroundColor: c.background }]}>
+    <Wrapper {...wrapperProps} style={[rs.row, { backgroundColor: c.background }]}>
       <View style={[rs.statusStrip, { backgroundColor: fg }]} />
       <View style={rs.rowContent}>
         <View style={rs.rowTop}>
@@ -545,7 +557,7 @@ function DrillRow({
           </View>
         )}
       </View>
-    </View>
+    </Wrapper>
   );
 }
 

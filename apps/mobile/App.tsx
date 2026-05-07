@@ -13,6 +13,7 @@ import { EquipmentScreen } from './src/screens/EquipmentScreen';
 import { DrillsScreen } from './src/screens/DrillsScreen';
 import { MyCertificationsScreen } from './src/screens/MyCertificationsScreen';
 import { RosterScreen } from './src/screens/RosterScreen';
+import { DrillDetailScreen } from './src/screens/DrillDetailScreen';
 import { getStoredSession, clearSession } from './src/services/auth';
 import { initDb, syncPending } from './src/services/tasks';
 import type { AuthSession, OtpConfirmation } from './src/services/auth';
@@ -33,7 +34,8 @@ type ScreenName =
   | 'equipment'
   | 'drills'
   | 'myCerts'
-  | 'roster';
+  | 'roster'
+  | 'drillDetail';
 
 initDb(); // initialise SQLite tables at module load
 
@@ -55,6 +57,7 @@ function AppRouter(): React.JSX.Element {
   // Currently-viewed incident for detail screen — distinct from the
   // "I just declared this" announcement state above
   const [viewIncidentId, setViewIncidentId] = useState<string | null>(null);
+  const [viewDrillId, setViewDrillId] = useState<string | null>(null);
 
   useEffect(() => {
     getStoredSession().then((s) => {
@@ -120,6 +123,10 @@ function AppRouter(): React.JSX.Element {
           onDrills={() => setScreen('drills')}
           onMyCerts={() => setScreen('myCerts')}
           onRoster={() => setScreen('roster')}
+          onDrillDetail={(id) => {
+            setViewDrillId(id);
+            setScreen('drillDetail');
+          }}
         />
       )}
       {screen === 'incident' && (
@@ -164,6 +171,10 @@ function AppRouter(): React.JSX.Element {
         <DrillsScreen
           staffRole={session.staff.role}
           onBack={() => setScreen('tasks')}
+          onDrillDetail={(id) => {
+            setViewDrillId(id);
+            setScreen('drillDetail');
+          }}
         />
       )}
       {screen === 'myCerts' && session && (
@@ -176,6 +187,14 @@ function AppRouter(): React.JSX.Element {
         <RosterScreen
           staffRole={session.staff.role}
           onBack={() => setScreen('tasks')}
+        />
+      )}
+      {screen === 'drillDetail' && session && viewDrillId && (
+        <DrillDetailScreen
+          drillId={viewDrillId}
+          staffId={session.staff.id}
+          staffRole={session.staff.role}
+          onBack={() => setScreen('drills')}
         />
       )}
     </>

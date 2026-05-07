@@ -91,4 +91,5 @@ export {
   type DrawerGroup,
   type DrawerGroupKey,
   type DrawerHeaderInfo,
+  type DrawerBanner,
 } from './Drawer';

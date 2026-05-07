@@ -16,6 +16,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { AppShell } from '../../components/AppShell';
 import { apiFetch } from '../../lib/api';
 import { getSession } from '../../lib/auth';
@@ -461,7 +462,10 @@ function DrillRow({
     canWrite && (drill.status === 'SCHEDULED' || drill.status === 'IN_PROGRESS');
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 sm:p-5">
+    <Link
+      href={`/drills/${drill.id}`}
+      className="block bg-white rounded-2xl shadow-sm border border-slate-100 p-4 sm:p-5 hover:bg-slate-50/60 hover:border-slate-200 transition-colors"
+    >
       <div className="flex items-start gap-3">
         <span className="text-2xl shrink-0">{icon}</span>
         <div className="flex-1 min-w-0">
@@ -499,18 +503,33 @@ function DrillRow({
           )}
 
           {showActions && (
-            <div className="flex flex-wrap gap-2 mt-3">
+            <div
+              className="flex flex-wrap gap-2 mt-3"
+              // Prevent action-button clicks from following the parent <Link>
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+              }}
+            >
               {drill.status === 'SCHEDULED' && (
                 <>
                   <button
-                    onClick={() => onStart?.(drill)}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onStart?.(drill);
+                    }}
                     disabled={inFlight}
                     className="px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg transition-colors"
                   >
                     {inFlight ? '…' : '▶ Start'}
                   </button>
                   <button
-                    onClick={() => onCancel?.(drill)}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onCancel?.(drill);
+                    }}
                     disabled={inFlight}
                     className="px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 disabled:opacity-50 rounded-lg transition-colors"
                   >
@@ -520,7 +539,11 @@ function DrillRow({
               )}
               {drill.status === 'IN_PROGRESS' && (
                 <button
-                  onClick={() => onEnd?.(drill)}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onEnd?.(drill);
+                  }}
                   disabled={inFlight}
                   className="px-3 py-1.5 text-xs font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 rounded-lg transition-colors"
                 >
@@ -531,7 +554,7 @@ function DrillRow({
           )}
         </div>
       </div>
-    </div>
+    </Link>
   );
 }
 

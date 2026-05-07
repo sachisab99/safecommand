@@ -160,3 +160,198 @@ export async function cancelDrill(
 export function canWriteDrills(role: string): boolean {
   return ['SH', 'DSH', 'FM', 'SHIFT_COMMANDER'].includes(role);
 }
+
+// ─── Phase 5.18 — Detail / participants / reason taxonomy ──────────────────
+// Backed by ADR 0004 + docs/research/drill-participant-reason-taxonomy.md.
+
+export type ParticipantStatus = 'NOTIFIED' | 'ACKNOWLEDGED' | 'SAFE_CONFIRMED' | 'MISSED';
+
+export type ReasonCode =
+  | 'OFF_DUTY'
+  | 'ON_LEAVE'
+  | 'ON_BREAK'
+  | 'ON_DUTY_ELSEWHERE'
+  | 'DEVICE_OR_NETWORK_ISSUE'
+  | 'OTHER';
+
+export const REASON_CODES: ReasonCode[] = [
+  'OFF_DUTY',
+  'ON_LEAVE',
+  'ON_BREAK',
+  'ON_DUTY_ELSEWHERE',
+  'DEVICE_OR_NETWORK_ISSUE',
+  'OTHER',
+];
+
+/** Display labels — keep in sync with dashboard + Ops Console */
+export const REASON_LABEL: Record<ReasonCode, string> = {
+  OFF_DUTY: 'Off-duty',
+  ON_LEAVE: 'On leave',
+  ON_BREAK: 'On break',
+  ON_DUTY_ELSEWHERE: 'On duty elsewhere',
+  DEVICE_OR_NETWORK_ISSUE: 'Device or network issue',
+  OTHER: 'Other (specify)',
+};
+
+/** Optional helper text shown next to chip in editor */
+export const REASON_HINT: Record<ReasonCode, string> = {
+  OFF_DUTY: 'Not on shift at drill time',
+  ON_LEAVE: 'Approved leave (any type)',
+  ON_BREAK: 'Statutory meal/rest break',
+  ON_DUTY_ELSEWHERE: 'Patient care / restricted area / other zone',
+  DEVICE_OR_NETWORK_ISSUE: 'Phone offline / no signal / app crash',
+  OTHER: 'Required: at least 10 characters of context',
+};
+
+export interface DrillStaffRef {
+  id: string;
+  name: string;
+  role: string;
+}
+
+export interface DrillParticipant {
+  id: string;
+  drill_session_id: string;
+  staff_id: string;
+  status: ParticipantStatus;
+  notified_at: string;
+  acknowledged_at: string | null;
+  safe_confirmed_at: string | null;
+  ack_latency_seconds: number | null;
+  reason_code: ReasonCode | null;
+  reason_notes: string | null;
+  reason_set_by: string | null;
+  reason_set_at: string | null;
+  staff: DrillStaffRef | null;
+  reason_setter: DrillStaffRef | null;
+  is_excused: boolean;
+}
+
+export interface DrillTimelineEvent {
+  id: string;
+  action: string;
+  actor_staff_id: string | null;
+  actor_role: string | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+  ip_address: string | null;
+  actor: DrillStaffRef | null;
+}
+
+export interface DrillAggregates {
+  total_participants: number;
+  notified_count: number;
+  acknowledged_count: number;
+  safe_count: number;
+  missed_count: number;
+  excused_count: number;
+  unexcused_count: number;
+  legacy_total_expected: number;
+  legacy_total_acknowledged: number;
+  legacy_total_safe: number;
+  legacy_total_missed: number;
+}
+
+export interface DrillDetail {
+  drill: DrillSession;
+  participants: DrillParticipant[];
+  timeline: DrillTimelineEvent[];
+  aggregates: DrillAggregates;
+  requester_view: 'full' | 'self';
+}
+
+export async function fetchDrillDetail(
+  drillId: string,
+): Promise<{ detail: DrillDetail | null; error: string | null }> {
+  const session = await getStoredSession();
+  if (!session) return { detail: null, error: 'Not authenticated' };
+  const { data, error } = await apiFetch<DrillDetail>(`/drill-sessions/${drillId}`, {
+    token: session.access_token,
+  });
+  return { detail: data, error };
+}
+
+export async function acknowledgeDrill(
+  drillId: string,
+): Promise<{ ok: boolean; error: string | null }> {
+  const session = await getStoredSession();
+  if (!session) return { ok: false, error: 'Not authenticated' };
+  const { error } = await apiFetch(`/drill-sessions/${drillId}/acknowledge`, {
+    method: 'POST',
+    token: session.access_token,
+  });
+  return { ok: !error, error };
+}
+
+export async function markDrillSafe(
+  drillId: string,
+): Promise<{ ok: boolean; error: string | null }> {
+  const session = await getStoredSession();
+  if (!session) return { ok: false, error: 'Not authenticated' };
+  const { error } = await apiFetch(`/drill-sessions/${drillId}/staff-safe`, {
+    method: 'POST',
+    token: session.access_token,
+  });
+  return { ok: !error, error };
+}
+
+export interface SetParticipantReasonPayload {
+  reason_code: ReasonCode | null;
+  reason_notes?: string | null;
+}
+
+export async function setParticipantReason(
+  drillId: string,
+  staffId: string,
+  payload: SetParticipantReasonPayload,
+): Promise<{ ok: boolean; error: string | null }> {
+  const session = await getStoredSession();
+  if (!session) return { ok: false, error: 'Not authenticated' };
+  const { error } = await apiFetch(
+    `/drill-sessions/${drillId}/participants/${staffId}`,
+    {
+      method: 'PATCH',
+      token: session.access_token,
+      body: JSON.stringify(payload),
+    },
+  );
+  return { ok: !error, error };
+}
+
+export interface ActiveDrillForMe {
+  participant_id: string;
+  participant_status: ParticipantStatus;
+  notified_at: string;
+  acknowledged_at: string | null;
+  safe_confirmed_at: string | null;
+  drill: {
+    id: string;
+    drill_type: DrillType;
+    status: 'IN_PROGRESS';
+    scheduled_for: string;
+    started_at: string | null;
+    building_id: string | null;
+  };
+}
+
+export async function fetchActiveDrillsForMe(): Promise<{
+  drills: ActiveDrillForMe[];
+  error: string | null;
+}> {
+  const session = await getStoredSession();
+  if (!session) return { drills: [], error: 'Not authenticated' };
+  const { data, error } = await apiFetch<ActiveDrillForMe[]>('/drill-sessions/active-for-me', {
+    token: session.access_token,
+  });
+  return { drills: data ?? [], error };
+}
+
+/** Roles allowed to set/clear participant reason — matches api requireRole */
+export function canSetParticipantReason(role: string): boolean {
+  return ['SH', 'DSH', 'FM', 'SHIFT_COMMANDER'].includes(role);
+}
+
+/** Roles allowed full venue read of participants — matches RLS RESTRICTIVE policy */
+export function canSeeAllParticipants(role: string): boolean {
+  return ['SH', 'DSH', 'FM', 'SHIFT_COMMANDER', 'AUDITOR', 'GM'].includes(role);
+}

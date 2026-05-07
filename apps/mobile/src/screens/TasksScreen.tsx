@@ -11,6 +11,12 @@ import {
 } from 'react-native';
 import { fetchMyTasks, syncPending, type TaskItem } from '../services/tasks';
 import {
+  fetchActiveDrillsForMe,
+  DRILL_TYPE_LABEL,
+  DRILL_TYPE_ICON,
+  type ActiveDrillForMe,
+} from '../services/drills';
+import {
   fetchActiveIncidents,
   markSafe,
   resolveIncident,
@@ -119,6 +125,7 @@ interface Props {
   onDrills: () => void;
   onMyCerts: () => void;
   onRoster: () => void;
+  onDrillDetail: (drillId: string) => void;
 }
 
 export function TasksScreen({
@@ -134,6 +141,7 @@ export function TasksScreen({
   onDrills,
   onMyCerts,
   onRoster,
+  onDrillDetail,
 }: Props): React.JSX.Element {
   const c = useColours();
   const brand = useBrand();
@@ -146,6 +154,10 @@ export function TasksScreen({
   const [markingSafe, setMarkingSafe] = useState<string | null>(null);
   const [resolving, setResolving] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  // Phase 5.18 — active drill prompt (drawer banner data feed). Polled
+  // every 30s; refreshed every time the drawer opens. No push for now;
+  // multi-channel (FCM + WhatsApp + SMS) lands when BR-09 / BR-10 unblock.
+  const [activeDrill, setActiveDrill] = useState<ActiveDrillForMe | null>(null);
 
   const load = useCallback(async (isRefresh = false): Promise<void> => {
     if (isRefresh) setRefreshing(true);
@@ -164,6 +176,30 @@ export function TasksScreen({
     load();
     syncPending();
   }, [load]);
+
+  // Phase 5.18 — active drill polling for drawer banner.
+  // Cadence: 30s (light); also refreshed on every drawer open.
+  // Picks the highest-priority drill: NOTIFIED > ACKNOWLEDGED (the one
+  // demanding action goes first).
+  const refreshActiveDrill = useCallback(async (): Promise<void> => {
+    const { drills } = await fetchActiveDrillsForMe();
+    if (drills.length === 0) {
+      setActiveDrill(null);
+      return;
+    }
+    const sorted = [...drills].sort((a, b) => {
+      const pri = (s: 'NOTIFIED' | 'ACKNOWLEDGED' | 'SAFE_CONFIRMED' | 'MISSED'): number =>
+        s === 'NOTIFIED' ? 0 : s === 'ACKNOWLEDGED' ? 1 : 2;
+      return pri(a.participant_status) - pri(b.participant_status);
+    });
+    setActiveDrill(sorted[0] ?? null);
+  }, []);
+
+  useEffect(() => {
+    void refreshActiveDrill();
+    const id = setInterval(() => void refreshActiveDrill(), 30_000);
+    return () => clearInterval(id);
+  }, [refreshActiveDrill]);
 
   const handleMarkSafe = useCallback(async (incident: ActiveIncident): Promise<void> => {
     setMarkingSafe(incident.id);
@@ -388,7 +424,14 @@ export function TasksScreen({
         ]}
       >
         <View style={s.headerLeft}>
-          <DrawerTrigger onPress={() => setDrawerOpen(true)} />
+          <DrawerTrigger
+            onPress={() => {
+              // Refresh active-drill state on every open so banner is fresh
+              // even outside the 30s polling tick.
+              void refreshActiveDrill();
+              setDrawerOpen(true);
+            }}
+          />
           <View>
             <Text style={[s.headerTitle, { color: c.textPrimary }]}>My Tasks</Text>
             <Text style={[s.headerSub, { color: c.textMuted }]}>{today}</Text>
@@ -506,6 +549,27 @@ export function TasksScreen({
           primaryText: staff.name,
           secondaryText: staff.role.replace(/_/g, ' '),
         }}
+        banner={
+          activeDrill
+            ? {
+                key: `drill-${activeDrill.drill.id}`,
+                icon: DRILL_TYPE_ICON[activeDrill.drill.drill_type] ?? '🔥',
+                title: `${
+                  DRILL_TYPE_LABEL[activeDrill.drill.drill_type] ?? activeDrill.drill.drill_type
+                } drill in progress`,
+                subtitle:
+                  activeDrill.participant_status === 'NOTIFIED'
+                    ? 'Tap to acknowledge'
+                    : 'Acknowledged · tap to mark yourself safe',
+                ctaLabel:
+                  activeDrill.participant_status === 'NOTIFIED'
+                    ? 'Acknowledge ›'
+                    : 'Mark me safe ›',
+                tone: 'danger',
+                onPress: () => onDrillDetail(activeDrill.drill.id),
+              }
+            : null
+        }
         groups={drawerGroups}
         footerAction={{
           label: 'Sign Out',

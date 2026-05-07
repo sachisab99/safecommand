@@ -91,11 +91,44 @@ export interface DrawerHeaderInfo {
   secondaryText?: string;
 }
 
+/**
+ * Optional banner rendered above all groups in the drawer scroll area.
+ * Phase 5.18: surfaces an active drill prompt to participants without
+ * relying on push notifications (multi-channel comms come later via
+ * BR-09 / BR-10). Tap navigates to the drill detail screen.
+ *
+ * Architectural intent: this slot is generic — future "active incident",
+ * "missing handover", or "broadcast unread" surfaces reuse the same
+ * banner contract.
+ */
+export interface DrawerBanner {
+  /** Stable key — used for React reconciliation when banner content changes */
+  key: string;
+  /** One-line title (kept under ~30 chars for narrow drawer width) */
+  title: string;
+  /** Optional secondary line — context (e.g. "Awaiting your acknowledgement") */
+  subtitle?: string;
+  /** Optional emoji or single-character glyph */
+  icon?: string;
+  /** Tap handler — drawer auto-closes on tap */
+  onPress: () => void;
+  /** Visual tone — default is brand-primary; 'danger' for SEV1-equivalent urgency */
+  tone?: 'default' | 'danger';
+  /** Optional CTA label (right-aligned chevron text). Defaults to "Open ›" */
+  ctaLabel?: string;
+}
+
 export interface DrawerProps {
   visible: boolean;
   onClose: () => void;
   /** Header context block */
   header: DrawerHeaderInfo;
+  /**
+   * Optional banner pinned above the groups list. When provided, the banner
+   * is the first thing the user sees on opening the drawer — used for
+   * time-sensitive prompts (active drill, etc.).
+   */
+  banner?: DrawerBanner | null;
   /** Up to 5 groups in display order */
   groups: DrawerGroup[];
   /** Footer terminal action — typically logout */
@@ -117,6 +150,7 @@ export function Drawer({
   visible,
   onClose,
   header,
+  banner,
   groups,
   footerAction,
   widthFraction = 0.82,
@@ -245,6 +279,60 @@ export function Drawer({
 
         {/* Scrolling group list */}
         <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent}>
+          {banner && (
+            <TouchableOpacity
+              accessibilityRole="button"
+              activeOpacity={0.85}
+              onPress={() => {
+                // Defer consumer navigation so drawer close animation runs
+                // first (matches DrawerRow pattern).
+                onClose();
+                setTimeout(banner.onPress, 0);
+              }}
+              style={[
+                styles.banner,
+                {
+                  backgroundColor:
+                    banner.tone === 'danger' ? c.severity.SEV1_BG : c.primarySoft,
+                  borderColor:
+                    banner.tone === 'danger' ? c.severity.SEV1 : c.primary,
+                },
+              ]}
+            >
+              <View style={styles.bannerHead}>
+                {banner.icon !== undefined && (
+                  <Text style={styles.bannerIcon}>{banner.icon}</Text>
+                )}
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={[
+                      styles.bannerTitle,
+                      { color: banner.tone === 'danger' ? c.severity.SEV1 : c.primaryStrong },
+                    ]}
+                    numberOfLines={2}
+                  >
+                    {banner.title}
+                  </Text>
+                  {banner.subtitle !== undefined && (
+                    <Text
+                      style={[styles.bannerSubtitle, { color: c.textSecondary }]}
+                      numberOfLines={2}
+                    >
+                      {banner.subtitle}
+                    </Text>
+                  )}
+                </View>
+              </View>
+              <Text
+                style={[
+                  styles.bannerCta,
+                  { color: banner.tone === 'danger' ? c.severity.SEV1 : c.primary },
+                ]}
+              >
+                {banner.ctaLabel ?? 'Open ›'}
+              </Text>
+            </TouchableOpacity>
+          )}
           {groups.map((group, idx) => (
             <View key={group.key} style={idx > 0 ? styles.groupSpaced : undefined}>
               <Text style={[styles.groupTitle, { color: c.textMuted }]}>
@@ -454,6 +542,36 @@ const styles = StyleSheet.create({
   },
   bodyContent: {
     paddingVertical: spacing.lg,
+  },
+  banner: {
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.lg,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    gap: spacing.xs,
+  },
+  bannerHead: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+  },
+  bannerIcon: {
+    fontSize: 22,
+  },
+  bannerTitle: {
+    fontSize: fontSize.body,
+    fontWeight: fontWeight.bold,
+  },
+  bannerSubtitle: {
+    fontSize: fontSize.caption,
+    marginTop: 2,
+  },
+  bannerCta: {
+    fontSize: fontSize.caption,
+    fontWeight: fontWeight.bold,
+    textAlign: 'right',
+    marginTop: spacing.xs,
   },
   groupSpaced: {
     marginTop: spacing.lg,
