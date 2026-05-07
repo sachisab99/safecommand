@@ -14,7 +14,7 @@
  * Console foundation), Phase 5.10 (this — mobile + api activation).
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -23,9 +23,19 @@ import {
   RefreshControl,
   StyleSheet,
   ActivityIndicator,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  Pressable,
 } from 'react-native';
 import {
   fetchEquipment,
+  createEquipment,
+  updateEquipment,
+  setEquipmentActive,
+  canWriteEquipment,
   computeStats,
   daysUntilDue,
   expiryBucket,
@@ -95,10 +105,15 @@ const BUCKET_STYLE: Record<ExpiryBucket, BucketStyle> = {
 // Screen
 
 interface Props {
+  /**
+   * Logged-in staff role — drives write-surface gating per BR-21 RLS.
+   * SH/DSH/FM see add/edit/deactivate controls; others see read-only list.
+   */
+  staffRole: string;
   onBack: () => void;
 }
 
-export function EquipmentScreen({ onBack }: Props): React.JSX.Element {
+export function EquipmentScreen({ staffRole, onBack }: Props): React.JSX.Element {
   const c = useColours();
   const brand = useBrand();
   const [items, setItems] = useState<EquipmentItem[]>([]);
@@ -106,6 +121,11 @@ export function EquipmentScreen({ onBack }: Props): React.JSX.Element {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastFetchedAt, setLastFetchedAt] = useState<Date | null>(null);
+
+  // Phase 5.13 write-surface state — gated to SH/DSH/FM roles.
+  const canWrite = canWriteEquipment(staffRole);
+  const [editorVisible, setEditorVisible] = useState(false);
+  const [editingItem, setEditingItem] = useState<EquipmentItem | null>(null);
 
   const load = useCallback(
     async (isRefresh = false): Promise<void> => {
@@ -206,7 +226,20 @@ export function EquipmentScreen({ onBack }: Props): React.JSX.Element {
           }
           contentContainerStyle={s.list}
           ItemSeparatorComponent={() => <View style={s.sep} />}
-          renderItem={({ item }) => <EquipmentRow item={item} colours={c} />}
+          renderItem={({ item }) => (
+            <EquipmentRow
+              item={item}
+              colours={c}
+              onPress={
+                canWrite
+                  ? () => {
+                      setEditingItem(item);
+                      setEditorVisible(true);
+                    }
+                  : undefined
+              }
+            />
+          )}
         />
       )}
 
@@ -222,6 +255,40 @@ export function EquipmentScreen({ onBack }: Props): React.JSX.Element {
           </Text>
         </View>
       )}
+
+      {/*
+       * FAB — only visible for SH/DSH/FM (api enforces same gate; client
+       * hides it pre-emptively to avoid 403 round-trip). Tap → open empty
+       * Add modal. Per-row tap (handled inside the FlatList renderItem)
+       * opens the same modal pre-filled for editing.
+       */}
+      {canWrite && !loading && error === null && (
+        <TouchableOpacity
+          style={[s.fab, { backgroundColor: brand.primary_colour, shadowColor: brand.primary_colour }]}
+          onPress={() => {
+            setEditingItem(null);
+            setEditorVisible(true);
+          }}
+          activeOpacity={0.85}
+          hitSlop={touch.hitSlop}
+          accessibilityLabel="Add equipment"
+          accessibilityRole="button"
+        >
+          <Text style={[s.fabIcon, { color: c.textInverse }]}>+</Text>
+        </TouchableOpacity>
+      )}
+
+      {/* Add / Edit modal */}
+      <EquipmentEditorModal
+        visible={editorVisible}
+        editing={editingItem}
+        onClose={() => setEditorVisible(false)}
+        onSaved={() => {
+          setEditorVisible(false);
+          setEditingItem(null);
+          void load(true);
+        }}
+      />
     </Screen>
   );
 }
@@ -313,7 +380,16 @@ function BucketTile({
 // ──────────────────────────────────────────────────────────────────────────
 // Equipment row
 
-function EquipmentRow({ item, colours: c }: { item: EquipmentItem; colours: Colours }) {
+function EquipmentRow({
+  item,
+  colours: c,
+  onPress,
+}: {
+  item: EquipmentItem;
+  colours: Colours;
+  /** When provided (caller has write permission), entire row becomes tappable → opens edit modal */
+  onPress?: () => void;
+}) {
   const days = daysUntilDue(item.next_service_due);
   const bucket = expiryBucket(days);
   const style = BUCKET_STYLE[bucket];
@@ -321,8 +397,18 @@ function EquipmentRow({ item, colours: c }: { item: EquipmentItem; colours: Colo
   const bg = style.bg(c);
   const icon = CATEGORY_ICON[item.category] ?? '🛠️';
 
+  // Wrap in TouchableOpacity only when caller passes onPress; read-only
+  // viewers (non-SH/DSH/FM) get a static View — no false-affordance.
+  const Wrapper = onPress ? TouchableOpacity : View;
+  const wrapperProps = onPress
+    ? { onPress, activeOpacity: 0.7, accessibilityRole: 'button' as const }
+    : {};
+
   return (
-    <View style={[rs.row, { backgroundColor: c.background }]}>
+    <Wrapper
+      style={[rs.row, { backgroundColor: c.background }]}
+      {...wrapperProps}
+    >
       <View style={[rs.statusStrip, { backgroundColor: fg }]} />
       <View style={rs.rowContent}>
         <View style={rs.rowTop}>
@@ -336,6 +422,9 @@ function EquipmentRow({ item, colours: c }: { item: EquipmentItem; colours: Colo
               {item.location_description ? ` · ${item.location_description}` : ''}
             </Text>
           </View>
+          {onPress && (
+            <Text style={[rs.editChevron, { color: c.textDisabled }]}>›</Text>
+          )}
         </View>
 
         <View style={rs.rowBottom}>
@@ -347,7 +436,279 @@ function EquipmentRow({ item, colours: c }: { item: EquipmentItem; colours: Colo
           </Text>
         </View>
       </View>
-    </View>
+    </Wrapper>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// EquipmentEditorModal — Add (when editing===null) or Edit (with item)
+//
+// Pattern matches AddStaffModal in StaffScreen.tsx: bottom-sheet modal,
+// KeyboardAvoidingView, ScrollView with automaticallyAdjustKeyboardInsets,
+// auto-focus, error-on-submit, refetch-on-success.
+
+interface EditorProps {
+  visible: boolean;
+  editing: EquipmentItem | null;
+  onClose: () => void;
+  onSaved: () => void;
+}
+
+function EquipmentEditorModal({ visible, editing, onClose, onSaved }: EditorProps) {
+  const c = useColours();
+  const brand = useBrand();
+  const isEdit = editing !== null;
+
+  // Form state
+  const [name, setName] = useState('');
+  const [category, setCategory] = useState('FIRE_EXTINGUISHER');
+  const [location, setLocation] = useState('');
+  const [lastServiced, setLastServiced] = useState('');
+  const [nextDue, setNextDue] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [deactivating, setDeactivating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const nameRef = useRef<TextInput>(null);
+
+  // Reset form whenever the modal becomes visible or editing changes
+  useEffect(() => {
+    if (!visible) return;
+    if (editing) {
+      setName(editing.name.replace(/^\[DEMO\]\s*/, ''));
+      setCategory(editing.category);
+      setLocation(editing.location_description ?? '');
+      setLastServiced(editing.last_serviced_at ?? '');
+      setNextDue(editing.next_service_due);
+    } else {
+      setName('');
+      setCategory('FIRE_EXTINGUISHER');
+      setLocation('');
+      setLastServiced('');
+      setNextDue('');
+    }
+    setError(null);
+    setSubmitting(false);
+    setDeactivating(false);
+    // Auto-focus name after sheet finishes animating
+    const t = setTimeout(() => nameRef.current?.focus(), 350);
+    return () => clearTimeout(t);
+  }, [visible, editing]);
+
+  // Light client-side validation matching the server contract
+  const validate = (): string | null => {
+    if (name.trim().length === 0) return 'Name is required';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(nextDue)) return 'Next service due must be YYYY-MM-DD';
+    if (lastServiced.length > 0 && !/^\d{4}-\d{2}-\d{2}$/.test(lastServiced)) {
+      return 'Last serviced must be YYYY-MM-DD or empty';
+    }
+    if (lastServiced && lastServiced > nextDue) {
+      return 'Last serviced cannot be after next service due';
+    }
+    return null;
+  };
+
+  const handleSubmit = async () => {
+    const err = validate();
+    if (err) {
+      setError(err);
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    const payload = {
+      name: name.trim(),
+      category,
+      location_description: location.trim() || null,
+      last_serviced_at: lastServiced || null,
+      next_service_due: nextDue,
+    };
+    const result = isEdit
+      ? await updateEquipment(editing!.id, payload)
+      : await createEquipment(payload);
+    setSubmitting(false);
+    if (result.error || !result.item) {
+      setError(result.error ?? 'Save failed');
+      return;
+    }
+    onSaved();
+  };
+
+  const handleDeactivate = async () => {
+    if (!editing) return;
+    setDeactivating(true);
+    setError(null);
+    const { ok, error: err } = await setEquipmentActive(editing.id, false);
+    setDeactivating(false);
+    if (!ok) {
+      setError(err ?? 'Could not deactivate');
+      return;
+    }
+    onSaved();
+  };
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <Pressable style={ms.backdrop} onPress={onClose} />
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'android' ? 24 : 0}
+        style={ms.keyboardWrap}
+      >
+        <View style={[ms.sheet, { backgroundColor: c.background }]}>
+          <View style={[ms.dragHandle, { backgroundColor: c.divider }]} />
+
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            automaticallyAdjustKeyboardInsets
+            contentContainerStyle={ms.sheetContent}
+            showsVerticalScrollIndicator={false}
+          >
+            <Text style={[ms.title, { color: c.textPrimary }]}>
+              {isEdit ? 'Edit equipment' : 'Add equipment'}
+            </Text>
+
+            <Text style={[ms.label, { color: c.textMuted }]}>Name *</Text>
+            <TextInput
+              ref={nameRef}
+              value={name}
+              onChangeText={setName}
+              placeholder="e.g. FE-001 (5kg ABC)"
+              placeholderTextColor={c.textDisabled}
+              style={[ms.input, { color: c.textPrimary, borderColor: c.borderStrong }]}
+              returnKeyType="next"
+            />
+
+            <Text style={[ms.label, { color: c.textMuted }]}>Category *</Text>
+            <View style={ms.chipRow}>
+              {[
+                ['FIRE_EXTINGUISHER', '🧯 Fire Ext'],
+                ['AED', '❤️‍🩹 AED'],
+                ['SMOKE_DETECTOR', '🚨 Smoke'],
+                ['EMERGENCY_LIGHT', '💡 Light'],
+                ['FIRST_AID_KIT', '🩹 First Aid'],
+                ['ALARM_PANEL', '🔔 Alarm'],
+                ['EVACUATION_SIGN', '🚪 Sign'],
+                ['OTHER', '🛠️ Other'],
+              ].map(([v, lbl]) => {
+                const selected = category === v;
+                return (
+                  <TouchableOpacity
+                    key={v}
+                    onPress={() => setCategory(v as string)}
+                    style={[
+                      ms.chip,
+                      {
+                        backgroundColor: selected ? brand.primary_colour : c.surface,
+                        borderColor: selected ? brand.primary_colour : c.borderStrong,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        ms.chipText,
+                        { color: selected ? c.textInverse : c.textPrimary },
+                      ]}
+                    >
+                      {lbl}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <Text style={[ms.label, { color: c.textMuted }]}>Location</Text>
+            <TextInput
+              value={location}
+              onChangeText={setLocation}
+              placeholder="e.g. T1 Reception, beside lift"
+              placeholderTextColor={c.textDisabled}
+              style={[ms.input, { color: c.textPrimary, borderColor: c.borderStrong }]}
+              returnKeyType="next"
+            />
+
+            <View style={ms.dateRow}>
+              <View style={ms.dateCol}>
+                <Text style={[ms.label, { color: c.textMuted }]}>Last serviced</Text>
+                <TextInput
+                  value={lastServiced}
+                  onChangeText={setLastServiced}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor={c.textDisabled}
+                  style={[ms.input, { color: c.textPrimary, borderColor: c.borderStrong }]}
+                  keyboardType="numbers-and-punctuation"
+                />
+              </View>
+              <View style={ms.dateCol}>
+                <Text style={[ms.label, { color: c.textMuted }]}>Next service due *</Text>
+                <TextInput
+                  value={nextDue}
+                  onChangeText={setNextDue}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor={c.textDisabled}
+                  style={[ms.input, { color: c.textPrimary, borderColor: c.borderStrong }]}
+                  keyboardType="numbers-and-punctuation"
+                />
+              </View>
+            </View>
+
+            {error && (
+              <View style={[ms.errorBox, { backgroundColor: c.severity.SEV1_BG }]}>
+                <Text style={[ms.errorText, { color: c.severity.SEV1 }]}>{error}</Text>
+              </View>
+            )}
+
+            <TouchableOpacity
+              onPress={handleSubmit}
+              disabled={submitting || deactivating}
+              style={[
+                ms.submitBtn,
+                {
+                  backgroundColor: brand.primary_colour,
+                  opacity: submitting || deactivating ? 0.5 : 1,
+                },
+              ]}
+            >
+              {submitting ? (
+                <ActivityIndicator color={c.textInverse} />
+              ) : (
+                <Text style={[ms.submitText, { color: c.textInverse }]}>
+                  {isEdit ? 'Save changes' : 'Add equipment'}
+                </Text>
+              )}
+            </TouchableOpacity>
+
+            {isEdit && editing.is_active && (
+              <TouchableOpacity
+                onPress={handleDeactivate}
+                disabled={submitting || deactivating}
+                style={[
+                  ms.deactivateBtn,
+                  { borderColor: c.severity.SEV1, opacity: deactivating ? 0.5 : 1 },
+                ]}
+              >
+                {deactivating ? (
+                  <ActivityIndicator color={c.severity.SEV1} />
+                ) : (
+                  <Text style={[ms.deactivateText, { color: c.severity.SEV1 }]}>
+                    Deactivate this item
+                  </Text>
+                )}
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity onPress={onClose} style={ms.cancelBtn}>
+              <Text style={[ms.cancelText, { color: c.textMuted }]}>Cancel</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
   );
 }
 
@@ -417,6 +778,25 @@ const s = StyleSheet.create({
     alignItems: 'center',
   },
   footerText: { fontSize: fontSize.caption },
+  fab: {
+    position: 'absolute',
+    right: spacing.lg,
+    bottom: spacing.xl + spacing.md,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  fabIcon: {
+    fontSize: 32,
+    fontWeight: fontWeight.bold,
+    marginTop: -2,
+  },
 });
 
 // Compliance card styles
@@ -500,5 +880,121 @@ const rs = StyleSheet.create({
   dueDate: {
     fontSize: fontSize.caption,
     fontFamily: 'Courier',
+  },
+  editChevron: {
+    fontSize: fontSize.h4,
+    fontWeight: fontWeight.regular,
+    marginLeft: spacing.xs,
+  },
+});
+
+// Editor modal styles
+const ms = StyleSheet.create({
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  keyboardWrap: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  sheet: {
+    borderTopLeftRadius: radius.lg,
+    borderTopRightRadius: radius.lg,
+    maxHeight: '90%',
+  },
+  dragHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginTop: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  sheetContent: {
+    padding: spacing.lg,
+    paddingBottom: spacing['2xl'],
+    gap: spacing.sm,
+  },
+  title: {
+    fontSize: fontSize.h5,
+    fontWeight: fontWeight.bold,
+    marginBottom: spacing.sm,
+  },
+  label: {
+    fontSize: fontSize.caption,
+    fontWeight: fontWeight.semibold,
+    textTransform: 'uppercase',
+    letterSpacing: letterSpacing.wide,
+    marginTop: spacing.sm,
+  },
+  input: {
+    borderWidth: 1,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    fontSize: fontSize.body,
+    minHeight: touch.minTarget,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+  },
+  chip: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs + 2,
+    borderRadius: radius.pill,
+    borderWidth: 1.5,
+  },
+  chipText: {
+    fontSize: fontSize.caption,
+    fontWeight: fontWeight.semibold,
+  },
+  dateRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  dateCol: { flex: 1 },
+  errorBox: {
+    padding: spacing.sm,
+    borderRadius: radius.md,
+    marginTop: spacing.sm,
+  },
+  errorText: {
+    fontSize: fontSize.caption,
+    fontWeight: fontWeight.medium,
+  },
+  submitBtn: {
+    marginTop: spacing.md,
+    paddingVertical: spacing.md,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    minHeight: touch.minTarget + 4,
+    justifyContent: 'center',
+  },
+  submitText: {
+    fontSize: fontSize.bodyLarge,
+    fontWeight: fontWeight.bold,
+  },
+  deactivateBtn: {
+    marginTop: spacing.sm,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    alignItems: 'center',
+  },
+  deactivateText: {
+    fontSize: fontSize.body,
+    fontWeight: fontWeight.semibold,
+  },
+  cancelBtn: {
+    marginTop: spacing.sm,
+    paddingVertical: spacing.sm,
+    alignItems: 'center',
+  },
+  cancelText: {
+    fontSize: fontSize.body,
+    fontWeight: fontWeight.medium,
   },
 });

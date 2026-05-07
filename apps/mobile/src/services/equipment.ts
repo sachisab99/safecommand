@@ -114,3 +114,63 @@ export const CATEGORY_ICON: Record<string, string> = {
   EVACUATION_SIGN: '🚪',
   OTHER: '🛠️',
 };
+
+// ─── Write helpers (BR-21 — SH/DSH/FM only; api enforces role) ──────────────
+// These call the api endpoints deployed in Phase 5.10. The api requireRole
+// middleware returns 403 for ineligible roles; UI hides write controls
+// pre-emptively to avoid that path.
+
+export interface CreateEquipmentPayload {
+  name: string;
+  category: string;
+  location_description?: string | null;
+  last_serviced_at?: string | null;
+  next_service_due: string;
+}
+
+export async function createEquipment(
+  payload: CreateEquipmentPayload,
+): Promise<{ item: EquipmentItem | null; error: string | null }> {
+  const session = await getStoredSession();
+  if (!session) return { item: null, error: 'Not authenticated' };
+  const { data, error } = await apiFetch<EquipmentItem>('/equipment', {
+    method: 'POST',
+    token: session.access_token,
+    body: JSON.stringify(payload),
+  });
+  return { item: data, error };
+}
+
+export async function updateEquipment(
+  id: string,
+  payload: Partial<CreateEquipmentPayload>,
+): Promise<{ item: EquipmentItem | null; error: string | null }> {
+  const session = await getStoredSession();
+  if (!session) return { item: null, error: 'Not authenticated' };
+  const { data, error } = await apiFetch<EquipmentItem>(`/equipment/${id}`, {
+    method: 'PATCH',
+    token: session.access_token,
+    body: JSON.stringify(payload),
+  });
+  return { item: data, error };
+}
+
+/** Toggle is_active — uses PUT /:id/status which expects { is_active: boolean } */
+export async function setEquipmentActive(
+  id: string,
+  is_active: boolean,
+): Promise<{ ok: boolean; error: string | null }> {
+  const session = await getStoredSession();
+  if (!session) return { ok: false, error: 'Not authenticated' };
+  const { error } = await apiFetch(`/equipment/${id}/status`, {
+    method: 'PUT',
+    token: session.access_token,
+    body: JSON.stringify({ is_active }),
+  });
+  return { ok: !error, error };
+}
+
+/** Roles allowed to write equipment (must match api requireRole) */
+export function canWriteEquipment(role: string): boolean {
+  return ['SH', 'DSH', 'FM'].includes(role);
+}
