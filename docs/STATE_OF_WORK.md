@@ -1,10 +1,11 @@
 # SafeCommand — State of Work
 
-> **Last updated:** 2026-05-07 (Phase 5.13–5.17 wave complete)
-> **Branch:** `main` and `safecommand_v7` synced at HEAD `52ef193` — 61 commits past `96594ad`
-> **Deploy state:** Railway api + AWS Amplify dashboard auto-deploy from `main` on push. Workers PAUSED via `WORKERS_PAUSED=true`.
+> **Last updated:** 2026-05-07 (Phase 5.18 drill audit-grade detail complete)
+> **Branch:** `main` and `safecommand_v7` synced at HEAD `96a30dd` — 65 commits past `96594ad`
+> **Deploy state:** Railway api + AWS Amplify dashboard auto-deploy from `main` on push. Workers PAUSED via `WORKERS_PAUSED=true`. Mig 013 deployed live to Supabase via Dashboard SQL Editor 2026-05-07.
 > **BR-14 Health Score:** **100% surface LIVE** — all 5 components compute live (Tasks 40 / Incidents 25 / Equipment 10 / Drills 10 / Certs 15)
 > **Two-tier admin parity:** **COMPLETE** — SH-tier write surfaces live for Equipment / Drills / Certifications / Shifts & Roster / Staff across mobile + dashboard, parallel to SC Ops Console.
+> **BR-A drill management:** **COMPLETE** — Schedule / Run / Time / Document / Per-staff acknowledgement / Reason taxonomy. Audit-grade per-drill detail (timeline + participation + reasons) on mobile + dashboard. PDF rendering = Phase B (data substrate ready).
 > **Spec authority:** Business Plan v2 (91 BRs / 37 NFRs / 22 sections, 2026-05-10) + Architecture v7 (22 ECs / 22 Hard Rules / 6089 lines, 2026-05-10)
 >
 > This document is a comprehensive snapshot of what's built, what's deployed, what's deferred, and where things sit operationally. Companion: `docs/security/POSTURE_AND_ROADMAP.md` for security/compliance posture.
@@ -21,6 +22,7 @@
 | Phase B Stage 2 — Schema deploy (Path B) | 2026-05-06 | ✅ COMPLETE (early) | Mig 009/010/011 deployed to Supabase production; mig 012 RLS security fix; founder elected to deploy in May vs wait for June |
 | Phase 5 — Engineering refinement track (5.0 → 5.12) | 2026-05-06 → 2026-05-07 | ✅ COMPLETE | All 13 base phases shipped — see §8 below |
 | Phase 5.13 → 5.17 — Two-tier admin parity wave | 2026-05-07 | ✅ COMPLETE | SH-tier write surfaces for Equipment / Drills / Cert / Shifts / Staff across mobile + dashboard; new api routes `/v1/shifts` + `/v1/shift-instances` (7 endpoints, bulk-replace assignments, 2-person validation) — see §11 |
+| Phase 5.18 — Drill audit-grade detail + per-staff acknowledgement | 2026-05-07 | ✅ COMPLETE | BR-A "missed-participant logging" delivered. Mig 013 + ADR 0004 + research doc. New api endpoints (active-for-me / acknowledge / staff-safe / set-reason). Mobile DrillDetailScreen + dashboard `/drills/[id]` + drawer banner. 6-code reason taxonomy (`OFF_DUTY` / `ON_LEAVE` / `ON_BREAK` / `ON_DUTY_ELSEWHERE` / `DEVICE_OR_NETWORK_ISSUE` / `OTHER` + NULL) — see §12 |
 | Phase B Stage A — `safecommand_v7 → main` merge | 2026-05-06 | ✅ COMPLETE (early) | Founder Choice A: continuous fast-forward merges keep main current; Railway api + AWS Amplify dashboard auto-deploy from `main` on push. Workers stay paused via env var. |
 | Phase B Stage 3 — BR resume | 2026-06-02 onwards | ⏳ PENDING | June unfreeze: workers always-on, BR-10 → BR-32 sequence per `JUNE-2026-REVIEW-REQUIRED.md` |
 | Phase B Stage 4 — Pilot go-live | Q3 2026 (target) | ⏳ PENDING | 25-item go-live checklist; pilot mix = 1 single-building (clinic/boutique hotel) + 1 multi-building (Hyderabad supermall, MBV proof) |
@@ -45,6 +47,7 @@
 | 🗺️ Zone Accountability (THE hero demo) | ✅ Live | BR-19 — Plan §22 Rec #1 |
 | 🛠 Equipment (read + Add/Edit/Deactivate via FAB+modal) | ✅ Live | BR-21 — Phase 5.10 read + Phase 5.13 writes (SH/DSH/FM) |
 | 🔥 Drills (read + Schedule/Start/End/Cancel via FAB+modal) | ✅ Live | BR-A — Phase 5.11 read + Phase 5.14 writes (SH/DSH/FM/SHIFT_COMMANDER) |
+| Drill detail screen — timeline + participation + reason editor + my-row Acknowledge/Mark Safe CTAs + drawer banner when active drill targets staff | ✅ Live | BR-A — Phase 5.18 (mig 013 + ADR 0004) |
 | 🎓 My Certifications (read-only by design — self-attestation) | ✅ Live | BR-22 — Phase 5.12 |
 | 🛡 Shifts & Roster (Create / Activate / Manage assignments / Close — command roles only, drawer hidden otherwise) | ✅ Live | BR-04 / BR-12 / BR-13 / BR-19 / BR-61 — Phase 5.16b |
 | Drawer navigation (5 groups) | ✅ Live | UX-DESIGN-DECISIONS.md §4 |
@@ -68,6 +71,7 @@
 | `/staff` — staff list + Add/Edit/Deactivate (SH/DSH add; SH edit+lifecycle) | ✅ Live | BR-04 / BR-13 — Phase 5.17 (mirrors mobile StaffScreen) |
 | `/equipment` — list + Add/Edit/Deactivate | ✅ Live | BR-21 — Phase 5.10 read + Phase 5.13 writes |
 | `/drills` — list + Schedule/Start/End/Cancel | ✅ Live | BR-A — Phase 5.11 read + Phase 5.14 writes |
+| `/drills/[id]` — audit-grade detail (timeline + participation matrix + filterable + reason editor) | ✅ Live | BR-A — Phase 5.18 (mig 013 + ADR 0004); precursor for Phase B PDF report |
 | `/certifications` — list + Add/Edit/Delete with staff selector + cert-name datalist | ✅ Live | BR-22 / BR-B — Phase 5.12 read + Phase 5.15 writes (SH/DSH/FM add+edit; SH/DSH delete) |
 | `/shifts` — Shifts & Roster (per-template state machine + inline floor-grouped ZoneAssignmentEditor with 2-person validation) | ✅ Live | BR-04 / BR-12 / BR-13 / BR-19 / BR-61 — Phase 5.16a |
 | Cross-link CTAs `/zones` ↔ `/accountability` | ✅ Live | Phase 5.4 |
@@ -117,6 +121,7 @@
 | `GET /v1/analytics/dashboard` (Tasks + Incidents + Equipment + Drills + Cert rollups) | ✅ Live | BR-31 partial; BR-14 100% surface |
 | `GET/POST/PATCH /v1/equipment`, `PUT /v1/equipment/:id/status` | ✅ Live | BR-21 — Phase 5.10 read; SH/DSH/FM gated |
 | `GET /v1/drill-sessions`, `POST /v1/drill-sessions`, `PUT /:id/{start,end,cancel}` | ✅ Live | BR-A — Phase 5.11; SH/DSH/FM/SHIFT_COMMANDER gated |
+| `GET /v1/drill-sessions/:id` (extended payload: timeline + participants + aggregates + role-filtered view), `GET /v1/drill-sessions/active-for-me`, `POST /:id/acknowledge`, `POST /:id/staff-safe`, `PATCH /:id/participants/:staffId` | ✅ Live | BR-A — Phase 5.18; PATCH gated SH/DSH/FM/SHIFT_COMMANDER; ack/safe gated to participant; active-for-me + GET /:id any auth role |
 | `GET /v1/certifications`, `GET /v1/certifications/me`, `POST/PATCH/DELETE /v1/certifications/:id` | ✅ Live | BR-22 — Phase 5.12; SH/DSH/FM add+edit; SH/DSH delete |
 | `GET /v1/shifts`, `GET/POST /v1/shift-instances`, `PUT /:id/{activate,close}`, `GET/PUT /:id/zone-assignments` | ✅ Live | BR-04/12/13/19/61 — Phase 5.16a; SH/DSH/SHIFT_COMMANDER gated; bulk-replace assignments with 2-person validation + venue scope check |
 | `/v1/handovers` POST/PUT | ⏳ Phase B | BR-12 |
@@ -245,7 +250,7 @@ Tagging: P1 = Phase 1 (built or scheduled May/June); P2 = Phase 2 (Roaming + Bra
 
 | BR | State |
 |----|---|
-| BR-A (Drill Management Module) | ✅ Live read+write (Phase 5.11 + 5.14) — Schedule/Start/End/Cancel state machine on mobile + dashboard + Ops Console; SH/DSH/FM/SHIFT_COMMANDER gated; drill_score by recency in BR-14 |
+| BR-A (Drill Management Module) | ✅ Live (Phase 5.11 + 5.14 + 5.18) — Schedule/Run/Time/Document/Per-staff acknowledgement complete. Audit-grade `/drills/[id]` detail with timeline + participation matrix + 6-code reason taxonomy (ADR 0004) on mobile + dashboard. PDF report = Phase B (data substrate ready). drill_score in BR-14 reflects live participant data. |
 | BR-B (Cert Expiry Warning on Shift Activation) | ⏳ Schema ready; cert read+write live (BR-22); the *soft warning on shift activation* hook itself remains Phase B (worker-dependent — fires when shift_instance moves to ACTIVE and pulls expiring certs for that shift's assigned staff) |
 
 ### Corporate Governance (BR-65 → BR-80) — all P3
@@ -416,6 +421,39 @@ End-of-day 2026-05-07: 61 commits ahead of `96594ad` (original); `main` and `saf
 
 **Defence-in-depth chain confirmed across all 5 features:** UI hides write controls (or whole drawer entry, in RosterScreen's case) when role doesn't qualify → api `requireRole` returns 403 for ineligible JWT → Postgres RLS row-level enforcement → server-side Zod / allow-list validation. Every commit pure additive — read surfaces preserved for FS / GS / GM / AUDITOR.
 
+### 2026-05-07 (later) — Phase 5.18 drill audit-grade detail + per-staff acknowledgement
+
+| Time | Activity | Commit |
+|---|---|---|
+| Evening | **Industry research** — `docs/research/drill-participant-reason-taxonomy.md` (346 lines, 18 sources: ISO/NFPA/FEMA/OSHA + NABH/Telangana Fire Service Form FF-3/NDMA/BIS + DPDP Act/Industrial Disputes Act/Factories Act + 6 industry SaaS comparisons). Sales/audit/demo asset with field-tested narrative beats. Sets pattern: `docs/research/` for industry-research-backed product decisions. | `2f48a75` |
+| Evening | **ADR 0004** — `docs/adr/0004-drill-participant-reason-codes.md` (205 lines): 6-code taxonomy (`OFF_DUTY` / `ON_LEAVE` / `ON_BREAK` / `ON_DUTY_ELSEWHERE` / `DEVICE_OR_NETWORK_ISSUE` / `OTHER`) + NULL = unexcused. Refines BR-A; spec unchanged. TEXT + CHECK over PostgreSQL ENUM (transactional safety). Soft-label "Did not acknowledge" decoupled from data-layer "MISSED" (DPDP/HR-safe UI; auditor-defensible data). | `85b2dd4` |
+| Evening | **Mig 013** — `supabase/migrations/013_drill_participant_reason.sql` (133 lines): 4 columns + 3 CHECK constraints + RESTRICTIVE RLS policy `drill_participant_role_read_gate` + index. Deployed live to Supabase via Dashboard SQL Editor; verification block confirmed all checks. | `091aea2` |
+| Night | **Phase 5.18 implementation** — 3,101 lines across 10 files. api new endpoints (active-for-me / acknowledge / staff-safe / set-reason); existing /start enhanced with hybrid on-duty determination + bulk participant enqueue (idempotent); existing /end transitions NOTIFIED→MISSED + recomputes aggregates. New mobile DrillDetailScreen + dashboard `/drills/[id]` route with timeline + participation matrix + filterable + bottom-sheet ReasonEditorModal. New `Drawer.banner` prop (generic slot reusable for future active-incident/handover/broadcast banners). TasksScreen polls /active-for-me every 30s + on every drawer open. Live-poll every 10s while IN_PROGRESS. | `96a30dd` |
+
+End-of-day 2026-05-07: 65 commits ahead of `96594ad` (original); `main` and `safecommand_v7` synced at HEAD `96a30dd`. tsc passing on all 4 apps. AWS Amplify + Railway api auto-deployed on push.
+
+**BR-A delivery matrix — COMPLETE:**
+
+| BR-A facet | State | Phase / commit |
+|---|---|---|
+| Schedule | ✅ Live | 5.11 + 5.14 (mobile + dashboard write) |
+| Run (start/end/cancel state machine) | ✅ Live | 5.11 + 5.14 |
+| Time (started_at / ended_at / duration_seconds) | ✅ Live | 5.11 |
+| Document (notes + audit_logs timeline) | ✅ Live | 5.11 + 5.18 (timeline surfaced on detail page) |
+| Per-building separate records | ✅ Live | building_id nullable; UI scopes correctly |
+| Missed-participant logging (per-staff acknowledgement + reason classification) | ✅ Live | 5.18 (mig 013 + ADR 0004) |
+| Auto-generate timed Fire NOC report (PDF) | ⏳ Phase B | Detail page is the precursor data substrate; PDFKit renders the same data structure |
+
+**Phase 5.18 specific E2E flow tested-ready:**
+1. SH starts SCHEDULED drill → participants enqueued via hybrid (shift-roster first, all-staff fallback per ADR 0004) → audit_logs entry STARTED_FROM_SHIFT_ROSTER or STARTED_FROM_VENUE_ALL
+2. Mobile staff sees drawer banner ("🔥 Drill in progress · Tap to acknowledge")
+3. Tap banner → DrillDetailScreen → tap [✓ Acknowledge] → status=ACKNOWLEDGED
+4. CTA changes to [🛡 I AM SAFE] → tap → status=SAFE_CONFIRMED → banner disappears
+5. SH ends drill → unattested staff flip to MISSED → aggregate counts recompute
+6. SH on dashboard `/drills/[id]` → filter "Needs reason" → tap [Set reason] → 6-chip taxonomy → "On duty elsewhere" + notes "ICU3 — patient on vent" → Save
+7. Detail page reflects: EXCUSED chip + reason + setter attribution + audit_logs entry
+8. Auditor opens `/drills/[id]` URL → sees full timeline + per-staff classification + compliance metrics → printable
+
 ---
 
 ## 9. Operational tooling inventory
@@ -447,7 +485,9 @@ End-of-day 2026-05-07: 61 commits ahead of `96594ad` (original); `main` and `saf
 | `docs/adr/0001-migration-renumbering.md` | ADR — repo migrations 009/010 vs spec 007/008 offset |
 | `docs/adr/0002-safecommand-v7-branch.md` | ADR — branch isolation rationale |
 | `docs/adr/0003-supabase-publishable-secret-keys.md` | ADR — opaque-token migration 2026-05-05 |
+| `docs/adr/0004-drill-participant-reason-codes.md` | ADR — Phase 5.18 drill reason taxonomy |
 | `docs/api/conventions.md` | API L1 governance (19 sections, includes §19 entity lifecycle pattern) |
+| `docs/research/drill-participant-reason-taxonomy.md` | Industry research backing ADR 0004 — sales/audit/demo asset (18 sources, 6 SaaS comparisons, demo talking points) |
 | `docs/sales/validation-script.md` | 5-question validation script for 31-May gate |
 | `docs/sales/validation-tracker.md` | 10-conversation tracker + scoreboard |
 | `docs/sales/apollo-mockup-spec.md` | Path C live-software mockup spec for Apollo |
@@ -458,20 +498,129 @@ End-of-day 2026-05-07: 61 commits ahead of `96594ad` (original); `main` and `saf
 
 ## 11. Current-state TL;DR for any future session
 
-- **Branch:** `main` and `safecommand_v7` synced at HEAD `52ef193` — 61 commits past `96594ad` (original Phase A handoff point)
-- **Production schema:** post mig 009 + 010 + 011 + 012; 32/32 tables RLS-protected
+- **Branch:** `main` and `safecommand_v7` synced at HEAD `96a30dd` — 65 commits past `96594ad` (original Phase A handoff point)
+- **Production schema:** post mig 009 + 010 + 011 + 012 + 013; 32/32 tables RLS-protected; mig 013 deployed via Supabase Dashboard SQL Editor 2026-05-07 (verification block confirmed 4 columns + 3 CHECK constraints + 1 RESTRICTIVE policy + 1 index)
 - **Production runtime:** Railway api + AWS Amplify dashboard auto-deploy from `main` on push (via Amplify CI pipeline). Workers paused.
 - **Workers:** PAUSED (`WORKERS_PAUSED=true`) — May freeze, resume 2026-06-02 per `JUNE-2026-REVIEW-REQUIRED.md`. Posture changes June 2026 from cost-discipline → emergency-only kill switch (per Q5 decision).
-- **Hyderabad Demo Supermall:** seeded (run `./scripts/reset-hyderabad-demo.sh` to clean if needed). Use this venue to test Phase 5.13–5.17 write surfaces end-to-end.
+- **Hyderabad Demo Supermall:** seeded (run `./scripts/reset-hyderabad-demo.sh` to clean if needed). Use this venue to test Phase 5.13–5.18 surfaces end-to-end.
 - **Two-tier admin parity:** COMPLETE for the 5-feature scope (Equipment / Drills / Cert / Shifts / Staff). Mobile RosterScreen drawer entry hidden for non-command roles; dashboard /shifts shows read-only banner.
-- **Demo arsenal:** 3 perspectives (My Shift / Zone Status / Zone Accountability) × 2 platforms (mobile + dashboard) + Ops Console roster surface + venue-dashboard-side write surfaces for SH/DSH operating in the field — all backed by realistic seeded data
-- **Validation gate:** 31-May-2026 (10 conversations per Plan §22, demo Zone Accountability)
+- **BR-A drill management:** COMPLETE — schedule / run / time / document / per-staff acknowledgement. Audit-grade detail on mobile + dashboard. PDF rendering = Phase B (data substrate ready).
+- **Demo arsenal:** 3 perspectives (My Shift / Zone Status / Zone Accountability) × 2 platforms (mobile + dashboard) + Ops Console roster surface + venue-dashboard-side write surfaces for SH/DSH operating in the field + audit-grade `/drills/[id]` deep-dive — all backed by realistic seeded data
+- **Validation gate:** 31-May-2026 (10 conversations per Plan §22, demo Zone Accountability + drill audit-grade detail)
 - **June unfreeze:** workers always-on (`WORKERS_PAUSED=false`, `MASTER_TICK_INTERVAL=60000`), BR-10 → BR-32 sequence, Apollo Loom recording, AWS Activate credit application. Branches already synced — June merge step is a no-op confirmation.
 
 **Active testing checklist (2026-05-07 → 2026-05-08, while sales prep is happening):**
 1. Dashboard `/shifts` — Create instance → Activate (commander selector) → Manage assignments (toggle pills, 2-PERSON validation) → Save → Close. Verify Zone Accountability map populates from saved assignments.
 2. Dashboard `/staff` — Add staff (validate +91 phone enforcement, role allow-list excludes SH), Edit name+role (phone disabled), Deactivate → Reactivate.
 3. Dashboard `/equipment`, `/drills`, `/certifications` — Add/Edit/Delete flows. Confirm Health Score Breakdown reflects changes.
-4. Mobile `RosterScreen` — same flow as dashboard /shifts but on phone form-factor (drawer → OPERATIONS → Shifts & Roster). Hidden for non-command roles.
-5. Mobile `EquipmentScreen`, `DrillsScreen` write modals — bottom-sheet UX validation on physical device.
-6. Defence-in-depth — log in as a non-command role (e.g. GROUND_STAFF) and confirm: drawer entry hidden, write buttons hidden, attempted direct API calls return 403 from `requireRole`.
+4. **Phase 5.18 drill detail E2E (highest priority — sales-critical for NABH/Fire NOC pitch):**
+   a. SH starts a SCHEDULED drill from `/drills` → click row → land on `/drills/[id]` → confirm participants enqueued (timeline shows STARTED_FROM_SHIFT_ROSTER or STARTED_FROM_VENUE_ALL)
+   b. As staff on mobile (different phone/account) → open Drawer → see "🔥 Drill in progress" banner → tap → DrillDetailScreen → tap [✓ Acknowledge] → tap [🛡 I AM SAFE]
+   c. As SH back on `/drills/[id]` → see live timeline + status flips (10s poll) → end drill → unattested staff flip to MISSED
+   d. Filter "Needs reason" → tap [Set reason] on a missed staff → 6-chip modal → select "On duty elsewhere" + notes "ICU patient on vent" → Save
+   e. Confirm EXCUSED chip + reason + setter attribution appears
+   f. Print page → confirm PDF-ready layout
+5. Mobile `RosterScreen` — same flow as dashboard /shifts but on phone form-factor (drawer → OPERATIONS → Shifts & Roster). Hidden for non-command roles.
+6. Mobile `EquipmentScreen`, `DrillsScreen` write modals — bottom-sheet UX validation on physical device.
+7. **Defence-in-depth (Phase 5.13–5.18 chain):** log in as GROUND_STAFF → confirm: drawer "Shifts & Roster" hidden; "Set reason" buttons hidden on `/drills/[id]`; participation matrix shows "your row only"; direct API call to `PATCH /drill-sessions/:id/participants/:staffId` returns 403 from `requireRole`.
+
+**Operational notes:**
+- **Next 16 Turbopack cache reset** if dev-server errors with "Failed to open database" / "invalid digit found in string": `rm -rf apps/dashboard/.next && npm run dev`. Common after large code changes (Phase 5.18 = 3,101 lines / 10 files).
+
+---
+
+## 12. Phase 5.18 — Drill audit-grade detail (full reference)
+
+> Fold-out section. Authoritative implementation reference — companion to ADR 0004 + research doc.
+
+### Schema additions (mig 013, deployed 2026-05-07)
+
+`drill_session_participants` gains 4 nullable columns:
+
+| Column | Type | Purpose |
+|---|---|---|
+| `reason_code` | TEXT (CHECK 6 values) | Non-acknowledgement reason — taxonomy from ADR 0004 |
+| `reason_notes` | TEXT NULL | Free-text detail; ≥10 chars REQUIRED when `reason_code='OTHER'` (CHECK enforces) |
+| `reason_set_by` | UUID NULL → staff(id) | Audit trail — who classified |
+| `reason_set_at` | TIMESTAMPTZ NULL | Audit trail — when classified |
+
+Plus 3 CHECK constraints (taxonomy values; OTHER ≥10 chars; audit-triplet consistency) + 1 RESTRICTIVE RLS policy `drill_participant_role_read_gate` (command roles + AUDITOR + GM see all; others see only own row) + 1 index on (staff_id, drill_session_id) for `/active-for-me` hot path.
+
+### api endpoints (Phase 5.18)
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/v1/drill-sessions/:id` | any auth | Extended payload — drill + participants (with staff + reason setter joined) + audit_logs timeline + live aggregates + role-filtered view |
+| GET | `/v1/drill-sessions/active-for-me` | any auth | Drawer-banner data — IN_PROGRESS drills where requester is participant in NOTIFIED/ACKNOWLEDGED state |
+| PUT | `/v1/drill-sessions/:id/start` | SH/DSH/FM/SHIFT_COMMANDER | Hybrid on-duty enqueue — shift-roster first, all-staff fallback (per ADR 0004); audit_logs STARTED_FROM_* entry |
+| PUT | `/v1/drill-sessions/:id/end` | SH/DSH/FM/SHIFT_COMMANDER | NOTIFIED→MISSED transition + recompute aggregates from live participant rows |
+| POST | `/v1/drill-sessions/:id/acknowledge` | any auth (must be participant) | NOTIFIED→ACKNOWLEDGED, idempotent; computes ack_latency_seconds |
+| POST | `/v1/drill-sessions/:id/staff-safe` | any auth (must be participant) | ACKNOWLEDGED→SAFE_CONFIRMED (or NOTIFIED with auto-ack), idempotent |
+| PATCH | `/v1/drill-sessions/:id/participants/:staffId` | SH/DSH/FM/SHIFT_COMMANDER | Set/clear reason — validates OTHER ≥10 chars; sets audit triplet |
+
+### `is_excused` derivation (single source of truth)
+
+```typescript
+function isExcused(p: DrillSessionParticipant): boolean {
+  if (p.status === 'SAFE_CONFIRMED' || p.status === 'ACKNOWLEDGED') return true;
+  if (p.reason_code === null) return false;
+  if (p.reason_code === 'OTHER') {
+    return (p.reason_notes ?? '').trim().length >= 10;
+  }
+  return true; // OFF_DUTY / ON_LEAVE / ON_BREAK / ON_DUTY_ELSEWHERE / DEVICE_OR_NETWORK_ISSUE
+}
+```
+
+Used by `GET /:id` aggregate counts (`excused_count` / `unexcused_count`). Phase B BR-A PDF report reads same function.
+
+### UI surfaces
+
+**Mobile `DrillDetailScreen.tsx`** (1,133 lines):
+- Header card: drill type / status / scheduled / duration / safe%
+- Notes card (when `drill.notes` set)
+- "My row" callout when requester is participant + drill IN_PROGRESS — inline [✓ Acknowledge] + [🛡 I AM SAFE] CTAs
+- Compliance metrics tiles
+- audit_logs timeline (vertical with iconography)
+- Participation matrix (filterable: All / Needs reason / per-status), per-staff status pill, ack/safe times, reason chip + notes + setter attribution, [Set reason] button (SH/DSH/FM/SHIFT_COMMANDER)
+- ReasonEditorModal — bottom-sheet 6-chip selector with hint text per code, conditional notes textarea, Save/Clear/Cancel
+- Live-poll every 10s while IN_PROGRESS
+
+**Mobile drawer banner** (`Drawer.banner` prop on theme/Drawer.tsx — generic slot reusable for future active-incident/handover/broadcast banners):
+- TasksScreen polls `/active-for-me` every 30s + on every drawer open
+- Banner shows when active drill targets staff: title + subtitle + CTA label adapts to participant_status (NOTIFIED → "Acknowledge", ACKNOWLEDGED → "Mark me safe")
+- Tap banner → navigates to DrillDetailScreen for that drill
+- Per founder direction: banner only for now; multi-channel (FCM + WhatsApp + SMS) lands when BR-09/BR-10 unblock
+
+**Dashboard `/drills/[id]/page.tsx`** (818 lines):
+- Same content shape as mobile, two-column desktop layout (timeline left / participation right)
+- Filter chips above table
+- Inline ReasonEditorModal mirroring mobile UX
+- Print affordance (Phase B BR-A delivers proper PDFKit-rendered report from same data)
+
+**Dashboard `/drills` list:**
+- Each row now wraps a `<Link href="/drills/[id]">` for client-side navigation
+- Action buttons (Start/End/Cancel) get `e.preventDefault()` + `e.stopPropagation()` to keep them functional inside Link wrapper
+
+### Defence-in-depth chain (Phase 5.18 specific)
+
+```
+UI hides write controls (canSetParticipantReason gate)
+  ↓
+api requireRole 403 (PATCH endpoint requires SH/DSH/FM/SHIFT_COMMANDER)
+  ↓
+Postgres RLS RESTRICTIVE policy from mig 013
+  (SELECT visibility — command roles + AUDITOR + GM see all; others see own row)
+  ↓
+DB CHECK constraints (chk_reason_code_value, chk_other_requires_notes,
+                      chk_reason_consistency)
+  ↓
+Hand-validation in api PATCH handler (mirrors DB CHECK for clearer error)
+```
+
+### Known gaps + Phase B candidates
+
+- **Historical drills have no participant rows.** Pre-Phase-5.18 drills (3 demo drills + any real ones from Phase 5.11) show "Per-staff acknowledgement tracking begins…" message in detail view. Aggregate counts from `drill_sessions.total_*` columns still display via `legacy_*` aggregate fields.
+- **Auto-generate timed Fire NOC report (PDF)** — Phase B; the detail page is the precursor data substrate.
+- **Multi-channel drill ack delivery** — drawer-banner-only today; FCM + WhatsApp + SMS land when BR-09/BR-10 unblock.
+- **Cross-drill analytics view** ("comparison vs last 4 drills") — Phase 5.19 candidate post-validation; reason-code aggregation reveals systemic gaps (e.g. `DEVICE_OR_NETWORK_ISSUE` rate per zone → signal-survey action item).
+- **`staff.drill_exempt_until DATE`** — for permanent exemptions (wheelchair / late-pregnancy mobility); Phase B at staff-record level, not per-drill reason.
