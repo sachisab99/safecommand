@@ -157,8 +157,11 @@ function AppRouter(): React.JSX.Element {
           onBack={() => setScreen('tasks')}
         />
       )}
-      {screen === 'drills' && (
-        <DrillsScreen onBack={() => setScreen('tasks')} />
+      {screen === 'drills' && session && (
+        <DrillsScreen
+          staffRole={session.staff.role}
+          onBack={() => setScreen('tasks')}
+        />
       )}
       {screen === 'myCerts' && session && (
         <MyCertificationsScreen

@@ -11,7 +11,7 @@
  * Phase 5.11 (this).
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -20,15 +20,28 @@ import {
   RefreshControl,
   StyleSheet,
   ActivityIndicator,
+  Alert,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  Pressable,
 } from 'react-native';
 import {
   fetchDrills,
+  scheduleDrill,
+  startDrill,
+  endDrill,
+  cancelDrill,
+  canWriteDrills,
   computeDrillScore,
   daysSince,
   formatDuration,
   DRILL_TYPE_LABEL,
   DRILL_TYPE_ICON,
   type DrillSession,
+  type DrillType,
 } from '../services/drills';
 import {
   Screen,
@@ -86,10 +99,15 @@ function formatDateTime(iso: string): string {
 // Screen
 
 interface Props {
+  /**
+   * Logged-in staff role — drives write-surface gating.
+   * SH/DSH/FM/SHIFT_COMMANDER can schedule + start + end + cancel drills.
+   */
+  staffRole: string;
   onBack: () => void;
 }
 
-export function DrillsScreen({ onBack }: Props): React.JSX.Element {
+export function DrillsScreen({ staffRole, onBack }: Props): React.JSX.Element {
   const c = useColours();
   const brand = useBrand();
   const [drills, setDrills] = useState<DrillSession[]>([]);
@@ -97,6 +115,11 @@ export function DrillsScreen({ onBack }: Props): React.JSX.Element {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastFetchedAt, setLastFetchedAt] = useState<Date | null>(null);
+
+  // Phase 5.14 write-surface state
+  const canWrite = canWriteDrills(staffRole);
+  const [scheduleModalVisible, setScheduleModalVisible] = useState(false);
+  const [actionInFlight, setActionInFlight] = useState<string | null>(null);
 
   const load = useCallback(async (isRefresh = false): Promise<void> => {
     if (isRefresh) setRefreshing(true);
@@ -130,6 +153,40 @@ export function DrillsScreen({ onBack }: Props): React.JSX.Element {
 
   const score = computeDrillScore(drills);
   const daysSinceLast = completed[0]?.ended_at ? daysSince(completed[0].ended_at) : null;
+
+  // ─── Lifecycle action handlers (canWrite users only) ─────────────────────
+  // Each wraps the api call + refetch + simple Alert error handling.
+  const runAction = async (
+    actionName: string,
+    drillId: string,
+    fn: (id: string) => Promise<{ drill: DrillSession | null; error: string | null }>,
+    confirmMsg?: string,
+  ) => {
+    if (confirmMsg) {
+      const confirmed = await new Promise<boolean>((resolve) => {
+        Alert.alert(actionName, confirmMsg, [
+          { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+          { text: actionName, style: 'destructive', onPress: () => resolve(true) },
+        ]);
+      });
+      if (!confirmed) return;
+    }
+    setActionInFlight(drillId);
+    const { error: err } = await fn(drillId);
+    setActionInFlight(null);
+    if (err) {
+      Alert.alert('Could not complete', err);
+      return;
+    }
+    await load(true);
+  };
+
+  const handleStart = (id: string) =>
+    runAction('Start drill', id, startDrill, 'This will broadcast the drill to all on-duty staff. Continue?');
+  const handleEnd = (id: string) =>
+    runAction('End drill', id, endDrill, 'This will close the drill and record final timing. Continue?');
+  const handleCancel = (id: string) =>
+    runAction('Cancel', id, cancelDrill, 'Cancel this scheduled drill?');
 
   // FlatList data with section headers
   type ListItem =
@@ -227,7 +284,15 @@ export function DrillsScreen({ onBack }: Props): React.JSX.Element {
                 colours={c}
               />
             ) : (
-              <DrillRow drill={item.drill} colours={c} />
+              <DrillRow
+                drill={item.drill}
+                colours={c}
+                canWrite={canWrite}
+                inFlight={actionInFlight === item.drill.id}
+                onStart={canWrite ? () => handleStart(item.drill.id) : undefined}
+                onEnd={canWrite ? () => handleEnd(item.drill.id) : undefined}
+                onCancel={canWrite ? () => handleCancel(item.drill.id) : undefined}
+              />
             )
           }
           ItemSeparatorComponent={() => <View style={{ height: spacing.xs }} />}
@@ -245,6 +310,28 @@ export function DrillsScreen({ onBack }: Props): React.JSX.Element {
           </Text>
         </View>
       )}
+
+      {canWrite && (
+        <TouchableOpacity
+          style={[fabStyles.fab, { backgroundColor: c.primary }]}
+          activeOpacity={0.8}
+          onPress={() => setScheduleModalVisible(true)}
+          accessibilityLabel="Schedule drill"
+        >
+          <Text style={[fabStyles.fabIcon, { color: c.textOnPrimary }]}>＋</Text>
+        </TouchableOpacity>
+      )}
+
+      <ScheduleDrillModal
+        visible={scheduleModalVisible}
+        onClose={() => setScheduleModalVisible(false)}
+        onSubmitted={async () => {
+          setScheduleModalVisible(false);
+          await load(true);
+        }}
+        colours={c}
+        brand={brand}
+      />
     </Screen>
   );
 }
@@ -351,7 +438,23 @@ function SectionHeader({
   );
 }
 
-function DrillRow({ drill, colours: c }: { drill: DrillSession; colours: Colours }) {
+function DrillRow({
+  drill,
+  colours: c,
+  canWrite,
+  inFlight,
+  onStart,
+  onEnd,
+  onCancel,
+}: {
+  drill: DrillSession;
+  colours: Colours;
+  canWrite: boolean;
+  inFlight: boolean;
+  onStart?: () => void;
+  onEnd?: () => void;
+  onCancel?: () => void;
+}) {
   const style = STATUS_STYLE[drill.status];
   const fg = style.fg(c);
   const bg = style.bg(c);
@@ -361,6 +464,8 @@ function DrillRow({ drill, colours: c }: { drill: DrillSession; colours: Colours
     drill.total_staff_expected > 0
       ? Math.round((drill.total_staff_safe / drill.total_staff_expected) * 100)
       : 0;
+  const showActions =
+    canWrite && (drill.status === 'SCHEDULED' || drill.status === 'IN_PROGRESS');
 
   return (
     <View style={[rs.row, { backgroundColor: c.background }]}>
@@ -399,6 +504,45 @@ function DrillRow({ drill, colours: c }: { drill: DrillSession; colours: Colours
           <Text style={[rs.notes, { color: c.textSecondary }]} numberOfLines={2}>
             "{cleanNotes}"
           </Text>
+        )}
+
+        {showActions && (
+          <View style={rs.actionRow}>
+            {drill.status === 'SCHEDULED' && (
+              <>
+                <TouchableOpacity
+                  style={[rs.actionBtn, { backgroundColor: c.primary, opacity: inFlight ? 0.5 : 1 }]}
+                  disabled={inFlight}
+                  onPress={onStart}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[rs.actionBtnText, { color: c.textOnPrimary }]}>
+                    {inFlight ? '…' : '▶ Start'}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[rs.actionBtnSecondary, { borderColor: c.divider, opacity: inFlight ? 0.5 : 1 }]}
+                  disabled={inFlight}
+                  onPress={onCancel}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[rs.actionBtnText, { color: c.textSecondary }]}>Cancel</Text>
+                </TouchableOpacity>
+              </>
+            )}
+            {drill.status === 'IN_PROGRESS' && (
+              <TouchableOpacity
+                style={[rs.actionBtn, { backgroundColor: c.status.danger, opacity: inFlight ? 0.5 : 1 }]}
+                disabled={inFlight}
+                onPress={onEnd}
+                activeOpacity={0.7}
+              >
+                <Text style={[rs.actionBtnText, { color: '#fff' }]}>
+                  {inFlight ? '…' : '■ End drill'}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
         )}
       </View>
     </View>
@@ -554,4 +698,359 @@ const rs = StyleSheet.create({
     fontStyle: 'italic',
     marginTop: spacing.xs,
   },
+  actionRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  actionBtn: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs + 2,
+    borderRadius: radius.md,
+    minHeight: touch.minTarget - 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionBtnSecondary: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs + 2,
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    minHeight: touch.minTarget - 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionBtnText: {
+    fontSize: fontSize.caption,
+    fontWeight: fontWeight.bold,
+    letterSpacing: letterSpacing.wide,
+  },
 });
+
+// ──────────────────────────────────────────────────────────────────────────
+// FAB + Modal styles (mirrors EquipmentScreen patterns)
+
+const fabStyles = StyleSheet.create({
+  fab: {
+    position: 'absolute',
+    right: spacing.lg,
+    bottom: spacing.xl + spacing.md,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  fabIcon: {
+    fontSize: 32,
+    fontWeight: fontWeight.bold,
+    marginTop: -2,
+  },
+});
+const ms = StyleSheet.create({
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  keyboardWrap: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  sheet: {
+    borderTopLeftRadius: radius.lg,
+    borderTopRightRadius: radius.lg,
+    maxHeight: '90%',
+  },
+  dragHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginTop: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  sheetContent: {
+    padding: spacing.lg,
+    paddingBottom: spacing['2xl'],
+    gap: spacing.sm,
+  },
+  title: {
+    fontSize: fontSize.h5,
+    fontWeight: fontWeight.bold,
+    marginBottom: spacing.sm,
+  },
+  label: {
+    fontSize: fontSize.caption,
+    fontWeight: fontWeight.semibold,
+    textTransform: 'uppercase',
+    letterSpacing: letterSpacing.wide,
+    marginTop: spacing.sm,
+  },
+  input: {
+    borderWidth: 1,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    fontSize: fontSize.body,
+    minHeight: touch.minTarget,
+  },
+  textarea: {
+    minHeight: 80,
+    textAlignVertical: 'top',
+    paddingTop: spacing.sm,
+  },
+  helper: {
+    fontSize: fontSize.caption,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+  },
+  chip: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs + 2,
+    borderRadius: radius.pill,
+    borderWidth: 1.5,
+  },
+  chipText: {
+    fontSize: fontSize.caption,
+    fontWeight: fontWeight.semibold,
+  },
+  errorBox: {
+    padding: spacing.sm,
+    borderRadius: radius.md,
+    marginTop: spacing.sm,
+  },
+  errorText: {
+    fontSize: fontSize.caption,
+    fontWeight: fontWeight.medium,
+  },
+  submitBtn: {
+    marginTop: spacing.md,
+    paddingVertical: spacing.md,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    minHeight: touch.minTarget + 4,
+    justifyContent: 'center',
+  },
+  submitText: {
+    fontSize: fontSize.bodyLarge,
+    fontWeight: fontWeight.bold,
+  },
+  cancelBtn: {
+    marginTop: spacing.sm,
+    paddingVertical: spacing.sm,
+    alignItems: 'center',
+  },
+  cancelText: {
+    fontSize: fontSize.body,
+    fontWeight: fontWeight.medium,
+  },
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// ScheduleDrillModal — bottom-sheet form (drill_type + scheduled_for + notes)
+// Industry-leading keyboard handling: KeyboardAvoidingView + auto-focus + tab order.
+
+const DRILL_TYPE_OPTIONS: DrillType[] = [
+  'FIRE_EVACUATION',
+  'EARTHQUAKE',
+  'BOMB_THREAT',
+  'MEDICAL_EMERGENCY',
+  'PARTIAL_EVACUATION',
+  'FULL_EVACUATION',
+  'OTHER',
+];
+
+/** Default scheduled_for: tomorrow at 10:00 local time, ISO without seconds. */
+function defaultScheduledFor(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  d.setHours(10, 0, 0, 0);
+  return d.toISOString().slice(0, 16); // YYYY-MM-DDTHH:mm
+}
+
+interface ScheduleDrillModalProps {
+  visible: boolean;
+  onClose: () => void;
+  onSubmitted: () => void | Promise<void>;
+  colours: Colours;
+  brand: ReturnType<typeof useBrand>;
+}
+
+function ScheduleDrillModal({
+  visible,
+  onClose,
+  onSubmitted,
+  colours: c,
+}: ScheduleDrillModalProps): React.JSX.Element {
+  const [drillType, setDrillType] = useState<DrillType>('FIRE_EVACUATION');
+  const [scheduledFor, setScheduledFor] = useState(defaultScheduledFor());
+  const [notes, setNotes] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const notesRef = useRef<TextInput>(null);
+
+  // Reset on every open
+  useEffect(() => {
+    if (visible) {
+      setDrillType('FIRE_EVACUATION');
+      setScheduledFor(defaultScheduledFor());
+      setNotes('');
+      setError(null);
+      setSubmitting(false);
+    }
+  }, [visible]);
+
+  const handleSubmit = async () => {
+    setError(null);
+    // Parse the local datetime-input into ISO with timezone
+    const parsed = new Date(scheduledFor);
+    if (isNaN(parsed.getTime())) {
+      setError('Enter date/time as YYYY-MM-DDTHH:mm (e.g. 2026-05-15T14:00)');
+      return;
+    }
+    if (parsed.getTime() < Date.now() - 60_000) {
+      setError('Drill must be scheduled in the future.');
+      return;
+    }
+    setSubmitting(true);
+    const { error: err } = await scheduleDrill({
+      drill_type: drillType,
+      scheduled_for: parsed.toISOString(),
+      notes: notes.trim() === '' ? null : notes.trim(),
+    });
+    setSubmitting(false);
+    if (err) {
+      setError(err);
+      return;
+    }
+    await onSubmitted();
+  };
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+      statusBarTranslucent
+    >
+      <Pressable style={ms.backdrop} onPress={onClose} />
+      <KeyboardAvoidingView
+        style={ms.keyboardWrap}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        pointerEvents="box-none"
+      >
+        <View style={[ms.sheet, { backgroundColor: c.background }]}>
+          <View style={[ms.dragHandle, { backgroundColor: c.divider }]} />
+          <ScrollView
+            style={{ flexGrow: 0 }}
+            contentContainerStyle={ms.sheetContent}
+            keyboardShouldPersistTaps="handled"
+          >
+            <Text style={[ms.title, { color: c.textPrimary }]}>Schedule drill</Text>
+
+            <Text style={[ms.label, { color: c.textMuted }]}>Drill type</Text>
+            <View style={ms.chipRow}>
+              {DRILL_TYPE_OPTIONS.map((dt) => {
+                const active = drillType === dt;
+                return (
+                  <TouchableOpacity
+                    key={dt}
+                    onPress={() => setDrillType(dt)}
+                    style={[
+                      ms.chip,
+                      {
+                        backgroundColor: active ? c.primary : c.surface,
+                        borderColor: active ? c.primary : c.divider,
+                      },
+                    ]}
+                    activeOpacity={0.7}
+                  >
+                    <Text
+                      style={[
+                        ms.chipText,
+                        { color: active ? c.textOnPrimary : c.textPrimary },
+                      ]}
+                    >
+                      {DRILL_TYPE_ICON[dt]} {DRILL_TYPE_LABEL[dt]}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <Text style={[ms.label, { color: c.textMuted }]}>Scheduled for</Text>
+            <TextInput
+              style={[
+                ms.input,
+                { backgroundColor: c.surface, borderColor: c.divider, color: c.textPrimary },
+              ]}
+              value={scheduledFor}
+              onChangeText={setScheduledFor}
+              placeholder="YYYY-MM-DDTHH:mm"
+              placeholderTextColor={c.textDisabled}
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="next"
+              onSubmitEditing={() => notesRef.current?.focus()}
+            />
+            <Text style={[ms.helper, { color: c.textMuted }]}>
+              Local time. Example: 2026-05-15T14:00
+            </Text>
+
+            <Text style={[ms.label, { color: c.textMuted }]}>Notes (optional)</Text>
+            <TextInput
+              ref={notesRef}
+              style={[
+                ms.input,
+                ms.textarea,
+                { backgroundColor: c.surface, borderColor: c.divider, color: c.textPrimary },
+              ]}
+              value={notes}
+              onChangeText={setNotes}
+              placeholder="Briefing instructions, scope, attendees…"
+              placeholderTextColor={c.textDisabled}
+              multiline
+              numberOfLines={3}
+            />
+
+            {error !== null && (
+              <View style={[ms.errorBox, { backgroundColor: c.status.dangerBg }]}>
+                <Text style={[ms.errorText, { color: c.status.danger }]}>{error}</Text>
+              </View>
+            )}
+
+            <TouchableOpacity
+              style={[
+                ms.submitBtn,
+                { backgroundColor: c.primary, opacity: submitting ? 0.6 : 1 },
+              ]}
+              onPress={handleSubmit}
+              disabled={submitting}
+              activeOpacity={0.8}
+            >
+              {submitting ? (
+                <ActivityIndicator color={c.textOnPrimary} />
+              ) : (
+                <Text style={[ms.submitText, { color: c.textOnPrimary }]}>
+                  Schedule drill
+                </Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity style={ms.cancelBtn} onPress={onClose} activeOpacity={0.7}>
+              <Text style={[ms.cancelText, { color: c.textMuted }]}>Cancel</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}

@@ -95,3 +95,68 @@ export function formatDuration(seconds: number | null): string {
   const h = Math.floor(m / 60);
   return `${h}h ${m % 60}m`;
 }
+
+// ─── Write helpers (BR-A — SH/DSH/FM/SHIFT_COMMANDER) ──────────────────────
+// api enforces same role-gate via requireRole. UI hides controls for
+// ineligible roles to avoid 403 round-trip.
+
+export interface ScheduleDrillPayload {
+  drill_type: DrillType;
+  scheduled_for: string; // ISO datetime
+  notes?: string | null;
+  building_id?: string | null;
+}
+
+export async function scheduleDrill(
+  payload: ScheduleDrillPayload,
+): Promise<{ drill: DrillSession | null; error: string | null }> {
+  const session = await getStoredSession();
+  if (!session) return { drill: null, error: 'Not authenticated' };
+  const { data, error } = await apiFetch<DrillSession>('/drill-sessions', {
+    method: 'POST',
+    token: session.access_token,
+    body: JSON.stringify(payload),
+  });
+  return { drill: data, error };
+}
+
+export async function startDrill(
+  id: string,
+): Promise<{ drill: DrillSession | null; error: string | null }> {
+  const session = await getStoredSession();
+  if (!session) return { drill: null, error: 'Not authenticated' };
+  const { data, error } = await apiFetch<DrillSession>(`/drill-sessions/${id}/start`, {
+    method: 'PUT',
+    token: session.access_token,
+  });
+  return { drill: data, error };
+}
+
+export async function endDrill(
+  id: string,
+): Promise<{ drill: DrillSession | null; error: string | null }> {
+  const session = await getStoredSession();
+  if (!session) return { drill: null, error: 'Not authenticated' };
+  const { data, error } = await apiFetch<DrillSession>(`/drill-sessions/${id}/end`, {
+    method: 'PUT',
+    token: session.access_token,
+  });
+  return { drill: data, error };
+}
+
+export async function cancelDrill(
+  id: string,
+): Promise<{ drill: DrillSession | null; error: string | null }> {
+  const session = await getStoredSession();
+  if (!session) return { drill: null, error: 'Not authenticated' };
+  const { data, error } = await apiFetch<DrillSession>(`/drill-sessions/${id}/cancel`, {
+    method: 'PUT',
+    token: session.access_token,
+  });
+  return { drill: data, error };
+}
+
+/** Roles allowed to write drills — must match api requireRole exactly */
+export function canWriteDrills(role: string): boolean {
+  return ['SH', 'DSH', 'FM', 'SHIFT_COMMANDER'].includes(role);
+}
