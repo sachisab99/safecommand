@@ -118,6 +118,7 @@ interface Props {
   onEquipment: () => void;
   onDrills: () => void;
   onMyCerts: () => void;
+  onRoster: () => void;
 }
 
 export function TasksScreen({
@@ -132,6 +133,7 @@ export function TasksScreen({
   onEquipment,
   onDrills,
   onMyCerts,
+  onRoster,
 }: Props): React.JSX.Element {
   const c = useColours();
   const brand = useBrand();
@@ -272,13 +274,20 @@ export function TasksScreen({
       key: 'OPERATIONS',
       title: 'Operations',
       items: [
-        {
-          key: 'shift',
-          label: 'My Shift',
-          icon: '🕐',
-          disabled: true,
-          onPress: () => undefined,
-        },
+        // BR-04 / BR-12 / BR-13 / BR-19 — Shifts & Roster lifecycle.
+        // Hidden entirely for non-command roles since the surface is
+        // write-only (read equivalents: My Shift + Zone Accountability).
+        // Server enforces requireRole('SH','DSH','SHIFT_COMMANDER').
+        ...(['SH', 'DSH', 'SHIFT_COMMANDER'].includes(staff.role)
+          ? [
+              {
+                key: 'roster',
+                label: 'Shifts & Roster',
+                icon: '🛡',
+                onPress: onRoster,
+              },
+            ]
+          : []),
         {
           key: 'visitors',
           label: 'Visitors (VMS)',
