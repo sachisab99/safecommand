@@ -166,6 +166,13 @@ export function Drawer({
   const [shouldRender, setShouldRender] = useState<boolean>(visible);
 
   useEffect(() => {
+    // Stop any in-flight animations before starting new ones. Without this,
+    // overlapping .start() calls on the same Animated.Value can race and
+    // leave slide stuck at -1 (drawer off-screen) while backdrop is visible
+    // — the "dimmed screen but no menu" failure mode.
+    slide.stopAnimation();
+    fade.stopAnimation();
+
     if (visible) {
       // Reset to closed state explicitly so a stale value from an
       // interrupted previous animation cannot persist across opens.
@@ -186,7 +193,11 @@ export function Drawer({
           useNativeDriver: true,
         }),
       ]).start();
-    } else if (shouldRender) {
+    } else {
+      // Read shouldRender via a closure (NOT in deps — see comment below)
+      // so this branch only triggers a real close animation when the
+      // drawer was actually mounted; otherwise no-op.
+      if (!shouldRender) return;
       Animated.parallel([
         Animated.timing(slide, {
           toValue: -1,
@@ -207,7 +218,15 @@ export function Drawer({
         if (finished) setShouldRender(false);
       });
     }
-  }, [visible, slide, fade, shouldRender]);
+    // CRITICAL: shouldRender is intentionally NOT in this dep array.
+    // setShouldRender(true) inside the open branch would otherwise re-fire
+    // this effect mid-animation, causing slide.setValue(-1) to interrupt
+    // the in-flight slide-in. Symptom: backdrop dims but drawer never
+    // appears. Closure-read of shouldRender in the close branch is safe
+    // because the close path only matters when visible flips to false,
+    // which itself triggers the effect via `visible` dep.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, slide, fade]);
 
   // Android status bar inset — Modal renders at y=0 by default; without this
   // the drawer header would render under the status bar pixels.

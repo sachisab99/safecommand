@@ -426,7 +426,192 @@ FROM (
 WHERE ds.id = sub.drill_session_id
   AND ds.venue_id = :venue_id;
 
--- ─── 7. Verification block — print results ─────────────────────────────────
+-- ─── 7. Seed audit_logs lifecycle events for the timeline display ─────────
+-- The /drills/[id] detail page reads audit_logs filtered by entity_id.
+-- Without these rows the Timeline section displays "No audit-log events".
+-- These entries simulate what the api auditLog() middleware would have
+-- written for a real drill lifecycle: SCHEDULE → START → STARTED_FROM_*
+-- → ACK events → SAFE events → REASON_SET (post-drill classification)
+-- → END.
+--
+-- Wipe + re-insert pattern matches participant seed (idempotent rerun).
+
+DELETE FROM audit_logs
+WHERE venue_id = :venue_id
+  AND entity_type = 'drill-sessions'
+  AND entity_id IN (
+    SELECT drill_a_id FROM _drill_demo_ctx
+    UNION ALL
+    SELECT drill_b_id FROM _drill_demo_ctx
+  );
+
+-- Drill A timeline (FIRE_EVACUATION 60d ago) — 11 lifecycle events
+INSERT INTO audit_logs (
+  venue_id, actor_staff_id, actor_role, action, entity_type, entity_id,
+  metadata, created_at
+)
+SELECT * FROM (
+  -- Schedule event (5 minutes before drill scheduled_for)
+  SELECT '096a3701-beb0-4ffe-9e74-43af3c26e09f'::UUID,
+         ctx.sh_id, 'SH', 'DRILL_SCHEDULE', 'drill-sessions', ctx.drill_a_id,
+         jsonb_build_object('drill_type', 'FIRE_EVACUATION', 'method', 'POST', 'path', '/v1/drill-sessions', 'status', 201),
+         ctx.drill_a_started - INTERVAL '5 minutes'
+  FROM _drill_demo_ctx ctx
+
+  UNION ALL
+  -- Start event (drill.started_at)
+  SELECT '096a3701-beb0-4ffe-9e74-43af3c26e09f'::UUID,
+         ctx.sh_id, 'SH', 'DRILL_START', 'drill-sessions', ctx.drill_a_id,
+         jsonb_build_object('drill_type', 'FIRE_EVACUATION', 'method', 'PUT', 'path', '/v1/drill-sessions/:id/start', 'status', 200),
+         ctx.drill_a_started
+  FROM _drill_demo_ctx ctx
+
+  UNION ALL
+  -- On-duty determination path metadata
+  SELECT '096a3701-beb0-4ffe-9e74-43af3c26e09f'::UUID,
+         ctx.sh_id, 'SH', 'DRILL_STARTED_FROM_SHIFT_ROSTER', 'drill-sessions', ctx.drill_a_id,
+         jsonb_build_object('participant_count', 14, 'source_path', 'SHIFT_ROSTER', 'building_id', NULL),
+         ctx.drill_a_started + INTERVAL '1 second'
+  FROM _drill_demo_ctx ctx
+
+  UNION ALL
+  -- Sample acknowledgement events (3 representative)
+  SELECT '096a3701-beb0-4ffe-9e74-43af3c26e09f'::UUID,
+         ctx.sh_id, 'SH', 'DRILL_PARTICIPANT_ACK', 'drill-sessions', ctx.drill_a_id,
+         jsonb_build_object('staff_name', 'Pradeep Kumar', 'ack_latency_seconds', 8),
+         ctx.drill_a_started + INTERVAL '8 seconds'
+  FROM _drill_demo_ctx ctx
+  UNION ALL
+  SELECT '096a3701-beb0-4ffe-9e74-43af3c26e09f'::UUID,
+         (SELECT id FROM staff WHERE phone='+919999000007' AND venue_id='096a3701-beb0-4ffe-9e74-43af3c26e09f'),
+         'FLOOR_SUPERVISOR', 'DRILL_PARTICIPANT_ACK', 'drill-sessions', ctx.drill_a_id,
+         jsonb_build_object('staff_name', 'Meera Joshi', 'ack_latency_seconds', 16),
+         ctx.drill_a_started + INTERVAL '16 seconds'
+  FROM _drill_demo_ctx ctx
+  UNION ALL
+  SELECT '096a3701-beb0-4ffe-9e74-43af3c26e09f'::UUID,
+         (SELECT id FROM staff WHERE phone='+919999000003' AND venue_id='096a3701-beb0-4ffe-9e74-43af3c26e09f'),
+         'GROUND_STAFF', 'DRILL_PARTICIPANT_ACK', 'drill-sessions', ctx.drill_a_id,
+         jsonb_build_object('staff_name', 'Anil Reddy', 'ack_latency_seconds', 18),
+         ctx.drill_a_started + INTERVAL '18 seconds'
+  FROM _drill_demo_ctx ctx
+
+  UNION ALL
+  -- Sample safe-confirmed events (2 representative)
+  SELECT '096a3701-beb0-4ffe-9e74-43af3c26e09f'::UUID,
+         ctx.sh_id, 'SH', 'DRILL_PARTICIPANT_SAFE', 'drill-sessions', ctx.drill_a_id,
+         jsonb_build_object('staff_name', 'Pradeep Kumar', 'time_to_safe_seconds', 72),
+         ctx.drill_a_started + INTERVAL '1 minute 12 seconds'
+  FROM _drill_demo_ctx ctx
+  UNION ALL
+  SELECT '096a3701-beb0-4ffe-9e74-43af3c26e09f'::UUID,
+         (SELECT id FROM staff WHERE phone='+919999000010' AND venue_id='096a3701-beb0-4ffe-9e74-43af3c26e09f'),
+         'GROUND_STAFF', 'DRILL_PARTICIPANT_SAFE', 'drill-sessions', ctx.drill_a_id,
+         jsonb_build_object('staff_name', 'Sanjay Verma', 'time_to_safe_seconds', 258, 'note', 'longest evac — assisted mobility-impaired visitor'),
+         ctx.drill_a_started + INTERVAL '4 minutes 18 seconds'
+  FROM _drill_demo_ctx ctx
+
+  UNION ALL
+  -- End event (drill.ended_at)
+  SELECT '096a3701-beb0-4ffe-9e74-43af3c26e09f'::UUID,
+         ctx.sh_id, 'SH', 'DRILL_END', 'drill-sessions', ctx.drill_a_id,
+         jsonb_build_object('drill_type', 'FIRE_EVACUATION', 'method', 'PUT', 'path', '/v1/drill-sessions/:id/end', 'status', 200, 'duration_seconds', 502),
+         ctx.drill_a_ended
+  FROM _drill_demo_ctx ctx
+
+  UNION ALL
+  -- Post-drill reason classifications (3 — match the participant rows)
+  SELECT '096a3701-beb0-4ffe-9e74-43af3c26e09f'::UUID,
+         ctx.sh_id, 'SH', 'DRILL_PARTICIPANT_REASON_SET', 'drill-sessions', ctx.drill_a_id,
+         jsonb_build_object('staff_name', 'Kavita Nair', 'reason_code', 'ON_DUTY_ELSEWHERE'),
+         ctx.drill_a_ended + INTERVAL '47 minutes'
+  FROM _drill_demo_ctx ctx
+  UNION ALL
+  SELECT '096a3701-beb0-4ffe-9e74-43af3c26e09f'::UUID,
+         ctx.sh_id, 'SH', 'DRILL_PARTICIPANT_REASON_SET', 'drill-sessions', ctx.drill_a_id,
+         jsonb_build_object('staff_name', 'Faisal Ahmed', 'reason_code', 'DEVICE_OR_NETWORK_ISSUE', 'it_action_raised', TRUE),
+         ctx.drill_a_ended + INTERVAL '52 minutes'
+  FROM _drill_demo_ctx ctx
+  UNION ALL
+  SELECT '096a3701-beb0-4ffe-9e74-43af3c26e09f'::UUID,
+         ctx.sh_id, 'SH', 'DRILL_PARTICIPANT_REASON_SET', 'drill-sessions', ctx.drill_a_id,
+         jsonb_build_object('staff_name', 'Imran Hussain', 'reason_code', 'ON_LEAVE'),
+         ctx.drill_a_ended + INTERVAL '1 hour 5 minutes'
+  FROM _drill_demo_ctx ctx
+) AS drill_a_audit;
+
+-- Drill B timeline (FULL_EVACUATION 240d ago) — 9 lifecycle events
+INSERT INTO audit_logs (
+  venue_id, actor_staff_id, actor_role, action, entity_type, entity_id,
+  metadata, created_at
+)
+SELECT * FROM (
+  SELECT '096a3701-beb0-4ffe-9e74-43af3c26e09f'::UUID,
+         ctx.sh_id, 'SH', 'DRILL_SCHEDULE', 'drill-sessions', ctx.drill_b_id,
+         jsonb_build_object('drill_type', 'FULL_EVACUATION', 'method', 'POST', 'path', '/v1/drill-sessions', 'status', 201),
+         ctx.drill_b_started - INTERVAL '2 minutes'
+  FROM _drill_demo_ctx ctx
+
+  UNION ALL
+  SELECT '096a3701-beb0-4ffe-9e74-43af3c26e09f'::UUID,
+         ctx.sh_id, 'SH', 'DRILL_START', 'drill-sessions', ctx.drill_b_id,
+         jsonb_build_object('drill_type', 'FULL_EVACUATION', 'method', 'PUT', 'path', '/v1/drill-sessions/:id/start', 'status', 200),
+         ctx.drill_b_started
+  FROM _drill_demo_ctx ctx
+
+  UNION ALL
+  -- VENUE_ALL fallback path (no active shift_instance at drill start — older drill)
+  SELECT '096a3701-beb0-4ffe-9e74-43af3c26e09f'::UUID,
+         ctx.sh_id, 'SH', 'DRILL_STARTED_FROM_VENUE_ALL', 'drill-sessions', ctx.drill_b_id,
+         jsonb_build_object('participant_count', 10, 'source_path', 'VENUE_ALL', 'building_id', NULL, 'note', 'no active shift_instance at drill start; fell back to all is_active staff'),
+         ctx.drill_b_started + INTERVAL '1 second'
+  FROM _drill_demo_ctx ctx
+
+  UNION ALL
+  -- Sample ack events (2 representative)
+  SELECT '096a3701-beb0-4ffe-9e74-43af3c26e09f'::UUID,
+         ctx.sh_id, 'SH', 'DRILL_PARTICIPANT_ACK', 'drill-sessions', ctx.drill_b_id,
+         jsonb_build_object('staff_name', 'Pradeep Kumar', 'ack_latency_seconds', 5),
+         ctx.drill_b_started + INTERVAL '5 seconds'
+  FROM _drill_demo_ctx ctx
+  UNION ALL
+  SELECT '096a3701-beb0-4ffe-9e74-43af3c26e09f'::UUID,
+         (SELECT id FROM staff WHERE phone='+919999000001' AND venue_id='096a3701-beb0-4ffe-9e74-43af3c26e09f'),
+         'SHIFT_COMMANDER', 'DRILL_PARTICIPANT_ACK', 'drill-sessions', ctx.drill_b_id,
+         jsonb_build_object('staff_name', 'Rajesh Kumar', 'ack_latency_seconds', 11),
+         ctx.drill_b_started + INTERVAL '11 seconds'
+  FROM _drill_demo_ctx ctx
+
+  UNION ALL
+  -- End event
+  SELECT '096a3701-beb0-4ffe-9e74-43af3c26e09f'::UUID,
+         ctx.sh_id, 'SH', 'DRILL_END', 'drill-sessions', ctx.drill_b_id,
+         jsonb_build_object('drill_type', 'FULL_EVACUATION', 'method', 'PUT', 'path', '/v1/drill-sessions/:id/end', 'status', 200, 'duration_seconds', 1003),
+         ctx.drill_b_ended
+  FROM _drill_demo_ctx ctx
+
+  UNION ALL
+  -- Reason classifications (3 — match participant rows)
+  SELECT '096a3701-beb0-4ffe-9e74-43af3c26e09f'::UUID,
+         ctx.sh_id, 'SH', 'DRILL_PARTICIPANT_REASON_SET', 'drill-sessions', ctx.drill_b_id,
+         jsonb_build_object('staff_name', 'Karthik Iyer', 'reason_code', 'OTHER'),
+         ctx.drill_b_ended + INTERVAL '38 minutes'
+  FROM _drill_demo_ctx ctx
+  UNION ALL
+  SELECT '096a3701-beb0-4ffe-9e74-43af3c26e09f'::UUID,
+         ctx.sh_id, 'SH', 'DRILL_PARTICIPANT_REASON_SET', 'drill-sessions', ctx.drill_b_id,
+         jsonb_build_object('staff_name', 'Suresh Reddy', 'reason_code', 'ON_BREAK'),
+         ctx.drill_b_ended + INTERVAL '52 minutes'
+  FROM _drill_demo_ctx ctx
+  UNION ALL
+  SELECT '096a3701-beb0-4ffe-9e74-43af3c26e09f'::UUID,
+         ctx.sh_id, 'SH', 'DRILL_PARTICIPANT_REASON_SET', 'drill-sessions', ctx.drill_b_id,
+         jsonb_build_object('staff_name', 'Manjusha Pillai', 'reason_code', 'OFF_DUTY'),
+         ctx.drill_b_ended + INTERVAL '1 hour 14 minutes'
+  FROM _drill_demo_ctx ctx
+) AS drill_b_audit;
+
+-- ─── 8. Verification block — print results ─────────────────────────────────
 DO $$
 DECLARE
   drill_a_total   INT;
@@ -438,6 +623,8 @@ DECLARE
   drill_a_excused INT;
   drill_b_excused INT;
   reason_codes_used INT;
+  audit_count_a   INT;
+  audit_count_b   INT;
 BEGIN
   SELECT COUNT(*) FILTER (WHERE ds.drill_type = 'FIRE_EVACUATION'),
          COUNT(*) FILTER (WHERE ds.drill_type = 'FULL_EVACUATION'),
@@ -463,6 +650,16 @@ BEGIN
     AND ds.notes LIKE '[DEMO]%'
     AND p.reason_code IS NOT NULL;
 
+  SELECT
+    COUNT(*) FILTER (WHERE ds.drill_type = 'FIRE_EVACUATION'),
+    COUNT(*) FILTER (WHERE ds.drill_type = 'FULL_EVACUATION')
+    INTO audit_count_a, audit_count_b
+  FROM audit_logs al
+  JOIN drill_sessions ds ON ds.id = al.entity_id
+  WHERE al.venue_id = '096a3701-beb0-4ffe-9e74-43af3c26e09f'
+    AND al.entity_type = 'drill-sessions'
+    AND ds.notes LIKE '[DEMO]%';
+
   RAISE NOTICE '═══════════════════════════════════════════════════════════════';
   RAISE NOTICE '  Drill demo participant seed — SUCCESS';
   RAISE NOTICE '═══════════════════════════════════════════════════════════════';
@@ -474,6 +671,8 @@ BEGIN
     drill_b_total, drill_b_safe, drill_b_missed, drill_b_excused;
   RAISE NOTICE '  Reason codes used across both drills: % / 6',
     reason_codes_used;
+  RAISE NOTICE '  Timeline events seeded — Drill A: % / Drill B: %',
+    audit_count_a, audit_count_b;
   RAISE NOTICE '';
 
   -- Sanity gates
@@ -485,6 +684,9 @@ BEGIN
   END IF;
   IF reason_codes_used <> 6 THEN
     RAISE EXCEPTION 'Expected all 6 reason codes used, got %', reason_codes_used;
+  END IF;
+  IF audit_count_a < 8 OR audit_count_b < 6 THEN
+    RAISE EXCEPTION 'Audit timeline counts low — A=%, B=% (expected ≥8 / ≥6)', audit_count_a, audit_count_b;
   END IF;
 
   RAISE NOTICE '  All sanity checks PASSED. Demo data ready.';
