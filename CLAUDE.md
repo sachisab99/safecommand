@@ -71,6 +71,7 @@ Apollo India example: 65 venues × Professional + Corp Enterprise + Brand Layer 
 | **Spec 008 (Brand+Roaming+Drill)** | `010_brand_roaming_drill.sql` | **Pending Phase B (June 2026)** | `corporate_brand_configs` (with CHECK `powered_by_text = 'Platform by SafeCommand'`), `roaming_staff_assignments`, `drill_sessions`, `drill_session_participants` |
 | **— (repo only)** | `011_staff_lifecycle.sql` | Deployed 2026-05-06 | 4-state lifecycle enum + status_reason + is_active becomes generated column + enforce_terminated_oneway trigger |
 | **— (repo only)** | `012_rls_schedule_template_seeds.sql` | Deployed 2026-05-06 | Security patch: enable RLS on reference table flagged by Supabase linter (`rls_disabled_in_public`) |
+| **— (repo only)** | `013_drill_participant_reason.sql` | **Pending Phase 5.18 deploy 2026-05-07** | Adds `reason_code` (TEXT + CHECK 6-value taxonomy) + `reason_notes` + audit columns (`reason_set_by` / `reason_set_at`) + `OTHER`-requires-notes CHECK + RLS SELECT policy on `drill_session_participants`. Backed by ADR 0004 + `docs/research/drill-participant-reason-taxonomy.md`. |
 
 ---
 
@@ -173,7 +174,7 @@ Phase tagging: **P1** = Phase 1 (Weeks 1–16, May→Oct 2026); **P2** = Phase 2
 
 | ID | Requirement | Priority |
 |----|-------------|----------|
-| BR-A | Drill Management Module — schedule/run/time/document; auto-generate timed Fire NOC report; per-building separate records; missed-participant logging | High |
+| BR-A | Drill Management Module — schedule/run/time/document; auto-generate timed Fire NOC report; per-building separate records; missed-participant logging *(Phase 5.18 implements participant tracking + 6-code reason taxonomy per ADR 0004)* | High |
 | BR-B | Cert Expiry Warning on Shift Activation — soft warning (NOT hard block); SC + SH notified; logged to audit_logs | High |
 
 #### Corporate Governance (BR-65 to BR-80) — all P3
@@ -826,6 +827,8 @@ Per Business Plan §15.1 — all 25 must pass before first pilot venue live.
 - **ADR 0001 — Migration renumbering:** `docs/adr/0001-migration-renumbering.md`
 - **ADR 0002 — `safecommand_v7` branch:** `docs/adr/0002-safecommand-v7-branch.md`
 - **ADR 0003 — Supabase opaque-token keys:** `docs/adr/0003-supabase-publishable-secret-keys.md`
+- **ADR 0004 — Drill participant non-acknowledgement reason codes:** `docs/adr/0004-drill-participant-reason-codes.md`
+- **Industry research — Drill reason taxonomy:** `docs/research/drill-participant-reason-taxonomy.md` (Phase 5.18 backing reference; sales/audit/demo asset)
 
 ### Prior versions (kept for archaeology only — DO NOT cite for new work)
 - `../../nexus/specs/2026-05-07_prime_business-plan-report-gen.md` (superseded by v2)
