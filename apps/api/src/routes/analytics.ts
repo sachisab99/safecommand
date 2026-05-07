@@ -14,7 +14,7 @@ analyticsRouter.get(
     const venueId = req.auth.venue_id;
     const today = new Date().toISOString().slice(0, 10);
 
-    const [incidents, tasks, staff, zones, equipment, drills] = await Promise.all([
+    const [incidents, tasks, staff, zones, equipment, drills, certs] = await Promise.all([
       db.from('incidents').select('id, severity, incident_type, status, declared_at, zones(name)')
         .eq('venue_id', venueId).in('status', ['ACTIVE', 'CONTAINED']).order('declared_at', { ascending: false }),
       db.from('task_instances').select('id, status')
@@ -34,6 +34,10 @@ analyticsRouter.get(
       db.from('drill_sessions').select('id, status, ended_at, scheduled_for')
         .eq('venue_id', venueId)
         .order('scheduled_for', { ascending: false }),
+      // BR-22 certifications rollup — drives Health Score Breakdown
+      // Certifications row (Phase 5.12). % of certs OK (>30d to expiry).
+      db.from('staff_certifications').select('id, expires_at')
+        .eq('venue_id', venueId),
     ]);
 
     const taskData = tasks.data ?? [];
@@ -95,6 +99,24 @@ analyticsRouter.get(
     }
     const upcomingDrills = drillData.filter((d) => d.status === 'SCHEDULED').length;
 
+    // ─── Certification compliance rollup (BR-22) ────────────────────────────
+    // Buckets: OK (>30d) / DUE_30 (≤30d) / DUE_7 (≤7d) / EXPIRED.
+    // (Certs use 30d threshold for OK because expiry windows are tighter than
+    // equipment service intervals.) Empty = 100 (no penalty).
+    const certData = certs.data ?? [];
+    const certBuckets = { ok: 0, due_90: 0, due_30: 0, due_7: 0, expired: 0 };
+    for (const c of certData) {
+      const expMs = new Date(`${c.expires_at}T00:00:00.000Z`).getTime();
+      const days = Math.floor((expMs - todayMs) / 86_400_000);
+      if (days < 0) certBuckets.expired++;
+      else if (days <= 7) certBuckets.due_7++;
+      else if (days <= 30) certBuckets.due_30++;
+      else if (days <= 90) certBuckets.due_90++;
+      else certBuckets.ok++;
+    }
+    const certTotal = certData.length;
+    const certScore = certTotal === 0 ? 100 : Math.round((certBuckets.ok / certTotal) * 100);
+
     res.json({
       health_score: healthScore,
       active_incidents: incidentData.length,
@@ -131,6 +153,15 @@ analyticsRouter.get(
         upcoming: upcomingDrills,
         days_since_last: daysSinceLastDrill,
         compliance_score: drillScore,
+      },
+      certifications: {
+        total: certTotal,
+        ok: certBuckets.ok,
+        due_90: certBuckets.due_90,
+        due_30: certBuckets.due_30,
+        due_7: certBuckets.due_7,
+        expired: certBuckets.expired,
+        compliance_score: certScore,
       },
     });
   },

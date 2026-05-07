@@ -41,6 +41,16 @@ interface AnalyticsSummary {
     days_since_last: number | null;
     compliance_score: number;
   };
+  // Phase 5.12 — certifications rollup. Same defensive optionality.
+  certifications?: {
+    total: number;
+    ok: number;
+    due_90: number;
+    due_30: number;
+    due_7: number;
+    expired: number;
+    compliance_score: number;
+  };
 }
 
 const TYPE_ICON: Record<string, string> = {
@@ -135,14 +145,32 @@ function HealthScoreBreakdown({ data }: { data: AnalyticsSummary }) {
           ? 'No open incidents'
           : `${data.active_incidents} open`,
     },
-    {
-      key: 'certifications',
-      label: 'Certifications',
-      weight: 15,
-      score: null,
-      status: 'pending',
-      detail: 'Module activates Phase B (June)',
-    },
+    // Certifications activates LIVE once api endpoint deploy lands.
+    data.certifications
+      ? {
+          key: 'certifications' as const,
+          label: 'Certifications',
+          weight: 15,
+          score: data.certifications.compliance_score,
+          status: 'live' as const,
+          detail:
+            data.certifications.total === 0
+              ? 'No certifications registered yet'
+              : `${data.certifications.ok}/${data.certifications.total} ≥90d to expiry` +
+                (data.certifications.expired > 0
+                  ? ` · ${data.certifications.expired} EXPIRED`
+                  : data.certifications.due_7 > 0
+                    ? ` · ${data.certifications.due_7} due ≤7d`
+                    : ''),
+        }
+      : {
+          key: 'certifications' as const,
+          label: 'Certifications',
+          weight: 15,
+          score: null,
+          status: 'pending' as const,
+          detail: 'Module activates Phase B (June)',
+        },
     // Equipment activates LIVE once the api endpoint deploy lands. Until
     // then `data.equipment` is undefined → falls back to Phase B placeholder.
     data.equipment

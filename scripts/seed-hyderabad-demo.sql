@@ -343,7 +343,49 @@ VALUES
    NULL, NULL, 0, 0, 0, 0, NULL,
    '[DEMO] Earthquake response drill scheduled. Pre-brief 1 week before. Building-wide drop-cover-hold.');
 
--- ─── 9. Summary ─────────────────────────────────────────────────────────────
+-- ─── 9. Staff certifications (BR-22 demo data) ─────────────────────────────
+-- Realistic compliance state across 4 of the 6 seed staff with mixed expiry:
+--   1 EXPIRED (drives a meaningful penalty in the score)
+--   1 ≤7d (urgent renewal needed)
+--   1 7-30d (visible in Phase 5 demo flow)
+--   2 30-90d (yellow)
+--   3 OK (green, >90d)
+-- Total 8 certs. Score = 3/8 = 38 (low — meaningful demo number).
+-- Marker: certification_name LIKE '[DEMO]%'.
+--
+-- TEST_DEMO_Security_S01 gets two certs (one urgent, one OK) so the mobile
+-- "My Certifications" demo for that staff (the one configured in
+-- TEST_PHONE_PAIRS) shows a meaningful list.
+
+WITH staff_lookup AS (
+  SELECT id, name FROM staff WHERE venue_id = :venue_id
+)
+INSERT INTO staff_certifications (
+  venue_id, staff_id, certification_name, issued_at, expires_at
+)
+SELECT :venue_id ::uuid, s.id, pairs.cert_name,
+       CURRENT_DATE - pairs.issued_days_ago * INTERVAL '1 day',
+       CURRENT_DATE + pairs.expires_in_days * INTERVAL '1 day'
+FROM (
+  VALUES
+    -- TEST_DEMO_Security_Head — SH, multiple certs, one expiring soon
+    ('TEST_DEMO_Security_Head', '[DEMO] First Aid / CPR', 730, 5),       -- ≤7d
+    ('TEST_DEMO_Security_Head', '[DEMO] Fire Safety / Marshall', 365, 200), -- OK
+    -- TEST_DEMO_Security_S01 — GS, one urgent + one OK (mobile demo target)
+    ('TEST_DEMO_Security_S01', '[DEMO] Security Guard License', 730, -8),  -- EXPIRED
+    ('TEST_DEMO_Security_S01', '[DEMO] First Aid / CPR', 90, 275),         -- OK
+    -- Rajesh Kumar — SC, one healthy
+    ('Rajesh Kumar', '[DEMO] Fire Safety / Marshall', 180, 185),           -- OK
+    -- Priya Sharma — FS, one due soon (yellow)
+    ('Priya Sharma', '[DEMO] First Aid / CPR', 305, 60),                   -- 30-90d
+    -- Anil Reddy — GS, one due soon
+    ('Anil Reddy', '[DEMO] Security Guard License', 700, 65),              -- 30-90d
+    -- Lakshmi Iyer — GS, one due 7-30d
+    ('Lakshmi Iyer', '[DEMO] First Aid / CPR', 640, 22)                    -- 7-30d
+) AS pairs(staff_name, cert_name, issued_days_ago, expires_in_days)
+JOIN staff_lookup s ON s.name = pairs.staff_name;
+
+-- ─── 10. Summary ────────────────────────────────────────────────────────────
 \echo ''
 \echo '═══════════════════════════════════════════════════════════════'
 \echo '  Seed complete'
@@ -374,6 +416,9 @@ SELECT 'equipment items ([DEMO])', COUNT(*) FROM equipment_items
   WHERE venue_id = :venue_id AND name LIKE '[DEMO]%'
 UNION ALL
 SELECT 'drill sessions ([DEMO])', COUNT(*) FROM drill_sessions
-  WHERE venue_id = :venue_id AND notes LIKE '[DEMO]%';
+  WHERE venue_id = :venue_id AND notes LIKE '[DEMO]%'
+UNION ALL
+SELECT 'certifications ([DEMO])', COUNT(*) FROM staff_certifications
+  WHERE venue_id = :venue_id AND certification_name LIKE '[DEMO]%';
 
 COMMIT;

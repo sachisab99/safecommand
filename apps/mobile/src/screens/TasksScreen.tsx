@@ -117,6 +117,7 @@ interface Props {
   onIncidentDetail: (incidentId: string) => void;
   onEquipment: () => void;
   onDrills: () => void;
+  onMyCerts: () => void;
 }
 
 export function TasksScreen({
@@ -130,6 +131,7 @@ export function TasksScreen({
   onIncidentDetail,
   onEquipment,
   onDrills,
+  onMyCerts,
 }: Props): React.JSX.Element {
   const c = useColours();
   const brand = useBrand();
@@ -307,12 +309,14 @@ export function TasksScreen({
           icon: '🔥',
           onPress: onDrills,
         },
+        // BR-22 Staff Certification Tracker — per-staff view (caller's
+        // own certs only). Mobile uses /v1/certifications/me which the
+        // api filters by req.auth.staff_id.
         {
           key: 'certs',
           label: 'My Certifications',
           icon: '🎓',
-          disabled: true,
-          onPress: () => undefined,
+          onPress: onMyCerts,
         },
       ],
     },

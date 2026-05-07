@@ -71,6 +71,10 @@ WHERE venue_id = :venue_id AND name LIKE '[DEMO]%';
 DELETE FROM drill_sessions
 WHERE venue_id = :venue_id AND notes LIKE '[DEMO]%';
 
+-- 10. Remove seed certifications
+DELETE FROM staff_certifications
+WHERE venue_id = :venue_id AND certification_name LIKE '[DEMO]%';
+
 -- ─── Summary ────────────────────────────────────────────────────────────────
 \echo ''
 \echo '═══════════════════════════════════════════════════════════════'
@@ -102,6 +106,9 @@ SELECT 'equipment items (seed remaining)', COUNT(*) FROM equipment_items
   WHERE venue_id = :venue_id AND name LIKE '[DEMO]%'
 UNION ALL
 SELECT 'drill sessions (seed remaining)', COUNT(*) FROM drill_sessions
-  WHERE venue_id = :venue_id AND notes LIKE '[DEMO]%';
+  WHERE venue_id = :venue_id AND notes LIKE '[DEMO]%'
+UNION ALL
+SELECT 'certifications (seed remaining)', COUNT(*) FROM staff_certifications
+  WHERE venue_id = :venue_id AND certification_name LIKE '[DEMO]%';
 
 COMMIT;

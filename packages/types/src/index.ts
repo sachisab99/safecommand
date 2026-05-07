@@ -268,6 +268,25 @@ export interface DrillSessionParticipant {
   ack_latency_seconds: number | null;
 }
 
+// ─── Staff certification types (BR-22 + BR-B) ───────────────────────────────
+// Per-staff professional credentials with expiry tracking. Drives the
+// Certifications component (15% weight) of the BR-14 health score, plus
+// the BR-B soft warning on shift activation when an SC has an expiring cert.
+
+export interface StaffCertification {
+  id: string;
+  venue_id: string;
+  staff_id: string;
+  certification_name: string;
+  issued_at: string;     // YYYY-MM-DD
+  expires_at: string;    // YYYY-MM-DD
+  document_url: string | null;
+  created_at: string;
+}
+
+/** Same expiry buckets as equipment — reuse the visual ramp */
+export type CertExpiryBucket = 'OK' | 'DUE_90' | 'DUE_30' | 'DUE_7' | 'EXPIRED';
+
 /** Staff member's zone coverage for a specific shift_instance */
 export interface StaffZoneAssignment {
   id: string;

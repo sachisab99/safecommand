@@ -16,6 +16,7 @@ import { uploadRouter } from './routes/upload.js';
 import { analyticsRouter } from './routes/analytics.js';
 import { equipmentRouter } from './routes/equipment.js';
 import { drillsRouter } from './routes/drills.js';
+import { certificationsRouter } from './routes/certifications.js';
 import { errorHandler } from './middleware/error-handler.js';
 
 const app = express();
@@ -37,6 +38,7 @@ app.use('/v1/upload', uploadRouter);
 app.use('/v1/analytics', analyticsRouter);
 app.use('/v1/equipment', equipmentRouter);
 app.use('/v1/drill-sessions', drillsRouter);
+app.use('/v1/certifications', certificationsRouter);
 
 app.use(errorHandler);
 

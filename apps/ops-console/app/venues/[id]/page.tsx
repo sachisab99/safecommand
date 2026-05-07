@@ -38,6 +38,11 @@ import {
   endDrillAction,
   cancelDrillAction,
 } from '@/actions/drills';
+import {
+  createCertificationAction,
+  updateCertificationAction,
+  deleteCertificationAction,
+} from '@/actions/certifications';
 import { ZoneAssignmentGrid } from '@/components/ZoneAssignmentGrid';
 import type {
   Venue,
@@ -52,9 +57,10 @@ import type {
   StaffZoneAssignment,
   EquipmentItem,
   DrillSession,
+  StaffCertification,
 } from '@safecommand/types';
 
-type Tab = 'floors' | 'templates' | 'staff' | 'shifts' | 'equipment' | 'drills';
+type Tab = 'floors' | 'templates' | 'staff' | 'shifts' | 'equipment' | 'drills' | 'certifications';
 
 interface Staff {
   id: string;
@@ -74,7 +80,7 @@ async function getData(id: string, rosterDate: string) {
   const [
     venueRes, floorsRes, zonesRes, templatesRes, staffRes,
     shiftsRes, shiftInstancesRes, assignmentsRes,
-    equipmentRes, drillsRes,
+    equipmentRes, drillsRes, certsRes,
   ] = await Promise.all([
     client.from('venues').select('*').eq('id', id).single(),
     client.from('floors').select('*').eq('venue_id', id).order('floor_number'),
@@ -87,6 +93,7 @@ async function getData(id: string, rosterDate: string) {
     client.from('staff_zone_assignments').select('*').eq('venue_id', id),
     client.from('equipment_items').select('*').eq('venue_id', id).order('next_service_due'),
     client.from('drill_sessions').select('*').eq('venue_id', id).order('scheduled_for', { ascending: false }),
+    client.from('staff_certifications').select('*').eq('venue_id', id).order('expires_at'),
   ]);
 
   if (venueRes.error || !venueRes.data) return null;
@@ -109,6 +116,7 @@ async function getData(id: string, rosterDate: string) {
     assignments: (assignmentsRes.data ?? []) as StaffZoneAssignment[],
     equipment: (equipmentRes.data ?? []) as EquipmentItem[],
     drills: (drillsRes.data ?? []) as DrillSession[],
+    certifications: (certsRes.data ?? []) as StaffCertification[],
   };
 }
 
@@ -209,6 +217,7 @@ export default async function VenueDetailPage({
     /** YYYY-MM-DD — date to view roster for. Defaults to today (IST). */
     roster_date?: string;
     edit_eq?: string;
+    edit_cert?: string;
   }>;
 }) {
   const { id } = await params;
@@ -218,7 +227,7 @@ export default async function VenueDetailPage({
   const data = await getData(id, rosterDate);
   if (!data) notFound();
 
-  const { venue, floors, zones, templates, staff, shifts, shiftInstances, assignments, equipment, drills } = data;
+  const { venue, floors, zones, templates, staff, shifts, shiftInstances, assignments, equipment, drills, certifications } = data;
   const totalZones = floors.reduce((acc, f) => acc + f.zones.length, 0);
 
   return (
@@ -262,6 +271,7 @@ export default async function VenueDetailPage({
               ['shifts', 'Shifts & Roster'],
               ['equipment', 'Equipment'],
               ['drills', 'Drills'],
+              ['certifications', 'Certifications'],
             ] as [Tab, string][]).map(([t, label]) => (
               <Link key={t} href={`/venues/${id}?tab=${t}`}
                 className={`py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${activeTab === t ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-900'}`}>
@@ -310,6 +320,14 @@ export default async function VenueDetailPage({
         )}
         {activeTab === 'drills' && (
           <DrillsTab venue={venue} drills={drills} staff={staff} />
+        )}
+        {activeTab === 'certifications' && (
+          <CertificationsTab
+            venue={venue}
+            certifications={certifications}
+            staff={staff}
+            editCert={sp.edit_cert}
+          />
         )}
       </main>
     </div>
@@ -2295,6 +2313,322 @@ function DrillCard({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CERTIFICATIONS TAB (BR-22 + BR-B)
+   Per-staff professional credentials with expiry tracking. Compliance score
+   = % of certs OK (>30d to expiry). 15% weight in BR-14 Health Score.
+═══════════════════════════════════════════════════════════════════════════ */
+
+/** Common certification names — drives the suggestions datalist */
+const COMMON_CERT_NAMES = [
+  'First Aid / CPR',
+  'Fire Safety / Marshall',
+  'Security Guard License',
+  'AED Operation',
+  'Hazmat / Hazardous Materials',
+  'Bomb Threat Response',
+  'NABH Compliance Training',
+  'Occupational Health & Safety',
+];
+
+function daysUntilCertExpiry(date: string): number {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const exp = new Date(date + 'T00:00:00+05:30');
+  return Math.floor((exp.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
+}
+
+interface CertExpiryStyle {
+  label: (d: number) => string;
+  cls: string;
+  rank: number;
+}
+
+const CERT_EXPIRY_STYLE: Record<string, CertExpiryStyle> = {
+  EXPIRED: { label: (d) => `EXPIRED ${Math.abs(d)}d`, cls: 'bg-red-700 text-white', rank: 5 },
+  DUE_7: { label: (d) => `Expires in ${d}d`, cls: 'bg-red-100 text-red-700 border border-red-200', rank: 4 },
+  DUE_30: { label: (d) => `Expires in ${d}d`, cls: 'bg-orange-100 text-orange-700 border border-orange-200', rank: 3 },
+  DUE_90: { label: (d) => `Expires in ${d}d`, cls: 'bg-amber-100 text-amber-700 border border-amber-200', rank: 2 },
+  OK: { label: () => 'OK', cls: 'bg-emerald-50 text-emerald-700 border border-emerald-200', rank: 1 },
+};
+
+function certBucket(daysUntil: number): keyof typeof CERT_EXPIRY_STYLE {
+  if (daysUntil < 0) return 'EXPIRED';
+  if (daysUntil <= 7) return 'DUE_7';
+  if (daysUntil <= 30) return 'DUE_30';
+  if (daysUntil <= 90) return 'DUE_90';
+  return 'OK';
+}
+
+function CertificationsTab({
+  venue,
+  certifications,
+  staff,
+  editCert,
+}: {
+  venue: Venue;
+  certifications: StaffCertification[];
+  staff: Staff[];
+  editCert?: string;
+}) {
+  const closeUrl = `/venues/${venue.id}?tab=certifications`;
+  const editing = certifications.find((c) => c.id === editCert);
+  const editingStaffName =
+    editing && staff.find((s) => s.id === editing.staff_id)?.name;
+
+  // Compliance: % of certs that are OK (>30d). Empty = 100 (no penalty).
+  const total = certifications.length;
+  const buckets = { ok: 0, due_90: 0, due_30: 0, due_7: 0, expired: 0 };
+  for (const c of certifications) {
+    const b = certBucket(daysUntilCertExpiry(c.expires_at));
+    if (b === 'OK') buckets.ok++;
+    else if (b === 'DUE_90') buckets.due_90++;
+    else if (b === 'DUE_30') buckets.due_30++;
+    else if (b === 'DUE_7') buckets.due_7++;
+    else buckets.expired++;
+  }
+  const score = total === 0 ? 100 : Math.round((buckets.ok / total) * 100);
+
+  // Sort by urgency
+  const sorted = [...certifications].sort((a, b) => {
+    const ra = CERT_EXPIRY_STYLE[certBucket(daysUntilCertExpiry(a.expires_at))].rank;
+    const rb = CERT_EXPIRY_STYLE[certBucket(daysUntilCertExpiry(b.expires_at))].rank;
+    if (ra !== rb) return rb - ra;
+    return a.expires_at.localeCompare(b.expires_at);
+  });
+
+  // Staff lookup for name display
+  const staffMap = new Map(staff.map((s) => [s.id, s]));
+
+  // Active staff dropdown options (excludes deactivated)
+  const activeStaff = staff.filter((s) => s.is_active);
+
+  return (
+    <div className="space-y-6">
+      {/* Compliance summary */}
+      <section className="bg-white rounded-2xl border border-gray-200 p-5">
+        <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">Certification Compliance</h2>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Per-staff professional credentials · 90 / 30 / 7-day expiry windows
+            </p>
+          </div>
+          <div className="text-right">
+            <div
+              className={`text-3xl font-black ${
+                score >= 80
+                  ? 'text-emerald-700'
+                  : score >= 60
+                    ? 'text-amber-700'
+                    : 'text-red-700'
+              }`}
+            >
+              {score}
+            </div>
+            <div className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
+              compliance score
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+          <StatTile label="Total" value={total} tone="neutral" />
+          <StatTile label="OK (>90d)" value={buckets.ok} tone={buckets.ok > 0 ? 'good' : 'neutral'} />
+          <StatTile label="Due 30-90d" value={buckets.due_90} tone={buckets.due_90 > 0 ? 'warn' : 'neutral'} />
+          <StatTile label="Due 7-30d" value={buckets.due_30} tone={buckets.due_30 > 0 ? 'warn' : 'neutral'} />
+          <StatTile
+            label="Due ≤7d / expired"
+            value={buckets.due_7 + buckets.expired}
+            tone={buckets.due_7 + buckets.expired > 0 ? 'bad' : 'neutral'}
+          />
+        </div>
+
+        <p className="text-xs text-gray-400 mt-3">
+          Activates the Certifications row (15% weight) of the venue Health Score.
+        </p>
+      </section>
+
+      {/* Edit panel */}
+      {editing && editingStaffName && (
+        <div className="bg-white rounded-2xl border border-amber-200 overflow-hidden">
+          <div className="flex items-center justify-between px-6 py-3 bg-amber-50 border-b border-amber-100">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-amber-600 uppercase tracking-wider">
+                Editing
+              </span>
+              <span className="text-gray-400">·</span>
+              <span className="font-medium text-gray-900">
+                {editingStaffName} — {editing.certification_name}
+              </span>
+            </div>
+            <Link href={closeUrl} className="text-sm text-gray-400 hover:text-gray-700">
+              ✕ Cancel
+            </Link>
+          </div>
+          <form action={updateCertificationAction} className="p-6">
+            <input type="hidden" name="id" value={editing.id} />
+            <input type="hidden" name="venue_id" value={venue.id} />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Certification name *
+                </label>
+                <input
+                  name="certification_name"
+                  required
+                  defaultValue={editing.certification_name}
+                  list="cert-name-suggestions"
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Issued *</label>
+                <input
+                  name="issued_at"
+                  type="date"
+                  required
+                  defaultValue={editing.issued_at}
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Expires *</label>
+                <input
+                  name="expires_at"
+                  type="date"
+                  required
+                  defaultValue={editing.expires_at}
+                  className={inputCls}
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Document URL
+                </label>
+                <input
+                  name="document_url"
+                  defaultValue={editing.document_url ?? ''}
+                  placeholder="Optional — link to scanned certificate"
+                  className={inputCls}
+                />
+              </div>
+            </div>
+            <button type="submit" className={saveBtnCls}>Save</button>
+          </form>
+        </div>
+      )}
+
+      {/* Add form */}
+      <section className="bg-white rounded-2xl border border-gray-200 p-5">
+        <h3 className="text-sm font-semibold text-gray-900 mb-3">Add certification</h3>
+        <form action={createCertificationAction} className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+          <input type="hidden" name="venue_id" value={venue.id} />
+          <div className="sm:col-span-3">
+            <label className="block text-xs font-medium text-gray-700 mb-1">Staff *</label>
+            <select name="staff_id" required className={selectCls}>
+              <option value="">Select staff…</option>
+              {activeStaff.map((s) => (
+                <option key={s.id} value={s.id}>{s.name} ({s.role})</option>
+              ))}
+            </select>
+          </div>
+          <div className="sm:col-span-3">
+            <label className="block text-xs font-medium text-gray-700 mb-1">Cert name *</label>
+            <input
+              name="certification_name"
+              required
+              list="cert-name-suggestions"
+              placeholder="e.g. First Aid / CPR"
+              className={inputCls}
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="block text-xs font-medium text-gray-700 mb-1">Issued *</label>
+            <input name="issued_at" type="date" required className={inputCls} />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="block text-xs font-medium text-gray-700 mb-1">Expires *</label>
+            <input name="expires_at" type="date" required className={inputCls} />
+          </div>
+          <div className="sm:col-span-2">
+            <button type="submit" className={btnCls}>Add</button>
+          </div>
+          <datalist id="cert-name-suggestions">
+            {COMMON_CERT_NAMES.map((n) => (
+              <option key={n} value={n} />
+            ))}
+          </datalist>
+        </form>
+      </section>
+
+      {/* List */}
+      {certifications.length === 0 ? (
+        <div className="text-center py-12 text-gray-400 text-sm bg-white border border-dashed border-gray-200 rounded-2xl">
+          No certifications registered yet. Add the first one above.
+        </div>
+      ) : (
+        <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+          <table className="w-full">
+            <thead>
+              <tr>
+                <th className={thCls}>Staff</th>
+                <th className={thCls}>Certification</th>
+                <th className={thCls}>Issued</th>
+                <th className={thCls}>Expires</th>
+                <th className={thCls}>Status</th>
+                <th className={`${thCls} text-right`}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((cert) => {
+                const days = daysUntilCertExpiry(cert.expires_at);
+                const bucket = certBucket(days);
+                const style = CERT_EXPIRY_STYLE[bucket];
+                const staffName = staffMap.get(cert.staff_id)?.name ?? '<unknown>';
+                const staffRole = staffMap.get(cert.staff_id)?.role ?? '';
+                return (
+                  <tr key={cert.id} className="border-t border-gray-100">
+                    <td className="px-6 py-3 text-sm text-gray-900 font-medium">
+                      {staffName}
+                      {staffRole && (
+                        <span className="text-gray-500 text-xs ml-1.5">({staffRole})</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-3 text-sm text-gray-900">{cert.certification_name}</td>
+                    <td className="px-6 py-3 text-sm text-gray-500 font-mono">{cert.issued_at}</td>
+                    <td className="px-6 py-3 text-sm text-gray-700 font-mono">{cert.expires_at}</td>
+                    <td className="px-6 py-3 text-sm">
+                      <span className={`text-xs font-bold px-2 py-0.5 rounded ${style.cls}`}>
+                        {style.label(days)}
+                      </span>
+                    </td>
+                    <td className="px-6 py-3 text-right">
+                      <div className="flex justify-end gap-2">
+                        <Link
+                          href={`/venues/${venue.id}?tab=certifications&edit_cert=${cert.id}`}
+                          className={editLinkCls}
+                        >
+                          Edit
+                        </Link>
+                        <form action={deleteCertificationAction} className="inline">
+                          <input type="hidden" name="venue_id" value={venue.id} />
+                          <input type="hidden" name="id" value={cert.id} />
+                          <button type="submit" className={removeBtnCls}>Delete</button>
+                        </form>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
