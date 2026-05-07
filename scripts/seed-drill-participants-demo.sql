@@ -71,20 +71,23 @@ END $$;
 -- Combined with existing 6 demo staff + 1 SH = 17 active total
 -- (~realistic supermall — Hyderabad Inorbit / GVK One / Sarath City scale).
 
-INSERT INTO staff (venue_id, name, role, phone, is_active)
+-- NOTE: `is_active` is now a generated column (mig 011_staff_lifecycle.sql)
+-- derived from lifecycle_status. Must INSERT into lifecycle_status only;
+-- is_active populates automatically (lifecycle_status='ACTIVE' → is_active=TRUE).
+INSERT INTO staff (venue_id, name, role, phone, lifecycle_status)
 VALUES
   -- Floor Supervisors — 1 per Tower 1 floor
-  (:venue_id, 'Meera Joshi',      'FLOOR_SUPERVISOR', '+919999000007', TRUE),
-  (:venue_id, 'Aarti Desai',      'FLOOR_SUPERVISOR', '+919999000008', TRUE),
+  (:venue_id, 'Meera Joshi',      'FLOOR_SUPERVISOR', '+919999000007', 'ACTIVE'),
+  (:venue_id, 'Aarti Desai',      'FLOOR_SUPERVISOR', '+919999000008', 'ACTIVE'),
   -- Ground Staff — varied zones
-  (:venue_id, 'Arjun Iyer',       'GROUND_STAFF',     '+919999000009', TRUE),
-  (:venue_id, 'Sanjay Verma',     'GROUND_STAFF',     '+919999000010', TRUE),
-  (:venue_id, 'Kavita Nair',      'GROUND_STAFF',     '+919999000011', TRUE),
-  (:venue_id, 'Faisal Ahmed',     'GROUND_STAFF',     '+919999000012', TRUE),
-  (:venue_id, 'Imran Hussain',    'GROUND_STAFF',     '+919999000013', TRUE),
-  (:venue_id, 'Karthik Iyer',     'GROUND_STAFF',     '+919999000014', TRUE),
-  (:venue_id, 'Suresh Reddy',     'GROUND_STAFF',     '+919999000015', TRUE),
-  (:venue_id, 'Manjusha Pillai',  'GROUND_STAFF',     '+919999000016', TRUE)
+  (:venue_id, 'Arjun Iyer',       'GROUND_STAFF',     '+919999000009', 'ACTIVE'),
+  (:venue_id, 'Sanjay Verma',     'GROUND_STAFF',     '+919999000010', 'ACTIVE'),
+  (:venue_id, 'Kavita Nair',      'GROUND_STAFF',     '+919999000011', 'ACTIVE'),
+  (:venue_id, 'Faisal Ahmed',     'GROUND_STAFF',     '+919999000012', 'ACTIVE'),
+  (:venue_id, 'Imran Hussain',    'GROUND_STAFF',     '+919999000013', 'ACTIVE'),
+  (:venue_id, 'Karthik Iyer',     'GROUND_STAFF',     '+919999000014', 'ACTIVE'),
+  (:venue_id, 'Suresh Reddy',     'GROUND_STAFF',     '+919999000015', 'ACTIVE'),
+  (:venue_id, 'Manjusha Pillai',  'GROUND_STAFF',     '+919999000016', 'ACTIVE')
 ON CONFLICT (venue_id, phone) DO NOTHING;
 
 -- ─── 3. Wipe existing participant rows for the 2 demo drills (idempotent) ──
