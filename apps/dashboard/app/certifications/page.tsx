@@ -3,17 +3,48 @@
 /**
  * /certifications — venue-wide cert compliance view (BR-22).
  *
- * Mirrors mobile MyCertifications + Ops Console Certifications tab on
- * dashboard. Reads /v1/certifications which returns the full list with
- * staff names joined.
+ * Reads /v1/certifications which returns the full list with staff names
+ * joined. Phase 5.15: SH/DSH/FM can add + edit certs; SH/DSH can delete.
  *
  * Refs: BR-22 (Staff Certification Tracker), BR-14 (Health Score 15% weight),
- * BR-B (Cert Expiry Warning on Shift Activation)
+ * BR-B (Cert Expiry Warning on Shift Activation).
  */
 
 import { useEffect, useState } from 'react';
 import { AppShell } from '../../components/AppShell';
 import { apiFetch } from '../../lib/api';
+import { getSession } from '../../lib/auth';
+
+/* ─── Write helpers (Phase 5.15 — SH/DSH/FM add+edit; SH/DSH delete) ─────── */
+
+const WRITE_ROLES = ['SH', 'DSH', 'FM'];
+const DELETE_ROLES = ['SH', 'DSH'];
+
+interface CertWritePayload {
+  staff_id: string;
+  certification_name: string;
+  issued_at: string;
+  expires_at: string;
+  document_url: string | null;
+}
+
+async function postCertification(payload: CertWritePayload) {
+  return apiFetch('/certifications', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+async function patchCertification(id: string, payload: Partial<CertWritePayload>) {
+  return apiFetch(`/certifications/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}
+
+async function deleteCertificationApi(id: string) {
+  return apiFetch(`/certifications/${id}`, { method: 'DELETE' });
+}
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
 
@@ -26,6 +57,13 @@ interface CertWithStaff {
   expires_at: string;
   document_url: string | null;
   staff: { name: string; role: string } | null;
+}
+
+interface StaffRef {
+  id: string;
+  name: string;
+  role: string;
+  is_active: boolean;
 }
 
 type ExpiryBucket = 'OK' | 'DUE_90' | 'DUE_30' | 'DUE_7' | 'EXPIRED';
@@ -63,6 +101,21 @@ const BUCKET_CONFIG: Record<
   },
 };
 
+/** Common certification names — used as datalist suggestions in the editor */
+const COMMON_CERT_NAMES = [
+  'First Aid',
+  'CPR / BLS',
+  'Fire Safety / Fire Warden',
+  'Security Guard License (PSARA)',
+  'Defensive Driving',
+  'Hazardous Materials Handling',
+  'Working at Heights',
+  'Electrical Safety',
+  'Food Safety / FSSAI',
+  'NABH Internal Auditor',
+  'AED Operator',
+];
+
 /* ─── Helpers ────────────────────────────────────────────────────────────── */
 
 function daysUntil(date: string): number {
@@ -84,18 +137,42 @@ function bucket(days: number): ExpiryBucket {
 
 export default function CertificationsPage() {
   const [certs, setCerts] = useState<CertWithStaff[]>([]);
+  const [staff, setStaff] = useState<StaffRef[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Phase 5.15 — write surface state. canWrite drives Add/Edit; canDelete
+  // drives Delete. api requireRole returns 403 if a non-eligible role
+  // tries to bypass the UI hide.
+  const [staffRole, setStaffRole] = useState<string | null>(null);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editingCert, setEditingCert] = useState<CertWithStaff | null>(null);
+  const canWrite = staffRole !== null && WRITE_ROLES.includes(staffRole);
+  const canDelete = staffRole !== null && DELETE_ROLES.includes(staffRole);
+
+  // Hydration-safe role read
   useEffect(() => {
-    const load = async () => {
-      const { data, error: e } = await apiFetch<CertWithStaff[]>('/certifications');
-      setLoading(false);
-      if (e) setError(e);
-      else setCerts(data ?? []);
-    };
-    void load();
-    const id = setInterval(load, 60_000);
+    const session = getSession();
+    if (session) setStaffRole(session.staff.role);
+  }, []);
+
+  const refetch = async () => {
+    const [{ data: certData, error: ce }, { data: staffData }] = await Promise.all([
+      apiFetch<CertWithStaff[]>('/certifications'),
+      apiFetch<StaffRef[]>('/staff'),
+    ]);
+    setLoading(false);
+    if (ce) setError(ce);
+    else {
+      setError(null);
+      setCerts(certData ?? []);
+      setStaff((staffData ?? []).filter((s) => s.is_active));
+    }
+  };
+
+  useEffect(() => {
+    void refetch();
+    const id = setInterval(refetch, 60_000);
     return () => clearInterval(id);
   }, []);
 
@@ -122,18 +199,31 @@ export default function CertificationsPage() {
     return a.expires_at.localeCompare(b.expires_at);
   });
 
+  const handleDelete = async (cert: CertWithStaff) => {
+    const certName = cert.certification_name;
+    const staffName = cert.staff?.name ?? 'this staff member';
+    if (!window.confirm(`Delete "${certName}" for ${staffName}? This cannot be undone.`)) return;
+    const { error: e } = await deleteCertificationApi(cert.id);
+    if (e) {
+      window.alert(`Could not delete: ${e}`);
+      return;
+    }
+    await refetch();
+  };
+
   return (
     <AppShell>
       <div
         className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto"
         style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
       >
-        <div className="mb-4 sm:mb-6">
-          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">Certifications</h1>
-          <p className="text-slate-500 text-sm mt-1">
-            Staff professional credentials · 90 / 30 / 7-day expiry windows
-          </p>
-        </div>
+        <PageHeader
+          canWrite={canWrite}
+          onAdd={() => {
+            setEditingCert(null);
+            setEditorOpen(true);
+          }}
+        />
 
         {loading && <div className="text-slate-400 text-sm">Loading certifications…</div>}
         {error && (
@@ -147,8 +237,9 @@ export default function CertificationsPage() {
             <div className="text-5xl mb-3">📜</div>
             <div className="font-semibold text-slate-700">No certifications registered</div>
             <p className="text-slate-500 text-sm mt-2 max-w-md mx-auto">
-              Track staff professional credentials (First Aid, Fire Safety, Security
-              Guard License, etc) via the Operations Console.
+              {canWrite
+                ? 'Click "+ Add cert" above to register your first staff credential (First Aid, Fire Safety, Security Guard License, etc).'
+                : 'Track staff professional credentials via Operations Console.'}
             </p>
           </div>
         )}
@@ -223,6 +314,31 @@ export default function CertificationsPage() {
                           Expires {cert.expires_at}
                         </span>
                       </div>
+                      {(canWrite || canDelete) && (
+                        <div className="flex gap-1 shrink-0">
+                          {canWrite && (
+                            <button
+                              onClick={() => {
+                                setEditingCert(cert);
+                                setEditorOpen(true);
+                              }}
+                              className="px-3 py-1.5 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors"
+                              aria-label={`Edit ${cert.certification_name}`}
+                            >
+                              Edit
+                            </button>
+                          )}
+                          {canDelete && (
+                            <button
+                              onClick={() => void handleDelete(cert)}
+                              className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors"
+                              aria-label={`Delete ${cert.certification_name}`}
+                            >
+                              Delete
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -231,7 +347,43 @@ export default function CertificationsPage() {
           </>
         )}
       </div>
+
+      {/* Editor modal — top-level overlay */}
+      <CertEditorModal
+        open={editorOpen}
+        editing={editingCert}
+        staff={staff}
+        onClose={() => setEditorOpen(false)}
+        onSaved={async () => {
+          setEditorOpen(false);
+          setEditingCert(null);
+          await refetch();
+        }}
+      />
     </AppShell>
+  );
+}
+
+/* ─── Sub-components ─────────────────────────────────────────────────────── */
+
+function PageHeader({ canWrite, onAdd }: { canWrite: boolean; onAdd: () => void }) {
+  return (
+    <div className="mb-4 sm:mb-6 flex items-start justify-between gap-3 flex-wrap">
+      <div>
+        <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">Certifications</h1>
+        <p className="text-slate-500 text-sm mt-1">
+          Staff professional credentials · 90 / 30 / 7-day expiry windows
+        </p>
+      </div>
+      {canWrite && (
+        <button
+          onClick={onAdd}
+          className="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors min-h-[40px]"
+        >
+          <span aria-hidden="true">+</span> Add cert
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -257,5 +409,248 @@ function Tile({
         {label}
       </div>
     </div>
+  );
+}
+
+/* ─── Editor modal — Add (when editing===null) or Edit (with cert) ───────── */
+
+function CertEditorModal({
+  open,
+  editing,
+  staff,
+  onClose,
+  onSaved,
+}: {
+  open: boolean;
+  editing: CertWithStaff | null;
+  staff: StaffRef[];
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+}) {
+  const isEdit = editing !== null;
+  const [staffId, setStaffId] = useState('');
+  const [certName, setCertName] = useState('');
+  const [issuedAt, setIssuedAt] = useState('');
+  const [expiresAt, setExpiresAt] = useState('');
+  const [docUrl, setDocUrl] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    if (editing) {
+      setStaffId(editing.staff_id);
+      setCertName(editing.certification_name);
+      setIssuedAt(editing.issued_at);
+      setExpiresAt(editing.expires_at);
+      setDocUrl(editing.document_url ?? '');
+    } else {
+      setStaffId('');
+      setCertName('');
+      setIssuedAt('');
+      setExpiresAt('');
+      setDocUrl('');
+    }
+    setErr(null);
+    setSubmitting(false);
+  }, [open, editing]);
+
+  // Esc key to close
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  const validate = (): string | null => {
+    if (!isEdit && !staffId) return 'Select a staff member';
+    if (certName.trim().length === 0) return 'Certification name is required';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(issuedAt)) return 'Issued date is required (YYYY-MM-DD)';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(expiresAt)) return 'Expiry date is required (YYYY-MM-DD)';
+    if (issuedAt > expiresAt) return 'Issued date cannot be after expiry date';
+    if (docUrl.trim().length > 0 && !/^https?:\/\//.test(docUrl.trim())) {
+      return 'Document URL must start with http:// or https://';
+    }
+    return null;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const v = validate();
+    if (v) {
+      setErr(v);
+      return;
+    }
+    setSubmitting(true);
+    setErr(null);
+    const payload: CertWritePayload = {
+      staff_id: staffId,
+      certification_name: certName.trim(),
+      issued_at: issuedAt,
+      expires_at: expiresAt,
+      document_url: docUrl.trim() || null,
+    };
+    const result = isEdit
+      ? await patchCertification(editing!.id, {
+          // staff_id is immutable — api ignores it on PATCH but be explicit
+          certification_name: payload.certification_name,
+          issued_at: payload.issued_at,
+          expires_at: payload.expires_at,
+          document_url: payload.document_url,
+        })
+      : await postCertification(payload);
+    if (result.error) {
+      setErr(result.error);
+      setSubmitting(false);
+      return;
+    }
+    await onSaved();
+    setSubmitting(false);
+  };
+
+  return (
+    <>
+      <div
+        className="fixed inset-0 bg-black/40 z-40"
+        onClick={onClose}
+        aria-hidden="true"
+      />
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        role="dialog"
+        aria-modal="true"
+        aria-label={isEdit ? 'Edit certification' : 'Add certification'}
+      >
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+          <div className="px-5 sm:px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+            <h2 className="font-bold text-slate-900 text-lg">
+              {isEdit ? 'Edit certification' : 'Add certification'}
+            </h2>
+            <button
+              onClick={onClose}
+              className="text-slate-400 hover:text-slate-700 text-xl px-2"
+              aria-label="Close"
+            >
+              ✕
+            </button>
+          </div>
+          <form onSubmit={handleSubmit} className="p-5 sm:p-6 space-y-4">
+            <div>
+              <label className="block text-xs font-medium text-slate-700 mb-1">Staff *</label>
+              {isEdit ? (
+                <input
+                  type="text"
+                  value={editing?.staff?.name ?? '(unknown)'}
+                  disabled
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-500 bg-slate-50"
+                />
+              ) : (
+                <select
+                  value={staffId}
+                  onChange={(e) => setStaffId(e.target.value)}
+                  required
+                  autoFocus
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">— Select staff —</option>
+                  {staff.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} · {s.role}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-700 mb-1">
+                Certification name *
+              </label>
+              <input
+                type="text"
+                value={certName}
+                onChange={(e) => setCertName(e.target.value)}
+                required
+                placeholder="e.g. First Aid"
+                list="cert-name-suggestions"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <datalist id="cert-name-suggestions">
+                {COMMON_CERT_NAMES.map((n) => (
+                  <option key={n} value={n} />
+                ))}
+              </datalist>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-1">
+                  Issued at *
+                </label>
+                <input
+                  type="date"
+                  value={issuedAt}
+                  onChange={(e) => setIssuedAt(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-1">
+                  Expires at *
+                </label>
+                <input
+                  type="date"
+                  value={expiresAt}
+                  onChange={(e) => setExpiresAt(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-700 mb-1">
+                Document URL (optional)
+              </label>
+              <input
+                type="url"
+                value={docUrl}
+                onChange={(e) => setDocUrl(e.target.value)}
+                placeholder="https://drive.google.com/…"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            {err && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-red-700 text-sm">
+                {err}
+              </div>
+            )}
+
+            <div className="flex gap-2 pt-2">
+              <button
+                type="submit"
+                disabled={submitting}
+                className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors"
+              >
+                {submitting ? 'Saving…' : isEdit ? 'Save changes' : 'Add certification'}
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={submitting}
+                className="px-4 py-2.5 border border-slate-300 text-slate-700 text-sm font-medium rounded-lg hover:bg-slate-50 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </>
   );
 }

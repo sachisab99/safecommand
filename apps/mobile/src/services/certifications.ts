@@ -51,3 +51,81 @@ export async function fetchMyCertifications(): Promise<{
   });
   return { certs: data ?? [], error };
 }
+
+// ─── Write helpers (BR-22 — SH/DSH/FM; api enforces requireRole) ────────────
+// Used by future venue-wide cert management surface; dashboard /certifications
+// is the primary write surface in Phase 5.15.
+
+/** Cert with embedded staff name+role (returned by GET /certifications) */
+export interface CertWithStaff extends StaffCertification {
+  staff: { name: string; role: string } | null;
+}
+
+export interface CreateCertificationPayload {
+  staff_id: string;
+  certification_name: string;
+  issued_at: string; // YYYY-MM-DD
+  expires_at: string; // YYYY-MM-DD
+  document_url?: string | null;
+}
+
+export async function fetchVenueCertifications(): Promise<{
+  certs: CertWithStaff[];
+  error: string | null;
+}> {
+  const session = await getStoredSession();
+  if (!session) return { certs: [], error: 'Not authenticated' };
+  const { data, error } = await apiFetch<CertWithStaff[]>('/certifications', {
+    token: session.access_token,
+  });
+  return { certs: data ?? [], error };
+}
+
+export async function createCertification(
+  payload: CreateCertificationPayload,
+): Promise<{ cert: StaffCertification | null; error: string | null }> {
+  const session = await getStoredSession();
+  if (!session) return { cert: null, error: 'Not authenticated' };
+  const { data, error } = await apiFetch<StaffCertification>('/certifications', {
+    method: 'POST',
+    token: session.access_token,
+    body: JSON.stringify(payload),
+  });
+  return { cert: data, error };
+}
+
+export async function updateCertification(
+  id: string,
+  payload: Partial<CreateCertificationPayload>,
+): Promise<{ cert: StaffCertification | null; error: string | null }> {
+  const session = await getStoredSession();
+  if (!session) return { cert: null, error: 'Not authenticated' };
+  const { data, error } = await apiFetch<StaffCertification>(`/certifications/${id}`, {
+    method: 'PATCH',
+    token: session.access_token,
+    body: JSON.stringify(payload),
+  });
+  return { cert: data, error };
+}
+
+export async function deleteCertification(
+  id: string,
+): Promise<{ ok: boolean; error: string | null }> {
+  const session = await getStoredSession();
+  if (!session) return { ok: false, error: 'Not authenticated' };
+  const { error } = await apiFetch(`/certifications/${id}`, {
+    method: 'DELETE',
+    token: session.access_token,
+  });
+  return { ok: !error, error };
+}
+
+/** Roles allowed to add/edit certs (must match api requireRole exactly) */
+export function canWriteCertifications(role: string): boolean {
+  return ['SH', 'DSH', 'FM'].includes(role);
+}
+
+/** Roles allowed to delete certs (api requireRole: SH/DSH only) */
+export function canDeleteCertifications(role: string): boolean {
+  return ['SH', 'DSH'].includes(role);
+}
