@@ -315,6 +315,11 @@ Total time: ~30 seconds. Idempotent — safe to run repeatedly.
 **Cause:** ops-console dev server not running, or cache corrupted.
 **Fix:** Terminal 2 — `cd apps/ops-console && npm run dev:fresh -- --port 3001`.
 
+### "Seed script fails with `cannot insert a non-DEFAULT value into column is_active`"
+
+**Cause:** mig 011 (deployed 2026-05-06) converted `staff.is_active` to a generated column derived from `lifecycle_status`. Old/custom seed scripts that try to INSERT/UPDATE `is_active` directly will fail.
+**Fix:** the script must INSERT into `lifecycle_status` (`'ACTIVE'`/`'SUSPENDED'`/`'ON_LEAVE'`/`'TERMINATED'`) instead. The generated `is_active` column populates automatically. **`SELECT WHERE is_active = TRUE` is unchanged — only writes are blocked.** Already fixed in `seed-drill-participants-demo.sql` (commit `e1bd635`); if you fork or modify a seed, watch for this.
+
 ---
 
 ## 7. Demo audience matrix
