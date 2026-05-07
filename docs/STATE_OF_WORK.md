@@ -1,7 +1,9 @@
 # SafeCommand — State of Work
 
-> **Last updated:** 2026-05-06
-> **Branch:** `safecommand_v7` — 42 commits ahead of `main` (HEAD `616b3dd`)
+> **Last updated:** 2026-05-07
+> **Branch:** `main` and `safecommand_v7` synced at HEAD `03a4b84` — 55 commits past `96594ad`
+> **Deploy state:** Railway api + AWS Amplify dashboard both serving latest. Workers PAUSED.
+> **BR-14 Health Score:** **100% surface LIVE** — all 5 components compute live (Tasks 40 / Incidents 25 / Equipment 10 / Drills 10 / Certs 15)
 > **Spec authority:** Business Plan v2 (91 BRs / 37 NFRs / 22 sections, 2026-05-10) + Architecture v7 (22 ECs / 22 Hard Rules / 6089 lines, 2026-05-10)
 >
 > This document is a comprehensive snapshot of what's built, what's deployed, what's deferred, and where things sit operationally. Companion: `docs/security/POSTURE_AND_ROADMAP.md` for security/compliance posture.
@@ -16,8 +18,9 @@
 | Sprint 2 — Scheduling + Notification | 2026-04-30 → 2026-05-03 | ⏳ PARTIAL | Master-tick + scheduler logic live; FCM push wired; mobile end-to-end task complete with TEXT evidence; **paused for May freeze** |
 | Phase A — v7 Reconciliation | 2026-05-04 → 2026-05-05 | ✅ COMPLETE | All 12 steps + polish; ThemeProvider mobile + dashboard + ops-console; ADR 0001/0002/0003; security history rewrite (4 secrets scrubbed); Phase B pre-writes (mig 009/010/011 source) |
 | Phase B Stage 2 — Schema deploy (Path B) | 2026-05-06 | ✅ COMPLETE (early) | Mig 009/010/011 deployed to Supabase production; mig 012 RLS security fix; founder elected to deploy in May vs wait for June |
-| Phase 5 — Engineering refinement track | 2026-05-06 | ✅ ONGOING | Zone-symmetry surfaces, Ops Console Shifts & Roster module, Ops Console home/nav, mobile MyShiftScreen, demo seed scripts, cross-link CTAs, RLS security fix |
-| Phase B Stage 3 — BR resume | 2026-06-02 onwards | ⏳ PENDING | June unfreeze: api endpoints, workers always-on, BR-10 → BR-32 sequence per `JUNE-2026-REVIEW-REQUIRED.md` |
+| Phase 5 — Engineering refinement track | 2026-05-06 → 2026-05-07 | ✅ COMPLETE | All 13 phases (5.0 through 5.12) shipped — see §8 below |
+| Phase B Stage A — `safecommand_v7 → main` merge | 2026-05-06 | ✅ COMPLETE (early) | Founder Choice A: 51-commit fast-forward merge + push triggered Railway api + AWS Amplify auto-deploy. Workers stay paused via env var. |
+| Phase B Stage 3 — BR resume | 2026-06-02 onwards | ⏳ PENDING | June unfreeze: workers always-on, BR-10 → BR-32 sequence per `JUNE-2026-REVIEW-REQUIRED.md` |
 | Phase B Stage 4 — Pilot go-live | Q3 2026 (target) | ⏳ PENDING | 25-item go-live checklist; pilot mix = 1 single-building (clinic/boutique hotel) + 1 multi-building (Hyderabad supermall, MBV proof) |
 | Phase C — GCP migration + Roaming + Brand UI + Corporate Governance | Month 5–18 (post-pilot) | ⏳ FUTURE | Phase 2/3 work; international data residency; SOC 2 / ISO readiness |
 
