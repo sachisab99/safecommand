@@ -8,7 +8,7 @@
 >
 > **Working branch:** `safecommand_v7` (Phase A scaffold work). `main` is paused-pilot-ready. ADR 0002 captures branching rationale. Merge-back target: before June 2 unfreeze.
 >
-> **Build state:** Architecture v8 preserves Sprint 1 + Phase A + Phase 5 series (5.0 → 5.18). Workers paused (`WORKERS_PAUSED=true`); master-tick = 4 hr (hibernation). **Workers go always-on from 2026-06-01 per ADR 0005 — `WORKERS_PAUSED` becomes emergency kill switch only.** AWS Activate credits required pre-June (founder action). Phase 5.21 (SIRE core) build follows pilot validation gate.
+> **Build state:** Architecture v8 preserves Sprint 1 + Phase A + Phase 5 series (5.0 → 5.18). **Phase 5.21 Day 1 SHIPPED 2026-05-08 (ahead of post-pilot gate)**: `014_sire_engine.sql` (8 SIRE tables + 1 view + 5 incidents columns + global threshold seed) + `015_sire_seed_fire_sh_global_template.sql` (EC-23 mandatory tier-6 fallback) deployed to Supabase production; `packages/types/src/incident-zone-states.ts` (10-state × 5-role transition matrix) shipped. Schema is dormant (no Phase 5.21 endpoints deployed yet — Hard Rule 24 satisfied). Workers paused (`WORKERS_PAUSED=true`); master-tick = 4 hr (hibernation). **Workers go always-on from 2026-06-01 per ADR 0005 — `WORKERS_PAUSED` becomes emergency kill switch only.** AWS Activate credits required pre-June (founder action). Phase 5.21 Days 2-N follow founder direction.
 
 ---
 
@@ -23,7 +23,7 @@
 | **Supabase opaque-token keys** | ADR 0003 (`docs/adr/0003-supabase-publishable-secret-keys.md`) | 2026-05-05 migrated from legacy `anon`/`service_role` JWTs to `sb_publishable_*`/`sb_secret_*` opaque tokens. Env var names unchanged (`SUPABASE_SERVICE_ROLE_KEY` holds `sb_secret_*`; `SUPABASE_ANON_KEY` holds `sb_publishable_*`). **Do NOT click "Reset JWT secret"** (would mass-logout all users). Phase B June: shard to per-service keys. |
 | **Workers always-on from June 2026 (v8 NEW)** | ADR 0005 (`docs/adr/0005-workers-always-on-from-june.md`) + `docs/operations/workers-unfreeze-runbook.md` | `WORKERS_PAUSED` repurposed: cost-discipline (May) → emergency kill switch only (June onward). Pre-June 1 founder must apply AWS Activate credits + verify cost alerts. Workers-unfreeze runbook documents 45-min transition window with rollback at every step. |
 | **Apollo brand live demo (v8 NEW)** | ADR 0006 (`docs/adr/0006-apollo-brand-live-demo.md`) + `docs/sales/demo-runbook.md` §11 (DEMO-APOLLO-LIVE) | v7 static mockup → v8 production-like replica. Apollo `#C8102E` confirms NFR-35 (8.0:1 contrast). Mandatory fair-use disclaimer; direct sales conversations only; never publicly published. |
-| **Structured Incident Response Engine (v8 NEW; Phase 5.21–5.22)** | `docs/specs/incident-response-activity-templates.md` (v8-aligned spec) + Architecture v8 §SIRE | 10 new BRs (BR-G through BR-P), 32 incident sub-types, 10-state zone state machine, 3-button staff action, selective evacuation, per-role action templates. Schema migration 014 (`014_sire_engine.sql`) when Phase 5.21 begins. Phase 5.21 build follows pilot validation gate (post-Oct 2026). |
+| **Structured Incident Response Engine (v8 NEW; Phase 5.21–5.22)** | `docs/specs/incident-response-activity-templates.md` (v8-aligned spec) + Architecture v8 §SIRE + `packages/types/src/incident-zone-states.ts` (transition matrix) | 10 new BRs (BR-G through BR-P), 32 incident sub-types, 10-state zone state machine, 3-button staff action, selective evacuation, per-role action templates. **Phase 5.21 Day 1 SHIPPED 2026-05-08** (mig 014 + mig 015 deployed; transition matrix exported from `@safecommand/types`). Days 2-N (api endpoints + mobile UI + remaining templates) follow founder direction; the original "post-pilot validation gate" in v8 §16 has been overtaken by early-build election. Hard Rule 24 satisfied. |
 | **GitHub history rewrite (2026-05-05)** | Backup tag `backup/pre-history-rewrite-2026-05-04` on origin | Pre-rewrite SHA `772fd85` preserved for ≥30-day recovery window (suggested deletion 2026-06-04). Post-rewrite `main` HEAD = `96594ad`. 4 secrets scrubbed: Firebase RSA key, Supabase service_role/anon JWTs, Upstash TLS password. |
 | **Deferred work in May 2026** | `UX-DESIGN-DECISIONS.md` Phases 1-5 | Mobile responsive dashboard redesign — fully analyzed. Phase 1 of responsive redesign **bundled with ThemeProvider scaffold** as Phase A work on `safecommand_v7` (per Q3 decision). |
 
@@ -79,7 +79,8 @@ Apollo India example: 65 venues × Professional + Corp Enterprise + Brand Layer 
 | **— (repo only)** | `011_staff_lifecycle.sql` | Deployed 2026-05-06 | 4-state lifecycle enum + status_reason + is_active becomes generated column + enforce_terminated_oneway trigger |
 | **— (repo only)** | `012_rls_schedule_template_seeds.sql` | Deployed 2026-05-06 | Security patch: enable RLS on reference table flagged by Supabase linter (`rls_disabled_in_public`) |
 | **— (repo only)** | `013_drill_participant_reason.sql` | Deployed 2026-05-07 | Adds `reason_code` (TEXT + CHECK 6-value taxonomy) + `reason_notes` + audit columns (`reason_set_by` / `reason_set_at`) + `OTHER`-requires-notes CHECK + RLS SELECT policy on `drill_session_participants`. Backed by ADR 0004 + `docs/research/drill-participant-reason-taxonomy.md`. |
-| **Spec migration 011 (v8 NEW; informal name; stale)** | `014_sire_engine.sql` | **Pending Phase 5.21 May Day 1** | Adds Structured Incident Response Engine schema. Final ToC per architect resolution `docs/specs/SafeCommand_Phase521_Clarifications_Resolved.md`: **8 new tables + 1 view + 1 ALTER = 10 new objects.** Tables: `incident_zone_states`, `incident_zone_state_log` (append-only), `incident_evacuation_triggers` (immutable), `incident_action_templates`, `incident_action_assignments` (status-aware: ASSIGNED/IN_PROGRESS/DONE/SKIPPED/BLOCKED), `incident_response_actions` (evidence records only for DONE), `incident_threshold_configs` (4-tier forward-compat), `incident_dashboard_prompts` (BR-L). View: `corp_incident_aggregates` (`WITH security_invoker = false`, no PII). ALTER `incidents`: 5 new columns (`incident_subtype` 32-value CHECK, `is_drill`, `has_sire_data`, `resolved_templates` JSONB, `escalated_from_drill_id`). Hard Rule 24 enforces migration before code deploys. ADR 0001 amendment 2026-05-08 documents this. |
+| **Spec migration 011 (v8 NEW; informal name; stale)** | `014_sire_engine.sql` | **Deployed 2026-05-08 via psql `--single-transaction`** | Adds Structured Incident Response Engine schema. Final ToC per architect resolution `docs/specs/SafeCommand_Phase521_Clarifications_Resolved.md`: **8 new tables + 1 view + 1 ALTER = 10 new objects.** Tables: `incident_zone_states`, `incident_zone_state_log` (append-only), `incident_evacuation_triggers` (immutable), `incident_action_templates`, `incident_action_assignments` (status-aware: ASSIGNED/IN_PROGRESS/DONE/SKIPPED/BLOCKED), `incident_response_actions` (evidence records only for DONE), `incident_threshold_configs` (4-tier forward-compat), `incident_dashboard_prompts` (BR-L). View: `corp_incident_aggregates` (`WITH security_invoker = false`, no PII). ALTER `incidents`: 5 new columns (`incident_subtype` 32-value CHECK, `is_drill`, `has_sire_data`, `resolved_templates` JSONB, `escalated_from_drill_id`). Hard Rule 24 enforces migration before code deploys. ADR 0001 amendment 2026-05-08 documents this. **Pre-deploy fixes (commit `27e44f7`)**: view column refs `v.venue_type/state/country` corrected to `v.type::TEXT AS venue_type` + `NULL::TEXT` placeholders for state/country (Phase 3 BR-79 will add real columns); 4 RLS policies tightened from architect's literal `USING (TRUE)` to existing project conventions (`is_sc_ops()` for SC-Ops-only writes; `venue_id = current_venue_id()` for append-only INSERTs) — without these, any `authenticated` Supabase client could have written templates/thresholds directly. |
+| — (Phase 5.21 Day 1 — repo only) | `015_sire_seed_fire_sh_global_template.sql` | **Deployed 2026-05-08** | Architect Day 1 acceptance gate. Seeds the EC-23-mandated tier-6 (global+parent) fallback for FIRE/SH (one row in `incident_action_templates`; 6 mandatory + life-critical actions per NFPA 1620 + NFPA 101 + NABH §EM + NDMA Fire Safety Guidelines, with VERBAL/NOTE/SIGNATURE evidence types and 30/60/120/180/240/null-second SLAs). Embedded DO-block verification simulates the api template-resolver query and confirms the chain lands on tier 6 with 6 actions (RAISE EXCEPTION rolls back the seed if not). Out-of-band re-verification with venue/role context confirms RLS `template_read_all` permits venue users to read NULL-venue rows. |
 
 ---
 
@@ -770,6 +771,35 @@ All 12 Phase A steps + Phase 5 series (5.0 through 5.18) shipped. **`main` and `
 - ✅ `docs/sales/apollo-mockup-spec.md` — Path C live-software mockup spec (Phase B implementation)
 - ✅ `docs/sales/apollo-deck-spec.md` — 3-slide deck content + design spec
 
+### Phase 5.21 Day 1 — SIRE schema + state machine + EC-23 fallback (SHIPPED 2026-05-08, ahead of post-pilot gate)
+
+Founder elected to ship Day 1 schema authoring early — well ahead of the originally-gated "post-pilot validation" window in v8 §16. Schema is in production but dormant: no Phase 5.21 endpoints / mobile UI / dashboard UI deployed yet, so existing operations are unaffected (additive-only DDL). Hard Rule 24 satisfied for all subsequent code deploys.
+
+**Files shipped (3 commits past Phase 5.18 HEAD):**
+- ✅ `supabase/migrations/014_sire_engine.sql` (721 → 746 lines after pre-deploy fixes) — Architect's 10-object SIRE schema. Applied via `psql --single-transaction -v ON_ERROR_STOP=1` against the Supavisor session pooler (`aws-1-ap-northeast-1.pooler.supabase.com`). Verification block printed `Tables: 8/8 · View: 1/1 · incidents columns: 5/5 · Global threshold seeded: 1/1 · idx_iaa_pending: 1/1 · All checks PASSED`.
+- ✅ `supabase/migrations/015_sire_seed_fire_sh_global_template.sql` (229 lines) — EC-23 mandatory tier-6 fallback for FIRE/SH (one row in `incident_action_templates`; 6 mandatory + life-critical actions). Embedded DO-block verification simulates the api template-resolver query and confirms tier 6 hit + 6 actions. Out-of-band re-verification with venue/role context confirms RLS `template_read_all` permits venue users to read NULL-venue rows.
+- ✅ `packages/types/src/incident-zone-states.ts` (289 lines) — 10-state × 5-role transition matrix codified. Helpers: `isValidZoneTransition()`, `getValidTransitions()`, `requiresReasonNote()`, `requiresEvidence()`, `isTerminalState()`, `ZONE_STATE_LABEL`, `ZONE_STATE_COLOUR`, `ROLE_TO_ZONE_TRANSITION_KEY`. Critical rule encoded: GS cannot transition `EVACUATION_TRIGGERED → ZONE_CLEAR` (false-green prevention). Re-exported from `@safecommand/types`; tsc clean on all 4 apps.
+
+**Pre-deploy gates caught (and fixed before applying to production):**
+1. **View column refs** — `corp_incident_aggregates` referenced `v.venue_type / v.state / v.country` which don't exist on `venues` (actual column is `v.type`; state/country are Phase 3 BR-79 work). Replaced with `v.type::TEXT AS venue_type` + `NULL::TEXT` placeholders. Without this, `CREATE OR REPLACE VIEW` would have failed inside the `--single-transaction` wrap, rolling back all 8 table creations + 5 column additions + seed.
+2. **RLS permissiveness** — Architect's literal `service_role_write USING (TRUE) WITH CHECK (TRUE)` on templates + thresholds, and `service_role_insert WITH CHECK (TRUE)` on append-only logs, would have allowed any `authenticated` Supabase client to write directly (Supabase grants the role default INSERT/UPDATE/DELETE on the public schema; RLS is the gate). Tightened to mig 003 patterns: `is_sc_ops()` for SC-Ops-only writes; `venue_id = current_venue_id()` for append-only INSERTs. The api uses service_role which bypasses RLS, so api operations are unaffected.
+
+**Architect Day 1 acceptance gate — SATISFIED:**
+> "Seed one global template immediately after migration for FIRE + SH role. Verify the 5-step resolution chain returns it before building any other endpoint."
+
+EC-23 6-tier specificity (most → least specific): venue+sub-type → venue+parent → venue-type+sub-type → venue-type+parent → global+sub-type → **global+parent (this Day 1 row)**. Without the tier-6 row, an SH declaring an unanticipated FIRE sub-type would have an empty resolved-actions response — violating the architect's "always resolve to SOMETHING" guarantee.
+
+**Day 1 commit chain on `origin/safecommand_v7`:**
+- `69adf46` feat(sire): mig 014 schema + state transition matrix (Phase 5.21 Day 1)
+- `27e44f7` fix(mig 014): pre-deploy schema validation + RLS tightening
+- `ffccdc3` feat(sire): mig 015 — global FIRE+SH default template (Day 1 gate)
+
+**Days 2-N — pending founder direction:**
+- Day 2 — api endpoint scaffolding (PATCH `/v1/incidents/:id/zones/:zoneId/state` + GET `/v1/incidents/:id/sire-state` + POST `/v1/incidents/:id/evacuation-triggers` + …)
+- Day 3 — mobile IncidentDetailScreen v2 (10-state grid + 3-button staff action)
+- Day 4 — dashboard `/incidents/[id]` SIRE extension (selective evacuation modal + zone state grid + per-role completion view)
+- Day 5+ — remaining 15 priority sub-type templates (per founder Phase 5.21 list); seeded per-role per-sub-type via additional migrations OR SC Ops Console template editor
+
 ### Phase B (June 2026 unfreeze — single source of truth: `JUNE-2026-REVIEW-REQUIRED.md`)
 **Pre-merge:** merge `safecommand_v7` → `main` before any Phase B operation. See `JUNE-2026-REVIEW-REQUIRED.md` § A.
 
@@ -874,7 +904,7 @@ Per Business Plan §15.1 — all 25 must pass before first pilot venue live.
 - **ADR 0006 — Apollo brand live demo strategy (v8 codification):** `docs/adr/0006-apollo-brand-live-demo.md`
 - **v8 alignment analysis:** `docs/specs/v8-alignment-analysis.md` (engineering response to v8 spec evolution)
 - **SIRE activity templates spec (v8-aligned):** `docs/specs/incident-response-activity-templates.md`
-- **Phase 5.21 implementation pre-flight:** `docs/specs/phase-5-21-preflight.md`
+- **Phase 5.21 implementation pre-flight:** `docs/specs/phase-5-21-preflight.md` (Day 1 schema + state machine SHIPPED 2026-05-08; Days 2-N pending founder direction)
 - **Architect Phase 5.21 pre-flight response (resolved Q1-Q10):** `docs/specs/SafeCommand_Phase521_Preflight_Analysis.md`
 - **Engineering analysis of architect response (raised 7 follow-up clarifications):** `docs/specs/v8-architect-response-engineering-analysis.md`
 - **Architect clarifications resolved (Q4.1-4.7):** `docs/specs/SafeCommand_Phase521_Clarifications_Resolved.md`
@@ -890,10 +920,10 @@ Per Business Plan §15.1 — all 25 must pass before first pilot venue live.
 
 ---
 
-## Current sprint focus (as of 2026-05-07 night)
+## Current sprint focus (as of 2026-05-08 evening — Phase 5.21 Day 1 shipped)
 
-**Branch:** `main` and `safecommand_v7` synced at HEAD `96a30dd` — 65 commits past `96594ad`. Phase B unfreeze executed early in May per founder authorisation (Choice A): Railway api + AWS Amplify dashboard auto-deploy from `main` on push; workers stay paused via `WORKERS_PAUSED=true` env var.
-**Production schema:** post mig 009 + 010 + 011 + 012 + 013 — mig 013 deployed 2026-05-07 via Supabase Dashboard SQL Editor with verification block confirming 4 columns + 3 CHECK constraints + 1 RESTRICTIVE RLS policy + 1 index. Hotfix `4fd7964` (drop 3-arg `set_tenant_context` overload to fix PostgREST PGRST203) applied to live schema and patched into mig 009 source.
+**Branch:** `safecommand_v7` HEAD `ffccdc3` — 3 commits past Phase 5.18 HEAD (`96a30dd`). `main` paused at Phase 5.18 HEAD pending Day 1 cohesion testing; merge to `main` is on the next-session checklist (no functional code on Day 1, schema only). Railway api + AWS Amplify dashboard continue auto-deploying from `main` on push (so Day 1 schema-only commits do NOT trigger Railway/Amplify rebuilds; workers + dashboard remain at Phase 5.18 binary).
+**Production schema:** post mig 009 + 010 + 011 + 012 + 013 + 014 + 015 — mig 014 + 015 deployed 2026-05-08 via `psql --single-transaction` against the Supavisor session pooler. mig 014 verification: 8/8 tables + 1/1 view + 5/5 incidents columns + 1/1 global threshold seed + 1/1 idx_iaa_pending. mig 015 verification: EC-23 chain lands on tier 6 with 6 actions (out-of-band confirmed via venue/role context simulation). Hotfix `4fd7964` (drop 3-arg `set_tenant_context` overload to fix PostgREST PGRST203) was applied 2026-05-06 to live schema and patched into mig 009 source.
 **BR-14 Health Score 5-component matrix:** ALL LIVE — Tasks 40 / Incidents 25 / Equipment 10 / Drills 10 / Certifications 15 = 100% surface.
 **Two-tier admin parity (Phase 5.13–5.17, completed 2026-05-07):** SH-tier write surfaces live for Equipment / Drills / Certifications / Shifts & Roster / Staff across mobile + dashboard. New api routes shipped: `/v1/shifts` + `/v1/shift-instances` (7 endpoints, requireRole SH/DSH/SHIFT_COMMANDER, bulk-replace assignments with 2-person validation). Defence-in-depth chain enforced (UI hides → 403 → RLS → Zod). See "Two-tier admin parity wave" subsection in §Build status.
 **Roster/accountability loop:** live end-to-end on dashboard + mobile — Ops Console OR SH (mobile/dashboard) creates instance → activates with commander → assigns staff → MyShift + Zone Status / Accountability auto-populate via existing `/v1/zones/accountability`.
@@ -903,6 +933,7 @@ Per Business Plan §15.1 — all 25 must pass before first pilot venue live.
 **Phase A:** ✅ Complete (12 steps + polish + iteration + Phase B pre-writes)
 **Phase 5 series:** ✅ Complete (5.0 → 5.18, 2026-05-06 → 2026-05-07)
 **Phase 5.18 (drill detail):** ✅ Live — audit-grade per-staff timeline + reason taxonomy on mobile + dashboard. New api endpoints: `/v1/drill-sessions/active-for-me`, `POST /:id/acknowledge`, `POST /:id/staff-safe`, `PATCH /:id/participants/:staffId`. Backed by ADR 0004 + research doc + mig 013.
+**Phase 5.21 Day 1:** ✅ SHIPPED 2026-05-08 (ahead of post-pilot gate, founder elected) — mig 014 (8 SIRE tables + 1 view + 5 incidents columns + global threshold seed) + mig 015 (EC-23 tier-6 fallback for FIRE/SH) deployed to Supabase production; `packages/types/src/incident-zone-states.ts` (10-state × 5-role transition matrix) exported from `@safecommand/types`. Schema in production but dormant — no Phase 5.21 endpoints / mobile UI / dashboard UI deployed yet, so existing operations are unaffected. Hard Rule 24 satisfied for any subsequent code deploys. Days 2-N pending founder direction (api endpoints → mobile IncidentDetailScreen v2 → dashboard SIRE extension → remaining 15 priority sub-type templates).
 **Phase B:** ⏳ Pending June 2 unfreeze — see `JUNE-2026-REVIEW-REQUIRED.md` for the canonical action sequence
 
 **Test venues created during May:**
@@ -910,6 +941,7 @@ Per Business Plan §15.1 — all 25 must pass before first pilot venue live.
 - `CA Firm TEST-CA` — used to validate mobile staff add E2E.
 
 **Next sessions:**
+0. **(2026-05-08, in-flight)** Phase 5.21 Day 2 onwards — pending founder direction. Possible next: api endpoint scaffolding (PATCH `/v1/incidents/:id/zones/:zoneId/state` + GET `/v1/incidents/:id/sire-state` + POST `/v1/incidents/:id/evacuation-triggers`), or merge `safecommand_v7 → main` first to keep main current with Day 1 commits. Schema is dormant in production until endpoints land — no rush, but commits are ready to merge.
 1. **(2026-05-07, in-flight)** End-to-end test pass on Phase 5.13–5.18 write/detail surfaces:
    - **Dashboard:** `/equipment` (Add/Edit/Deactivate) → `/drills` (Schedule/Start/End/Cancel + click row → `/drills/[id]` for audit-grade detail) → `/certifications` (Add/Edit/Delete) → `/shifts` (Create instance → ▶Activate → Manage assignments → ■Close, including 2-person validation) → `/staff` (Add → Edit → Deactivate/Reactivate)
    - **Mobile:** `/equipment` modal → `/drills` (tap row → DrillDetailScreen) → drawer banner appears when drill IN_PROGRESS targets staff → tap banner → DrillDetailScreen → Acknowledge → Mark Safe → SH sets reason for missed staff via 6-chip taxonomy modal → `/myCerts` (read-only by design) → `/roster` (drawer → OPERATIONS → Shifts & Roster, hidden for non-command roles) → `/staff` (already in flow)

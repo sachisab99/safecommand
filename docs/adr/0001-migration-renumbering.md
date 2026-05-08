@@ -217,4 +217,34 @@ Total: 8 new tables + 1 view + 1 ALTER = 10 new objects. Additive-only; safe to 
 
 ---
 
-*ADR captured 2026-05-04 · Last amended 2026-05-08 (v8 SIRE mig 014) · Status: Accepted*
+## 2026-05-08 Deployment update — Phase 5.21 Day 1 SHIPPED
+
+Phase 5.21 Day 1 deployed to Supabase production same day (ahead of the originally-gated post-pilot validation window in v8 §16; founder elected early build). Two migrations went live in a single working session:
+
+| Repo file (deployed) | Content | Apply method | Outcome |
+|---|---|---|---|
+| `014_sire_engine.sql` (746 lines after pre-deploy fixes) | Full SIRE schema — 8 new tables + 1 view + 5 incidents columns + global threshold seed + RLS policies + indexes (incl. `idx_iaa_pending` partial for SLA worker) | `psql --single-transaction -v ON_ERROR_STOP=1 -f` against the Supavisor session pooler (`aws-1-ap-northeast-1.pooler.supabase.com`) | Verification block printed `Tables: 8/8 · View: 1/1 · incidents columns: 5/5 · Global threshold seeded: 1/1 · idx_iaa_pending: 1/1 · All checks PASSED` |
+| `015_sire_seed_fire_sh_global_template.sql` (229 lines) | EC-23 mandatory tier-6 (global+parent) fallback for FIRE/SH — one row in `incident_action_templates` with 6 mandatory + life-critical actions | Same `psql --single-transaction` mechanism | Embedded DO-block verification: synthetic input lands on tier 6 with 6 actions; out-of-band re-verification with venue/role context confirmed RLS permits venue users to read |
+
+**Pre-deploy fixes applied between author and apply (commit `27e44f7`):**
+
+1. **View column refs (3 errors):** `corp_incident_aggregates` referenced `v.venue_type / v.state / v.country` — only the first has a real source (`v.type`, alias-corrected); state/country are Phase 3 BR-79 work, so emitted as `NULL::TEXT` placeholders. Without this, `CREATE OR REPLACE VIEW` would have failed inside the `--single-transaction` wrap and rolled back the entire mig 014.
+2. **RLS permissiveness (4 policies):** Architect's literal `USING (TRUE)` on templates + thresholds + append-only-log INSERTs would have allowed any `authenticated` Supabase client to write directly. Tightened to existing project conventions (`is_sc_ops()` for SC-Ops-only writes; `venue_id = current_venue_id()` for append-only INSERTs). The api uses service_role which bypasses RLS, so api operations were unaffected; the fix only closes the direct-supabase-client write path for non-SC-Ops authenticated users.
+
+**Migration log update (per ADR 0001 convention):**
+
+| Repo file | State | Deployed | Notes |
+|---|---|---|---|
+| `014_sire_engine.sql` | ✅ Live | 2026-05-08 | Hard Rule 24 satisfied. Schema in production but dormant — no Phase 5.21 endpoints deployed yet. |
+| `015_sire_seed_fire_sh_global_template.sql` | ✅ Live | 2026-05-08 | EC-23 chain operational. Architect Day 1 acceptance gate satisfied. |
+
+**Day 1 commit chain on `origin/safecommand_v7`:**
+- `69adf46` feat(sire): mig 014 schema + state transition matrix (Phase 5.21 Day 1)
+- `27e44f7` fix(mig 014): pre-deploy schema validation + RLS tightening
+- `ffccdc3` feat(sire): mig 015 — global FIRE+SH default template (Day 1 gate)
+
+The next available migration number is now 016 — for Phase 5.21 Day 5+ template additions or any other schema work.
+
+---
+
+*ADR captured 2026-05-04 · Last amended 2026-05-08 (Phase 5.21 Day 1 deployment) · Status: Accepted*

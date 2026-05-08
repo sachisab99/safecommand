@@ -1,11 +1,11 @@
 # Phase 5.21 implementation pre-flight — SIRE core build
 
-> **Status:** Pre-flight analysis; build does not begin until pilot validation gate (post Oct 2026 per v8 §16)
+> **Status (2026-05-08 evening):** **DAY 1 SHIPPED** ahead of the originally-gated post-pilot validation window in v8 §16. Founder elected early build same-day. Day 1 deliverables (mig 014 SIRE schema + mig 015 EC-23 tier-6 fallback + `packages/types/src/incident-zone-states.ts` 10-state × 5-role transition matrix) are deployed to Supabase production and committed on `origin/safecommand_v7` HEAD `ffccdc3`. Schema is dormant — no Phase 5.21 endpoints / mobile UI / dashboard UI deployed yet, so existing operations are unaffected. **Days 2-N pending founder direction** (api endpoint scaffolding → mobile IncidentDetailScreen v2 → dashboard SIRE extension → remaining 15 priority sub-type templates). Hard Rule 24 satisfied for any subsequent code deploys. See `docs/STATE_OF_WORK.md` §13 for full Day 1 reference.
 > **Authored:** 2026-05-08, in response to founder direction "go ahead with PHASE 5.21, analyse everything before proceeding to ensure nothing breaks"
 > **Spec authority:** Architecture v8 §SIRE + `docs/specs/incident-response-activity-templates.md` (v8-aligned)
-> **Companion docs:** ADR 0005 + ADR 0006 + `docs/operations/workers-unfreeze-runbook.md`
+> **Companion docs:** ADR 0005 + ADR 0006 + ADR 0001 (2026-05-08 deployment update) + `docs/operations/workers-unfreeze-runbook.md`
 
-> **Architect: review §6 (open architectural questions) before build kicks off. These are the blockers.**
+> **Note (2026-05-08 evening):** §6 open architectural questions were resolved via two architect docs (`SafeCommand_Phase521_Preflight_Analysis.md` Q1-Q10 + `SafeCommand_Phase521_Clarifications_Resolved.md` Q4.1-4.7) and engineering acceptance (`v8-architect-clarifications-engineering-acceptance.md`). All Day 1 schema decisions in this pre-flight have been honoured in the shipped mig 014 (with two pre-deploy fixes applied — view column refs + RLS tightening; see commit `27e44f7`).
 
 ---
 
@@ -33,14 +33,14 @@ Estimated duration: **~3 weeks engineering** + ~1 week stabilisation = **4 weeks
 | 2 | ADR 0005 (workers always-on) codified | `docs/adr/0005-*.md` exists | ✅ done |
 | 3 | ADR 0006 (Apollo live demo) codified | `docs/adr/0006-*.md` exists | ✅ done |
 | 4 | Workers-unfreeze runbook ready | `docs/operations/workers-unfreeze-runbook.md` exists | ✅ done |
-| 5 | Workers transitioned to always-on | Railway dashboard: `WORKERS_PAUSED=false` (or unset) on all 3 worker services | ⏳ Pending June 1 |
-| 6 | AWS Activate credits applied + balance ≥ $750 | AWS Console → Billing → Credits | ⏳ Founder action next week |
-| 7 | Pilot 1 + Pilot 2 gone live (validation gate passed) | `JUNE-2026-REVIEW-REQUIRED.md` Stage 4 complete | ⏳ Q4 2026 / Q1 2027 |
-| 8 | Architect resolution of §6 open questions | This document signed off | ⏳ Pending architect review |
-| 9 | All Phase 5.13–5.18 surfaces still pass tsc + smoke tests | Run from main branch | ✅ Last verified 2026-05-07 |
-| 10 | Sentry + UptimeRobot + cost alerts configured | Per workers-unfreeze runbook §1 | ⏳ Pre-June 1 |
+| 5 | Workers transitioned to always-on | Railway dashboard: `WORKERS_PAUSED=false` (or unset) on all 3 worker services | ⏳ Pending June 1 (Day 1 schema is dormant — does not require workers) |
+| 6 | AWS Activate credits applied + balance ≥ $750 | AWS Console → Billing → Credits | ⏳ Founder action next week (Day 1 had zero infra cost — pure DDL on existing Supabase) |
+| 7 | Pilot 1 + Pilot 2 gone live (validation gate passed) | `JUNE-2026-REVIEW-REQUIRED.md` Stage 4 complete | ⏳ Q4 2026 / Q1 2027 — **OVERTAKEN for Day 1** by founder's same-day election to ship schema early |
+| 8 | Architect resolution of §6 open questions | This document signed off | ✅ DONE 2026-05-08 — see `SafeCommand_Phase521_Preflight_Analysis.md` (Q1-Q10) + `SafeCommand_Phase521_Clarifications_Resolved.md` (Q4.1-4.7) + `v8-architect-clarifications-engineering-acceptance.md` |
+| 9 | All Phase 5.13–5.18 surfaces still pass tsc + smoke tests | Run from main branch | ✅ Last verified 2026-05-08 (post-Day-1 tsc clean on all 4 apps) |
+| 10 | Sentry + UptimeRobot + cost alerts configured | Per workers-unfreeze runbook §1 | ⏳ Pre-June 1 (Day 1 schema is dormant — does not require monitoring beyond existing Supabase logs) |
 
-**Build does not begin until items 5–8 are satisfied.** Items 1–4 + 9 are already done.
+**Day 1 (schema authoring + deployment) was SHIPPED on 2026-05-08** — pre-conditions 5, 6, 7, 10 are non-blocking for additive-only DDL on existing Supabase Pro. Items 5–6 + 10 remain blockers for **Days 2-N** (api endpoints + mobile + dashboard UI), since those introduce real load on workers + cost meter.
 
 ---
 
