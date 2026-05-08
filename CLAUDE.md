@@ -1,6 +1,6 @@
 # SafeCommand — Claude Code Context (v8)
 
-> **Spec authority (2026-05-10):** `nexus/specs/2026-05-10_prime_business-plan-report-gen_v8.md` (Business Plan v8.0 — **101 BRs, 37 NFRs, 6 ADRs, 23 sections, 1378 lines**) and `nexus/specs/2026-05-10_SafeCommand_Architecture_v8_Complete.md` (Architecture v8 — **23 ECs, 24 Hard Rules, 7221 lines**). These supersede all prior versions including v7. When this file diverges from the spec, the spec wins.
+> **Spec authority (2026-05-10):** `nexus/specs/2026-05-10_prime_business-plan-report-gen_v8.md` (Business Plan v8.0 — **101 BRs, 37 NFRs, 6 ADRs, 23 sections, 1378 lines**) and `nexus/specs/2026-05-10_SafeCommand_Architecture_v8_Complete.md` (Architecture v8 — **23 ECs, 24 Hard Rules + Rule 25 (codebase amendment 2026-05-08), 7221 lines**). These supersede all prior versions including v7. When this file diverges from the spec, the spec wins, except for Hard Rule 25 which is a codebase amendment landed via mig 016 (security gap fix) — that rule is authoritative until folded into a future spec revision.
 >
 > **What v8 adds (vs v7):** Structured Incident Response Engine (SIRE) — 10 new BRs (BR-G through BR-P), 32 incident sub-types, 10-state zone state machine, 3-button staff action model, selective evacuation, per-role action templates. All 10 new BRs are Phase 2 (Phase 5.21–5.22), explicitly NOT Phase 1. New EC-23 (template fallback always resolves), Hard Rules 23–24 (no auto-evacuation; mig 014 before Phase 5.21 code). Two new ADRs: 0005 (workers always-on June onward) + 0006 (Apollo brand live demo replaces v7 mockup).
 >
@@ -324,7 +324,7 @@ Phase tagging: **P1** = Phase 1 (Weeks 1–16, May→Oct 2026); **P2** = Phase 2
 
 ---
 
-## Engineering Hard Rules — 24 Rules (v8; violation in PR = blocker)
+## Engineering Hard Rules — 25 Rules (v8 24 + Rule 25 codebase amendment 2026-05-08; violation in PR = blocker)
 
 | Rule | Statement |
 |------|-----------|
@@ -352,6 +352,7 @@ Phase tagging: **P1** = Phase 1 (Weeks 1–16, May→Oct 2026); **P2** = Phase 2
 | 22 | **CORP-* roles never return individual PII** — aggregation only; code review hard blocker (EC-20) |
 | **23 (v8 NEW)** | **SIRE auto-evacuation suggestion (BR-L) is NEVER an auto-trigger — ALWAYS a suggestion.** Soft prompt to SH dashboard if ≥2 zones NEEDS_ATTENTION in 3 min during FIRE; SH must explicitly tap "Trigger Evacuation" to execute. **No code path may bypass the human command loop.** Test gate: ≥2 NEEDS_ATTENTION zones → verify prompt appears, NO fan-out fires until SH explicitly triggers. |
 | **24 (v8 NEW)** | **Migration 014 (`014_sire_engine.sql`) MUST be applied before any Phase 5.21 code deploys.** The `incident_zone_states`, `incident_evacuation_triggers`, and `incident_subtype` column must exist in DB before API routes using them are deployed. Apply migration → verify row counts → deploy code. **Never the reverse.** A 500 error on incident declaration during active incident because tables don't exist is unacceptable. |
+| **25 (2026-05-08 NEW)** | **Every `CREATE VIEW` in the `public` schema MUST include inline `REVOKE ALL PRIVILEGES ON TABLE [view] FROM anon, authenticated` within the same migration that creates the view, plus a verification DO block confirming the grant state before COMMIT.** Rationale: Supabase auto-grants ALL privileges to `anon` + `authenticated` on every public-schema object at creation time. Views do not support RLS policies. Any view accessible to anon via PostgREST is accessible to anyone with the anon key (which is embedded in every mobile + dashboard build). The api middleware isolation model is bypassed by the direct PostgREST path. **Scope:** applies to ALL views without exception — analytics, aggregate, internal, governance. **Verification:** the migration must include a DO block that confirms `anon` + `authenticated` grant count = 0 on the new view before COMMIT. **Rule supersedes** the §4.1 clarification statement that "isolation is in the application middleware" — that statement was incomplete (it covered only the Railway api path). **Refs:** `docs/specs/SafeCommand_Phase521_SecurityGap_Analysis.md` · `supabase/migrations/016_sire_revoke_corp_view_public_grants.sql` (the fix that introduced this rule) · mig 014 line 580 carries an inline ⚠ HARD RULE 25 warning comment for template-copy defence-in-depth. |
 
 ---
 

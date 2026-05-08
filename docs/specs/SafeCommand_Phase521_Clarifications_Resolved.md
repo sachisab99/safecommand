@@ -154,6 +154,8 @@ CORP-* queries use the Supabase service role client (which bypasses RLS) but the
 
 **Verdict for Engineering:** Use `supabaseAdmin` (service role) for all CORP-* queries. Enforce `corporate_account_id = req.corporate_scope.corporate_account_id` as the first WHERE clause in every CORP query. Never use the user-scoped client for CORP queries. The view is not SECURITY DEFINER at the PostgreSQL level — isolation is in the application middleware and the mandatory WHERE clause. This is the correct and proven pattern.
 
+> **⚠ 2026-05-08 AMENDMENT:** The above is correct for the Railway API path only. It is incomplete as a standalone isolation model. Supabase auto-grants SELECT on all public-schema objects (including views) to the `anon` and `authenticated` roles. Views do not support RLS policies. A view with `security_invoker = false` is accessible to anyone with the anon key via direct PostgREST — the middleware is not in that path. The complete fix is **mig 016**: explicit `REVOKE ALL PRIVILEGES ON TABLE corp_incident_aggregates FROM anon, authenticated` (deployed 2026-05-08) + **Hard Rule 25** (every future `CREATE VIEW` in `public` schema must include the `REVOKE` inline within the same migration). See `docs/specs/SafeCommand_Phase521_SecurityGap_Analysis.md` for the full finding, and `supabase/migrations/016_sire_revoke_corp_view_public_grants.sql` for the deployed fix. The original verdict above remains correct for what it covers (the api path); the amendment closes the PostgREST direct path that was not considered.
+
 ---
 
 ## 4.2 — Threshold Inheritance: 2-Tier (Architect) vs 6-Tier (Founder Q4 Direction)
