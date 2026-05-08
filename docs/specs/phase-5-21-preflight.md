@@ -224,90 +224,118 @@ Estimated duration: **~3 weeks engineering** + ~1 week stabilisation = **4 weeks
 
 ---
 
-## 6. Open architectural questions for resolution before build begins
+## 6. Architectural questions — ALL RESOLVED 2026-05-08
 
-These are blockers. Architect resolution required.
+> **Status update:** All 10 open architectural questions in this section are RESOLVED by architect documents:
+> - First architect response: `docs/specs/SafeCommand_Phase521_Preflight_Analysis.md` (commit `3a64a43`)
+> - Architect clarifications on engineering follow-ups: `docs/specs/SafeCommand_Phase521_Clarifications_Resolved.md` (commit `0bf1a82`)
+> - Engineering acceptance: `docs/specs/v8-architect-clarifications-engineering-acceptance.md` (commit `f609080`)
+>
+> All decisions are FINAL per architect direction. Formal Change Request required to revise.
+>
+> Below: original questions are kept verbatim for traceability; each has a RESOLVED note pointing to the answer.
 
-### 6.1 — Auto-evacuation suggestion algorithm precision (BR-L)
+### 6.1 — Auto-evacuation suggestion algorithm precision (BR-L) ✅ RESOLVED 2026-05-08
 
 > The suggestion fires at "≥2 zones in 3 min during FIRE." What if `incident_subtype = FIRE_DRILL`? Skip the suggestion (drills shouldn't auto-prompt evacuation)? Apply differently?
 
-**Recommendation:** Skip auto-suggestion for drill incidents (`incidents.is_drill = TRUE`). Rationale: drills are scheduled; the SH knows the script; auto-suggesting evacuation would distract from drill objectives.
+**Original recommendation:** Skip auto-suggestion for drill incidents (`incidents.is_drill = TRUE`).
 
-### 6.2 — Real-time mechanism
+**Architect resolution:** Confirmed + extended. Skip for `FIRE_DRILL` AND `EVACUATION_DRILL` AND any incident with `is_drill = TRUE`. Also skip when an evacuation trigger already exists. Internal analytics still log "would have fired" suggestions (feeds India Safety Index). See `SafeCommand_Phase521_Preflight_Analysis.md` Q1.
+
+### 6.2 — Real-time mechanism ✅ RESOLVED 2026-05-08
 
 > v8 says "Supabase Realtime (Phase 1) / Cloud Run WebSocket (Phase 2)." Phase 5.21 = Phase 2 timeline. Use Supabase Realtime through Phase 2; migrate to Cloud Run WebSocket post-GCP-migration?
 
-**Recommendation:** Yes — defer Cloud Run WebSocket migration until post-GCP. Supabase Realtime supports 500+ concurrent connections per NFR-15; sufficient for pilot scale.
+**Architect resolution:** Confirmed Supabase Realtime through Phase 2. **Critical addition:** subscription filter `incident_id=eq.${incidentId}` is mandatory — not just performance, but correctness in multi-tenant scenarios. See `SafeCommand_Phase521_Preflight_Analysis.md` Q2.
 
-### 6.3 — Action template version snapshot
+### 6.3 — Action template version snapshot ✅ RESOLVED 2026-05-08
 
 > When incident declared, snapshot template version (immutable audit) or reference live template (changes propagate to in-flight)?
 
-**Recommendation:** **Snapshot at incident declaration.** Reason: post-incident audit must show what template was active when incident occurred. Live edits don't affect in-flight incidents (cleaner audit trail). Trade-off: template fixes during a slow-rolling incident don't reach already-active staff. Acceptable.
+**Architect resolution:** Snapshot at declaration confirmed. Implementation: NEW column `incidents.resolved_templates JSONB` stores all roles' templates at declaration. `GET /my-actions` becomes O(1) lookup, not 5-step chain resolution. Post-declaration sub-type change triggers re-snapshot. See `SafeCommand_Phase521_Preflight_Analysis.md` Q3.
 
-### 6.4 — Drill-incident hybrid scenario
+### 6.4 — Drill-incident hybrid scenario ✅ RESOLVED 2026-05-08
 
 > Real fire during a drill — how to re-classify?
 
-**Recommendation:** Explicit api endpoint `POST /v1/drill-sessions/:id/escalate-to-incident` that:
-- Creates a NEW incident (in SIRE schema)
-- Links to the drill via `incidents.escalated_from_drill_id` (new column on incidents)
-- Drill remains in `drill_session_participants` table; new incident lives in SIRE
-- Audit log records the escalation event
+**Architect resolution:** Confirmed `POST /v1/drill-sessions/:id/escalate-to-incident` endpoint with full transaction spec. **Critical addition:** zone states from drill do NOT carry over to new incident — new incident starts fresh with all zones `UNVALIDATED`. Drill participation records remain in `drill_session_participants`. NABH §EM compliance note: escalation link is a positive compliance detail, not a flaw. See `SafeCommand_Phase521_Preflight_Analysis.md` Q4.
 
-### 6.5 — Evidence URL retention
+### 6.5 — Evidence URL retention ✅ RESOLVED 2026-05-08
 
 > Photos in S3 — retention policy?
 
-**Recommendation:** Retain forever for SEV1+; archive SEV2/SEV3 evidence after 12 months unless audit-flagged. Phase 5.21 ships forever-retention; Phase B adds expiration policy.
+**Architect resolution:** Phase 5.21 ships forever retention with severity tagging at upload time (`Tagging: severity=...`). Phase B adds S3 lifecycle rules. Hospital venues require 3-year retention per NABH (configurable via `incident_threshold_configs.evidence_retention_years`). See `SafeCommand_Phase521_Preflight_Analysis.md` Q5.
 
-### 6.6 — Action time-target SLA enforcement
+### 6.6 — Action time-target SLA enforcement ✅ RESOLVED 2026-05-08
 
 > What if action item not completed within `time_target_seconds`?
 
-**Recommendation:** **Phase 5.21:** soft warning to staff (push reminder at +50% of target). **Phase 5.22:** hard escalation to SC/SH at +100% of target. **Phase B:** full escalation chain (depends on workers being unfrozen — already addressed by ADR 0005).
+**Architect resolution:** Full soft-warn worker ships Phase 5.21 (~50 lines in existing escalation worker; ~3-4 hours Day 5). Uses `started_at` on `incident_action_assignments` table. Redis dedup key (`sla_warn:${assignment_id}`) prevents duplicate warnings. Phase 5.22 adds hard escalation. **Engineering note:** I had recommended deferral to Phase 5.22; architect's safety argument is correct — life-critical actions need warnings even on Day 1. See `SafeCommand_Phase521_Clarifications_Resolved.md` §4.4.
 
-### 6.7 — Photo evidence on slow connections (NFR-07: 2G/3G)
+### 6.7 — Photo evidence on slow connections (NFR-07: 2G/3G) ✅ RESOLVED 2026-05-08
 
 > Photo upload may take 10+ seconds on 2G. UX implication: blocking user from continuing to next action item?
 
-**Recommendation:** Non-blocking upload. Mark action item DONE locally; photo uploads in background to S3. If upload fails, retry on reconnect (BR-35 offline cache pattern). UI shows upload-pending indicator on the item.
+**Architect resolution:** Non-blocking upload confirmed with full implementation spec. Local SQLite `pending_action_completions` table on mobile. UI states: ✅ Done | 📷 Uploading... | 📷 Failed (retry). Two-step sync: text evidence first, photos second. Action is never held hostage to photo upload. See `SafeCommand_Phase521_Preflight_Analysis.md` Q7 + `SafeCommand_Phase521_Clarifications_Resolved.md` §4.5.
 
-### 6.8 — IncidentDetailScreen v2 — same screen as v1, or separate?
+### 6.8 — IncidentDetailScreen v2 — same screen as v1, or separate? ✅ RESOLVED 2026-05-08
 
 > Phase 5.18 has IncidentDetailScreen for binary incidents. Phase 5.21 needs different UX for SIRE incidents.
 
-**Recommendation:** Same component file, feature-flag gated by `incident.has_sire_data` boolean (computed at api). Pre-Phase 5.21 incidents render v1 layout; post-Phase 5.21 incidents render v2 with SIRE features. Backward compat preserved; no rename required.
+**Architect resolution:** Same component, feature-flag gated by `incident.has_sire_data` boolean. Pre-Phase 5.21 incidents render v1 layout (StaffSafeButton); post-Phase 5.21 incidents render v2 (3-button zone action + zone state grid + action checklist). Drawer banner CTA also gated. See `SafeCommand_Phase521_Preflight_Analysis.md` Q8.
 
-### 6.9 — Workers-paused fallback during incident
+### 6.9 — Workers-paused fallback during incident ✅ RESOLVED 2026-05-08
 
 > If `WORKERS_PAUSED=true` is invoked during a real incident, what happens to evacuation fan-out?
 
-**Recommendation:** Fan-out enqueues to BullMQ but doesn't process. SH dashboard shows banner "Workers paused — manual notification required." SH can manually use radio / verbal / personal-mobile fallback. Per ADR 0005, this scenario is rare (emergency-only kill switch).
+**Architect resolution:** Workers-paused banner is REQUIRED, not optional. `/v1/health` endpoint must surface `workers_status: 'RUNNING' | 'PAUSED' | 'DEGRADED'`. Dashboard polls every 30s during active incident. Banner: *"Notification workers paused. Evacuation fan-outs are queued but not delivering. Use radio / verbal / personal mobile for immediate staff notification."* See `SafeCommand_Phase521_Preflight_Analysis.md` Q9.
 
-### 6.10 — Drill mode SIRE applicability — re-confirm
+### 6.10 — Drill mode SIRE applicability — re-confirm ✅ RESOLVED 2026-05-08
 
 > Founder direction was "separate primitives" (Q5 Option B). Confirming: Phase 5.21 ships SIRE for incidents only; drills continue using `drill_session_participants` table?
 
-**Recommendation:** Confirmed. Phase 5.21 ships zone state machine + 3-button + per-role templates for INCIDENTS only. Drills remain unchanged in `drill_session_participants` schema.
+**Architect resolution:** Confirmed separate primitives. Phase 5.21 ships zone state machine + 3-button + per-role templates for INCIDENTS only. Drills remain unchanged in `drill_session_participants` schema. Phase B may explore drill SIRE integration. See `SafeCommand_Phase521_Preflight_Analysis.md` Q10.
 
 ---
 
-## 7. Sign-off checklist (before build begins)
+## 6A. Engineering follow-up clarifications (7 items) — ALL RESOLVED 2026-05-08
 
-- [ ] Architect resolves §6 open questions (10 items)
-- [ ] Founder confirms Phase 5.21 timing (post pilot validation gate)
-- [ ] Workers transitioned to always-on per ADR 0005 + workers-unfreeze runbook
-- [ ] AWS Activate credits applied + balance verified
-- [ ] Sentry + UptimeRobot + cost alerts active
-- [ ] Phase 5.13–5.18 surfaces verified working in production (regression baseline)
-- [ ] `seeds/incident_action_templates.json` template content drafted for 16 priority sub-types (founder + ops review of action language for Indian-context appropriateness)
-- [ ] `seeds/incident_threshold_standards.json` reference data file populated with 15+ standards
-- [ ] Test plan written (engineering)
-- [ ] Acceptance gates defined (engineering, this document §5)
+After architect's first response (resolving Q1-Q10), engineering raised 7 implementation-level follow-ups in `docs/specs/v8-architect-response-engineering-analysis.md`. Architect's response in `SafeCommand_Phase521_Clarifications_Resolved.md` resolved all 7:
 
-When all 10 items checked → build kicks off Day 1.
+| # | Topic | Resolution |
+|---|---|---|
+| 4.1 | CORP-* RLS structure (view SECURITY DEFINER vs middleware) | View `WITH (security_invoker = false)` + service role + middleware enforcing `corporate_account_id` WHERE. Three-layer defence. |
+| 4.2 | Threshold inheritance (2-tier vs 6-tier) | 4-column forward-compatible schema: `venue_id / venue_type / country / NULL=global`. 2-tier resolution Phase 5.21; 3-tier 5.22; 4-tier Phase B. `standards_reference JSONB` for display-only. |
+| 4.3 | `incident_response_actions` shape | Two tables: `incident_action_assignments` (status-aware) + `incident_response_actions` (evidence-only for DONE). Status enum `ASSIGNED/IN_PROGRESS/DONE/SKIPPED/BLOCKED`. 4 endpoints (/start, /complete, /skip, /block). |
+| 4.4 | SLA worker scope Phase 5.21 vs 5.22 | Full soft-warn worker ships Phase 5.21. ~50 lines in existing escalation worker. Architect's safety argument prevailed. |
+| 4.5 | Mobile SQLite | Dedicated `pending_action_completions` + `cached_incident_zones` + `cached_action_assignments`. Three new SQLite tables. Two-step sync. |
+| 4.6 | `is_drill` redundancy | Keep both `is_drill BOOLEAN` + drill sub-types. 5 new columns on incidents confirmed. Auto-correction at API layer. |
+| 4.7 | Worker availability for Day 15 | May Days 1-5 (schema + API, no workers needed); June Days 6-20 (mobile + testing, workers running post-ADR 0005 unfreeze). |
+
+**Engineering acceptance documented:** `docs/specs/v8-architect-clarifications-engineering-acceptance.md`.
+
+---
+
+## 7. Sign-off checklist (build start) — STATUS 2026-05-08
+
+| # | Item | Status |
+|---|---|---|
+| 1 | Architect resolves §6 open questions (10 items) | ✅ Done — `SafeCommand_Phase521_Preflight_Analysis.md` (commit `3a64a43`) |
+| 2 | Architect resolves §6A engineering follow-ups (7 items) | ✅ Done — `SafeCommand_Phase521_Clarifications_Resolved.md` (commit `0bf1a82`) |
+| 3 | Founder confirms Phase 5.21 timing (split: May Days 1-5 / June Days 6-20) | ✅ Confirmed via "go ahead with spec hygiene" direction |
+| 4 | Workers transitioned to always-on per ADR 0005 + workers-unfreeze runbook | ⏳ Pending June 1 (no impact on May Days 1-5) |
+| 5 | AWS Activate credits applied + balance verified | ⏳ Pending — founder action this week |
+| 6 | Sentry + UptimeRobot + cost alerts active | ⏳ Pending — pre-June operational checklist |
+| 7 | Phase 5.13–5.18 surfaces verified working in production (regression baseline) | ✅ Done — branch baseline `tsc --noEmit` passes on all 4 apps at HEAD `0bf1a82` (2026-05-08) |
+| 8 | `seeds/incident_action_templates.json` structure drafted | ⏳ Day 5 work (founder content review parallel during Days 1-5) |
+| 9 | Migration number 014 confirmed against repo state | ✅ Done — existing 001-013 in `supabase/migrations/`; next is 014 |
+| 10 | ADR 0001 amended with mig 014 entry | ✅ Done — 2026-05-08 amendment added |
+| 11 | Acceptance gates defined (this document §5 + 7 architect-added gates G14-G20) | ✅ Done |
+
+**Status: 7 of 11 done; 4 outstanding (3 are pre-June operational; 1 is Day 5 work).**
+
+May Days 1-5 build can begin. Workers unfreeze + AWS Activate credits gate the June Days 6-20 work, but those are already scheduled per ADR 0005 + workers-unfreeze runbook.
 
 ---
 

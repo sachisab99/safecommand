@@ -169,4 +169,52 @@ This ADR is considered satisfied when:
 
 ---
 
-*ADR captured 2026-05-04 · Status: Accepted · Next ADR: 0002 — TBD*
+## 2026-05-08 Amendment — v8 SIRE Migration 014 (Phase 5.21)
+
+The repo offset documented above continues to compound forward. Architecture v8 (2026-05-10) §SIRE prescribes a single new migration introducing the Structured Incident Response Engine schema. Per architect resolution `docs/specs/SafeCommand_Phase521_Clarifications_Resolved.md` (2026-05-08), the architecture v8 doc references this as "Migration 011" in some sections — but that name is stale. The repo migration sequence has progressed past 011:
+
+| Repo file (deployed) | Content | Deployed |
+|---|---|---|
+| `011_staff_lifecycle.sql` | 4-state staff lifecycle enum (ACTIVE/SUSPENDED/ON_LEAVE/TERMINATED); `is_active` becomes generated column | 2026-05-06 |
+| `012_rls_schedule_template_seeds.sql` | RLS security patch: enable RLS on `schedule_template_seeds` (Supabase linter ERROR fix) | 2026-05-06 |
+| `013_drill_participant_reason.sql` | ADR 0004 — drill participant reason taxonomy + audit columns + RLS RESTRICTIVE policy | 2026-05-07 |
+
+**The next available migration number is 014.** Verified against `supabase/migrations/` directory state at HEAD `0bf1a82` (2026-05-08).
+
+| Spec name (Architecture v8 §SIRE) | Repo filename (this codebase) | Content scope |
+|---|---|---|
+| Migration 011 (SIRE — informal v8 name; stale) | `014_sire_engine.sql` | Phase 5.21 SIRE schema — 5 columns on `incidents`, 8 new tables, 1 view (`corp_incident_aggregates`), RLS policies, indexes, global threshold default seed, environment + verification blocks |
+
+This is the third spec ↔ repo offset documented in this ADR (after spec migrations 007/008 → repo 009/010). Going forward, the offset compounds at +3 — but rather than continue translating in every reference, future ADR amendments simply note "the next available repo migration number" since the spec naming convention has not stayed consistent across versions.
+
+**Migration 014 final ToC** (per architect's `SafeCommand_Phase521_Clarifications_Resolved.md`):
+
+```
+014_sire_engine.sql contents — in order:
+
+1.  Environment verification block (top of file)
+2.  ALTER TABLE incidents (5 new columns: incident_subtype, is_drill,
+    has_sire_data, resolved_templates, escalated_from_drill_id)
+3.  CREATE TABLE incident_zone_states (live state, one row per zone × incident)
+4.  CREATE TABLE incident_zone_state_log (append-only audit log, EC-22)
+5.  CREATE TABLE incident_evacuation_triggers (immutable, Hard Rule 4)
+6.  CREATE TABLE incident_action_templates (global + venue-specific)
+7.  CREATE TABLE incident_action_assignments (status-aware, what was assigned)
+8.  CREATE TABLE incident_response_actions (evidence records — only for DONE)
+9.  CREATE TABLE incident_threshold_configs (4-tier inheritance schema)
+10. CREATE TABLE incident_dashboard_prompts (auto-evac suggestions — BR-L)
+11. CREATE VIEW corp_incident_aggregates (aggregate-only; no PII;
+    WITH (security_invoker = false) for CORP-* read access)
+12. RLS policies on all new tables
+13. Indexes (≥6 specified + idx_iaa_pending partial index for SLA worker)
+14. Seed: INSERT INTO incident_threshold_configs (global default — venue_id, venue_type, country all NULL)
+15. Verification block (bottom — RAISE EXCEPTION if any of 10 objects missing)
+```
+
+Total: 8 new tables + 1 view + 1 ALTER = 10 new objects. Additive-only; safe to apply live.
+
+**Engineering convention forward:** When referring to the SIRE migration in commits / PRs / sessions, use the form *"mig 014 (SIRE)"* — no spec migration number translation needed since v8 references are inconsistent. Cite `docs/specs/SafeCommand_Phase521_Clarifications_Resolved.md` for the authoritative ToC.
+
+---
+
+*ADR captured 2026-05-04 · Last amended 2026-05-08 (v8 SIRE mig 014) · Status: Accepted*

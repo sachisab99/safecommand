@@ -79,7 +79,7 @@ Apollo India example: 65 venues × Professional + Corp Enterprise + Brand Layer 
 | **— (repo only)** | `011_staff_lifecycle.sql` | Deployed 2026-05-06 | 4-state lifecycle enum + status_reason + is_active becomes generated column + enforce_terminated_oneway trigger |
 | **— (repo only)** | `012_rls_schedule_template_seeds.sql` | Deployed 2026-05-06 | Security patch: enable RLS on reference table flagged by Supabase linter (`rls_disabled_in_public`) |
 | **— (repo only)** | `013_drill_participant_reason.sql` | Deployed 2026-05-07 | Adds `reason_code` (TEXT + CHECK 6-value taxonomy) + `reason_notes` + audit columns (`reason_set_by` / `reason_set_at`) + `OTHER`-requires-notes CHECK + RLS SELECT policy on `drill_session_participants`. Backed by ADR 0004 + `docs/research/drill-participant-reason-taxonomy.md`. |
-| **Spec migration 011 (v8 NEW)** | `014_sire_engine.sql` | **Pending Phase 5.21 build (post-pilot validation gate)** | Adds Structured Incident Response Engine schema: 6 new tables (`incident_zone_states` / `incident_zone_state_log` / `incident_evacuation_triggers` / `incident_action_templates` / `incident_response_actions` / `incident_dashboard_prompts`) + `incident_subtype` column on `incidents` (TEXT NULL CHECK 32 values) + RLS policies + `corp_incident_aggregates` view for CORP-* aggregate visibility. Hard Rule 24 enforces this migration applies before any Phase 5.21 code deploys. Backed by `docs/specs/incident-response-activity-templates.md`. |
+| **Spec migration 011 (v8 NEW; informal name; stale)** | `014_sire_engine.sql` | **Pending Phase 5.21 May Day 1** | Adds Structured Incident Response Engine schema. Final ToC per architect resolution `docs/specs/SafeCommand_Phase521_Clarifications_Resolved.md`: **8 new tables + 1 view + 1 ALTER = 10 new objects.** Tables: `incident_zone_states`, `incident_zone_state_log` (append-only), `incident_evacuation_triggers` (immutable), `incident_action_templates`, `incident_action_assignments` (status-aware: ASSIGNED/IN_PROGRESS/DONE/SKIPPED/BLOCKED), `incident_response_actions` (evidence records only for DONE), `incident_threshold_configs` (4-tier forward-compat), `incident_dashboard_prompts` (BR-L). View: `corp_incident_aggregates` (`WITH security_invoker = false`, no PII). ALTER `incidents`: 5 new columns (`incident_subtype` 32-value CHECK, `is_drill`, `has_sire_data`, `resolved_templates` JSONB, `escalated_from_drill_id`). Hard Rule 24 enforces migration before code deploys. ADR 0001 amendment 2026-05-08 documents this. |
 
 ---
 
@@ -874,6 +874,11 @@ Per Business Plan §15.1 — all 25 must pass before first pilot venue live.
 - **ADR 0006 — Apollo brand live demo strategy (v8 codification):** `docs/adr/0006-apollo-brand-live-demo.md`
 - **v8 alignment analysis:** `docs/specs/v8-alignment-analysis.md` (engineering response to v8 spec evolution)
 - **SIRE activity templates spec (v8-aligned):** `docs/specs/incident-response-activity-templates.md`
+- **Phase 5.21 implementation pre-flight:** `docs/specs/phase-5-21-preflight.md`
+- **Architect Phase 5.21 pre-flight response (resolved Q1-Q10):** `docs/specs/SafeCommand_Phase521_Preflight_Analysis.md`
+- **Engineering analysis of architect response (raised 7 follow-up clarifications):** `docs/specs/v8-architect-response-engineering-analysis.md`
+- **Architect clarifications resolved (Q4.1-4.7):** `docs/specs/SafeCommand_Phase521_Clarifications_Resolved.md`
+- **Engineering acceptance of architect clarifications (build path UNBLOCKED):** `docs/specs/v8-architect-clarifications-engineering-acceptance.md`
 - **Workers unfreeze runbook:** `docs/operations/workers-unfreeze-runbook.md`
 - **Industry research — Drill reason taxonomy:** `docs/research/drill-participant-reason-taxonomy.md` (Phase 5.18 backing reference; sales/audit/demo asset)
 - **Demo runbook (with DEMO-APOLLO-LIVE entry §11):** `docs/sales/demo-runbook.md`

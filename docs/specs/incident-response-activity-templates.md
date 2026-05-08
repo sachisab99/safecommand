@@ -110,17 +110,24 @@ Comprehensive cross-section of standards informing v8 SIRE design.
 
 ## 3. SIRE architectural model (v8-aligned)
 
-### 3.1 Core entities (zone-centric per Architecture v8)
+### 3.1 Core entities (zone-centric per Architecture v8 + architect clarifications 2026-05-08)
+
+> **Update 2026-05-08:** Architect resolution `SafeCommand_Phase521_Clarifications_Resolved.md` §4.3 split the action evidence model into two tables. The diagram below reflects the final architect-resolved schema.
 
 ```
-INCIDENT (existing — extended with incident_subtype column)
+INCIDENT (existing — extended with 5 NEW columns per mig 014)
+  • incident_subtype TEXT NULL CHECK 32 values
+  • is_drill BOOLEAN NOT NULL DEFAULT FALSE
+  • has_sire_data BOOLEAN NOT NULL DEFAULT FALSE
+  • resolved_templates JSONB NULL  (immutable audit snapshot at declaration)
+  • escalated_from_drill_id UUID NULL → drill_sessions(id)
   ↓
   ├─ INCIDENT_ZONE_STATES      — live state per zone (one row per zone × incident)
   │     ├─ state (10-value enum)
   │     ├─ assigned_gs_id (from shift roster)
   │     ├─ reason_note (for NEEDS_ATTENTION)
   │     ├─ evidence_url (for EVACUATION_COMPLETE)
-  │     └─ state_changed_at, last_updated_by
+  │     └─ state_changed_at (used as optimistic lock by PATCH endpoint)
   │
   ├─ INCIDENT_ZONE_STATE_LOG   — append-only audit trail of every transition
   │     ├─ previous_state, new_state
@@ -135,11 +142,25 @@ INCIDENT (existing — extended with incident_subtype column)
   │     ├─ pa_text_generated, pa_text_broadcast
   │     └─ notification_count
   │
-  ├─ INCIDENT_RESPONSE_ACTIONS — per-staff action evidence
+  ├─ INCIDENT_ACTION_ASSIGNMENTS  — what was assigned (status-aware; one row per staff × action)
   │     ├─ staff_id, role
-  │     ├─ action_order, instruction (snapshot from template)
-  │     ├─ evidence_type, evidence_url, evidence_note
+  │     ├─ action_order, instruction (snapshot from template at declaration)
+  │     ├─ instruction_i18n_key (i18n key for Phase B translation)
+  │     ├─ evidence_type, time_target_seconds
+  │     ├─ is_mandatory, is_life_critical
+  │     ├─ status TEXT CHECK (ASSIGNED | IN_PROGRESS | DONE | SKIPPED | BLOCKED)
+  │     ├─ started_at (set when staff opens action — used by SLA worker)
   │     └─ completed_at
+  │     UNIQUE (incident_id, staff_id, action_order)
+  │     Partial index: idx_iaa_pending ON (incident_id, status) WHERE status IN ('ASSIGNED','IN_PROGRESS')
+  │
+  ├─ INCIDENT_RESPONSE_ACTIONS — evidence records (one row per DONE action only)
+  │     ├─ assignment_id FK → incident_action_assignments(id)
+  │     ├─ staff_id, role, action_order
+  │     ├─ evidence_type, evidence_url, evidence_note
+  │     ├─ photo_upload_pending BOOLEAN (true while S3 upload in progress)
+  │     └─ completed_at
+  │     UNIQUE (incident_id, staff_id, action_order)
   │
   └─ INCIDENT_DASHBOARD_PROMPTS — auto-evacuation suggestions (BR-L)
         ├─ prompt_type (AUTO_EVAC_SUGGESTION)
@@ -152,9 +173,32 @@ INCIDENT_ACTION_TEMPLATES — per (incident_type, sub-type, role, venue/venue-ty
   │     venue + sub-type → venue + parent type → venue-type + sub-type
   │     → venue-type + parent type → global + sub-type → global + parent type
   └─ actions JSONB:
-        [{ order, instruction, time_target_seconds, evidence_type,
-           is_mandatory, is_life_critical, location_scope }]
+        [{ order, instruction, instruction_i18n_key, time_target_seconds,
+           evidence_type, is_mandatory, is_life_critical, location_scope }]
+
+INCIDENT_THRESHOLD_CONFIGS — auto-evac suggestion + SLA + retention (per §6 below)
+  ├─ Scope columns (forward-compat, exactly_one_scope CHECK):
+  │     venue_id / venue_type / country / NULL=global
+  ├─ auto_evac_zones_threshold, auto_evac_window_minutes (BR-L)
+  ├─ action_sla_soft_warn_pct, action_sla_hard_escalate_pct (Q6)
+  ├─ evidence_retention_years (NABH = 3; default = 3)
+  └─ standards_reference JSONB (display-only; no runtime effect)
+
+CORP_INCIDENT_AGGREGATES — VIEW only (NO PII; for CORP-* governance)
+  ├─ WITH (security_invoker = false) — bypass base table RLS for CORP read access
+  ├─ Per-incident summary with venue/corporate metadata
+  ├─ Counts: total_zones, validated_zones, actions_completed, evacuation_trigger_count
+  └─ Isolation enforced by middleware (enforceCorporateScope) + mandatory
+     `corporate_account_id = ?` WHERE clause in every CORP query
 ```
+
+**Two-table action model (per architect §4.3):** `incident_action_assignments` tracks what was assigned with status (one row per staff × action); `incident_response_actions` holds evidence records only for DONE actions. This separation enables:
+- Mobile checklist rendering (all assigned actions with status)
+- SLA worker partial-index efficiency (only ASSIGNED/IN_PROGRESS rows)
+- Per-role completion-rate query as clean GROUP BY
+- Audit trail clarity (responsibility vs evidence)
+
+**`resolved_templates` JSONB on incidents** is the **immutable audit snapshot** — preserves what templates were active at incident declaration, even if `incident_action_templates` is later updated. Two tables are the operational record; the JSONB is the legal audit record.
 
 ### 3.2 Lifecycle
 
@@ -346,24 +390,34 @@ Per founder direction (Q2), Phase 5.21 ships templates for 16 priority sub-types
 ## 6. Auto-evacuation threshold standards-comparison framework (Q4 founder direction)
 
 > **Founder direction:** "Per-venue setting. Add comparison across standards / location / city / state / country / global. Build a competition / standard here."
+>
+> **Architect resolution 2026-05-08** (`SafeCommand_Phase521_Clarifications_Resolved.md` §4.2): forward-compatible 4-column schema; phased resolution depth (2-tier Phase 5.21 → 3-tier Phase 5.22 → 4-tier Phase B). Standards-comparison reference is display-only via `standards_reference JSONB` column.
 
-### 6.1 The hierarchical configuration model
+### 6.1 The hierarchical configuration model — phased per architect resolution
 
-Auto-evacuation suggestion threshold (BR-L) is defined at multiple inheritance levels. A venue inherits from the most-specific match; SH can override at the venue level.
+The conceptual 6-tier inheritance model is preserved as a design intent, but the implementation phases the resolution depth to manage scope:
 
 ```
-SAFECOMMAND_GLOBAL_DEFAULT
+SAFECOMMAND_GLOBAL_DEFAULT  ────────────────────────  Phase 5.21: ALWAYS USED (fallback)
   ↓ overridden by
-COUNTRY_DEFAULT (e.g. INDIA — NDMA-aligned)
+COUNTRY_DEFAULT (e.g. IN, AE, SG)  ─────────────────  Phase B: 4-tier resolution active
   ↓ overridden by
-STATE_DEFAULT (e.g. TELANGANA — Telangana Fire Service expectations)
+STATE_DEFAULT (e.g. TELANGANA — display-only)  ─────  Phase B+: standards_reference JSONB
   ↓ overridden by
-CITY_DEFAULT (e.g. HYDERABAD — local conditions)
+CITY_DEFAULT (e.g. HYDERABAD — display-only)  ──────  Phase B+: standards_reference JSONB
   ↓ overridden by
-VENUE_TYPE_DEFAULT (e.g. HOSPITAL / MALL / HOTEL / CORPORATE)
+VENUE_TYPE_DEFAULT (HOSPITAL / MALL / HOTEL etc.)  ── Phase 5.22: 3-tier resolution active
   ↓ overridden by
-VENUE_OVERRIDE (per-venue setting; SH-managed)
+VENUE_OVERRIDE (per-venue; SH-managed)  ────────────  Phase 5.21: 2-tier resolution active
 ```
+
+**Phase 5.21 ships:** 2-tier resolution (`venue_id` override → global default). Schema includes all 4 scope columns (`venue_id`, `venue_type`, `country`, NULL=global) but only `venue_id` and global rows are populated/queried.
+
+**Phase 5.22 adds:** 3-tier resolution adds `venue_type` to the lookup chain. No schema change needed — just uncomment Phase 5.22 markers in `services/thresholds.ts`.
+
+**Phase B adds:** 4-tier resolution adds `country` to the lookup chain. Same mechanism.
+
+**State + City tiers:** display-only via `standards_reference JSONB` column on the threshold config table. SC Ops Console reads this for the reference panel. No runtime threshold resolution at state/city level — that's intentional simplification per architect (states and cities don't have meaningfully distinct fire-safety regulations within a single country in practice; the relevant variation is country and venue-type).
 
 ### 6.2 Standards-comparison reference table
 
@@ -957,7 +1011,14 @@ These tests run as part of the Phase 5.21 acceptance gate, before Phase 5.22 beg
 
 ---
 
-## 13. Open architectural questions for Phase 5.21 implementation
+## 13. Open architectural questions — ALL RESOLVED 2026-05-08
+
+> **Status update:** All 6 questions in this section are RESOLVED by architect documents:
+> - First architect response: `docs/specs/SafeCommand_Phase521_Preflight_Analysis.md` (commit `3a64a43`)
+> - Architect clarifications: `docs/specs/SafeCommand_Phase521_Clarifications_Resolved.md` (commit `0bf1a82`)
+> - Engineering acceptance: `docs/specs/v8-architect-clarifications-engineering-acceptance.md` (commit `f609080`)
+>
+> See `docs/specs/phase-5-21-preflight.md` §6 for question-by-question resolution mapping.
 
 These are blockers for Phase 5.21 build. **Architect resolution before build begins:**
 
