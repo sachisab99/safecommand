@@ -371,4 +371,209 @@ The production deployment runs against the same Supabase + Railway api. All Phas
 - **Owner:** SafeCommand sales / founder (until pilot go-live)
 - **Update cadence:** review after every major demo wave; refresh per Phase 5+ feature additions
 - **Companion data refresh:** `./scripts/seed-drill-participants-demo.sh` is the canonical refresh command
-- **Version:** 1.0 — 2026-05-07 (Phase 5.18 baseline)
+- **Version:** 1.1 — 2026-05-08 (added DEMO-APOLLO-LIVE entry per ADR 0006)
+
+---
+
+## 11. DEMO-APOLLO-LIVE — Apollo brand live demonstration
+
+> **Purpose:** Distinct demo flow for corporate sales conversations targeting Enterprise Brand Enablement (BR-81 through BR-88). Demonstrates a production-like replica of SafeCommand running with Apollo brand override applied across mobile + dashboard + ops-console.
+>
+> **Authority:** ADR 0006 — Apollo brand live demo strategy (Option C Hybrid)
+>
+> **Restriction:** Direct sales conversations only. NOT for public publishing. Mandatory fair-use disclaimer required on every screen / Loom / printed material.
+
+### 11.1 Audience + use case
+
+This demo is reserved for:
+
+- **Corporate prospects considering Enterprise Brand Enablement** — typically hospital chains (Apollo, Manipal, Fortis, Max), retail chains (DLF, Inorbit, Phoenix), hotel chains (Taj, ITC, Oberoi), or large corporate campuses (Infosys, TCS, Tata)
+- **Conversation has progressed past initial qualification** — prospect is engaged with the platform value proposition; brand layer becomes the differentiator
+- **NDA-equivalent context** — direct sales conversation, prospect not transmitting demo to third parties
+
+NOT for:
+
+- Public website
+- Social media
+- General prospect demos (use the standard demo flow §4 instead)
+- Inbound queries from Apollo or other branded organisations themselves (would be misleading)
+
+### 11.2 Production-like replica scope
+
+The Apollo demo runs on the same production codebase as customer venues. All Phase 1 features must be functional:
+
+| Feature | Apollo demo includes |
+|---|---|
+| Login + auth | Phone OTP via Firebase test number; branded splash + login screen with Apollo logo |
+| Drawer | Apollo logo, Apollo red `#C8102E` accents, "Apollo SafeCommand" wordmark |
+| Tasks | Real scheduled tasks for "today" via seed; Apollo terminology overrides ("ward" not "zone" if Apollo prefers — configurable per `corporate_brand_configs.role_overrides` JSONB) |
+| Zone Status / Zone Accountability | Real seeded zones in 3 buildings (mirroring an Apollo Hyderabad layout) |
+| Drills | Phase 5.18 drill detail with Apollo-branded participation matrix; reason taxonomy in use; sales narrative anchors apply |
+| Equipment / Drills / Cert / Shifts / Staff | All Phase 5.13–5.17 surfaces, branded |
+| Incident declaration | BR-11 flow with Apollo SH login |
+| 'Powered by SafeCommand' footer | Visible in Settings > About + (Phase B) PDF report footers — non-removable per Hard Rule 20 |
+| Compliance reports | Branded PDFs (Phase B); for now demonstrate the print page on /drills/[id] |
+
+**Future inclusions when Phase 5.21 lands:**
+- Structured Incident Response Engine (3-button zone action, zone state grid, selective evacuation, per-role action templates) — branded for Apollo
+
+### 11.3 Pre-flight checklist (one-time setup; ~15 minutes)
+
+Before first DEMO-APOLLO-LIVE session, these must be complete (per ADR 0006):
+
+#### 11.3.1 Brand assets uploaded
+
+- [ ] Apollo logo SVG uploaded to S3 at `s3://sc-evidence-prod/brand-assets/apollo/apollo-logo.svg`
+- [ ] (Optional) Apollo logo PNG variants for various sizes (32x32, 192x192, 512x512)
+- [ ] Logo file URL added to `apollo-demo` brand config row
+
+#### 11.3.2 Apollo brand config seeded to production
+
+- [ ] Run `apps/ops-console/seeds/apollo-demo.sql` against production Supabase via Dashboard SQL Editor
+- [ ] Verify `corporate_brand_configs` row exists with:
+  - `corporate_account_id`: matches Apollo demo corporate account
+  - `primary_colour`: `#C8102E` (Apollo red)
+  - `secondary_colour`: TBD (e.g. white or charcoal)
+  - `logo_url`: S3 URL from previous step
+  - `wordmark`: "Apollo SafeCommand"
+  - `powered_by_text`: "Platform by SafeCommand" (CHECK constraint enforces; cannot be NULL or modified per Hard Rule 20)
+  - Role override JSONB (if Apollo prefers "ward" over "zone")
+
+#### 11.3.3 NFR-35 contrast validation
+
+Re-confirm WCAG 2.1 AA contrast on all 6 hero screens:
+
+```
+Tap "validate contrast" in SC Ops Console (Phase 5.22) OR
+Run manually:
+  contrastRatio('#C8102E', '#FFFFFF') = 8.0:1 (AAA — exceeds AA 4.5:1)
+  contrastRatio('#C8102E', '#0F172A') = 4.96:1 (AA — exceeds 4.5:1)
+  contrastRatio('#C8102E', '#F8FAFC') = 7.5:1 (AAA)
+```
+
+- [ ] All three pairs pass AA minimum
+- [ ] Logo + text combinations on home / drawer / detail screens pass on physical device (iOS + Android)
+
+#### 11.3.4 Mandatory disclaimer footer
+
+The Apollo demo must show this disclaimer on every screen:
+
+> *"Apollo SafeCommand concept demonstration — internal SafeCommand sales presentation only. 'Apollo' is a registered trademark of Apollo Hospitals Enterprise Limited. Use under fair-use sales discussion."*
+
+Implementation:
+- Mobile: footer banner toggleable via `EXPO_PUBLIC_DEMO_MODE=apollo-live` env (Phase 5.22 work)
+- Dashboard: footer banner toggleable via Apollo brand config flag
+- Loom video: opening + closing slides with disclaimer for 3 seconds each
+- Printed materials: disclaimer printed on every page
+
+#### 11.3.5 Demo data seeded
+
+Run the standard seed scripts to populate the Apollo-branded demo venue with realistic data:
+
+```bash
+cd "/Volumes/Crucial X9/claude_code/NEXUS_system/products/Safecommand"
+./scripts/seed-hyderabad-demo.sh  # Base venue + 3 buildings + 6 staff
+./scripts/seed-drill-participants-demo.sh  # Rich drill participant data
+```
+
+Apollo brand override applies on top of this same data (logo + colours + wordmark transform; data unchanged).
+
+#### 11.3.6 Loom video produced
+
+- [ ] Founder records 3-min "executive overview" Loom of branded app
+- [ ] Founder records 10-min "technical deep-dive" Loom for compliance teams
+- [ ] Both Looms include disclaimer slides (open + close)
+- [ ] Looms stored in private folder; shared via direct link only
+
+### 11.4 Pre-demo session checklist (~5 min before each Apollo demo)
+
+| Check | How | Pass criteria |
+|---|---|---|
+| Apollo brand config active | Login as Apollo SH on dashboard; confirm Apollo logo + red colours apply | Visible Apollo logo top-left; sidebar uses Apollo red accents |
+| Disclaimer footer visible | Scroll to bottom of any screen | Disclaimer present and readable |
+| Mobile dev client connected | Open Expo dev client on phone; login as Apollo SH | Branded login screen, Apollo wordmark |
+| Demo data fresh | Run §1.4 verification query (from main runbook) | 14+10 participants on the 2 drills |
+| Browser tabs pre-opened | Tabs in this order: dashboard /accountability → /drills → /drills/[fire-evac-id] → /equipment | All loaded with Apollo branding |
+| Loom video ready (if asynchronous) | Open Loom share link in incognito | Loom plays; disclaimer visible at start |
+
+### 11.5 Demo flow scripts
+
+#### 11.5.1 3-min executive overview
+
+| Time | Action | Talking point |
+|---|---|---|
+| 00:00 | Open dashboard `/dashboard` (Apollo-branded) | "This is Apollo SafeCommand. Same platform, your brand, your terminology, your colours." |
+| 00:15 | Click "Zone Accountability" | "THE hero demo — every Apollo ward has a named owner right now. Answered in under 1 second." |
+| 00:30 | Click `/drills` → recent fire drill | "Quarterly drill from your Hyderabad Tower 1. Achieved 13:22 evac — well within target." |
+| 00:45 | Open the drill detail | "100% audit-classified. Zero unexcused. 14 staff with NABH-aligned reason taxonomy." |
+| 01:15 | Walk to ON_DUTY_ELSEWHERE row | "ICU nurse on patient care during drill. Without this taxonomy: HR conversation. With it: NABH-defensible record." |
+| 01:30 | Open mobile (Apollo-branded) | "Same story on field. Your security guard sees Apollo logo + Apollo red. Tap drill banner..." |
+| 02:00 | Show ack flow on mobile | "I AM SAFE button. 22-second response. Logged with Apollo branding throughout." |
+| 02:30 | Print preview of drill detail | "PDF for NABH inspectors. Apollo logo on every page. 'Platform by SafeCommand' footer (mandatory; non-removable)." |
+| 03:00 | Close: "This is Apollo SafeCommand — your brand, our platform. Live, working, today." | — |
+
+#### 11.5.2 10-min technical deep-dive
+
+Extends 3-min flow with:
+- Configuration walk-through: how Apollo brand config is set (SC Ops Console template editor)
+- Multi-venue demonstration: switch between Apollo Hyderabad and (mock) Apollo Bangalore — same brand, different data
+- Compliance pdf preview with Apollo logo + footer
+- Audit log walkthrough: every staff action attributed, all audit-defensible
+- Q&A on Apollo's specific operational details (their floor numbering, their code system, etc.)
+
+#### 11.5.3 Audience-specific narrative anchors
+
+For Apollo-style hospital prospects, the narrative anchors:
+
+- **Apollo CISO / Group Compliance Head:** NABH §EM alignment, defensible audit trail, role-keyed accountability
+- **Apollo Group COO:** cross-venue dashboard ("see all 65 Apollo hospitals from one screen")
+- **Apollo Brand team:** brand integrity (logo, colours, terminology preserved while delivering corporate-grade safety)
+- **Apollo IT team:** production-grade reliability (NFR-13 99.5%; multi-region SLAs)
+- **Apollo Legal team:** DPDP Act compliance + medical data residency
+- **Apollo Finance team:** ROI of brand layer (₹15K-5L/month); 27% ARR uplift = sustainable economics
+
+### 11.6 Reset between Apollo demos
+
+Same as standard reset (§5). The Apollo brand override is layer-only — resetting the venue data does not affect brand config. Re-seed if any data was modified during the demo.
+
+### 11.7 Troubleshooting
+
+#### "Apollo logo missing from mobile"
+
+**Cause:** Brand config not synced to mobile cache.
+**Fix:** On mobile dev client → drawer → Settings → "Refresh brand config". 24-hour AsyncStorage cache may serve stale; force-refresh forces re-fetch.
+
+#### "Apollo red applied but disclaimer footer missing"
+
+**Cause:** `EXPO_PUBLIC_DEMO_MODE` env var not set or wrong value.
+**Fix:** Confirm `apps/mobile/.env` has `EXPO_PUBLIC_DEMO_MODE=apollo-live`. Restart Expo with `npx expo start --clear`.
+
+#### "Wrong wordmark — says 'SafeCommand' not 'Apollo SafeCommand'"
+
+**Cause:** Brand config row missing or `wordmark` field NULL.
+**Fix:** Run apollo-demo seed re-apply via Dashboard SQL Editor.
+
+#### "Loom video disclaimer not visible at start"
+
+**Cause:** Loom recording started before disclaimer slide displayed for full 3 seconds.
+**Fix:** Re-record with explicit countdown; ensure disclaimer is the first frame visible.
+
+### 11.8 Compliance + risk notes
+
+**Trademark posture:**
+- Apollo's logo and colours are used under fair-use sales discussion (one-on-one demonstration to Apollo Group prospects)
+- If Apollo formally objects to demonstration, immediately switch to "Asha Hospitals" or other fictional brand for further demos
+- DO NOT send any Apollo-branded material to non-Apollo prospects (avoids appearance of misrepresentation)
+
+**Distribution restrictions:**
+- ✅ Direct sales conversation (in-person, video call)
+- ✅ Loom shared via private link to Apollo prospect
+- ✅ Printed handout marked "for internal review only — do not distribute"
+- ❌ NOT public website
+- ❌ NOT social media
+- ❌ NOT third-party communication channels (LinkedIn, Twitter, etc.)
+
+**If discovered externally (e.g. screenshot leaked):**
+- Take down immediately
+- Issue clarifying statement: "Apollo SafeCommand is an internal SafeCommand demonstration concept; not a sanctioned Apollo product"
+- Offer to brief Apollo Group on demonstration intent
