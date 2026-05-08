@@ -201,10 +201,14 @@ CREATE POLICY "append_only_no_delete" ON incident_zone_state_log
   FOR DELETE
   USING (FALSE);
 
--- Service role can INSERT
-CREATE POLICY "service_role_insert" ON incident_zone_state_log
+-- INSERT gated by venue context (mirrors existing append-only patterns
+-- on audit_logs / incident_timeline / zone_status_log in mig 003).
+-- Mobile/dashboard direct-supabase-client cannot set app.current_venue_id
+-- session var, so this effectively restricts INSERTs to the API
+-- (service_role bypasses RLS but explicitly sets venue context).
+CREATE POLICY "venue_scoped_insert" ON incident_zone_state_log
   FOR INSERT
-  WITH CHECK (TRUE);
+  WITH CHECK (venue_id = current_venue_id());
 
 CREATE INDEX idx_izsl_incident ON incident_zone_state_log(incident_id, changed_at);
 CREATE INDEX idx_izsl_zone ON incident_zone_state_log(zone_id, changed_at);
@@ -252,9 +256,9 @@ CREATE POLICY "append_only_no_delete" ON incident_evacuation_triggers
   FOR DELETE
   USING (FALSE);
 
-CREATE POLICY "service_role_insert" ON incident_evacuation_triggers
+CREATE POLICY "venue_scoped_insert" ON incident_evacuation_triggers
   FOR INSERT
-  WITH CHECK (TRUE);
+  WITH CHECK (venue_id = current_venue_id());
 
 CREATE INDEX idx_iet_incident ON incident_evacuation_triggers(incident_id, triggered_at);
 
@@ -311,11 +315,19 @@ CREATE POLICY "template_read_all" ON incident_action_templates
     OR venue_id = current_setting('app.current_venue_id', TRUE)::UUID
   );
 
--- Write only by service role (SC Ops Console manages templates)
-CREATE POLICY "service_role_write" ON incident_action_templates
-  FOR ALL
-  USING (TRUE)
-  WITH CHECK (TRUE);
+-- Write only by SC Ops (mirrors mig 003 templates_insert pattern on
+-- schedule_templates). is_sc_ops() reads app.is_sc_ops session var,
+-- which only the SC Ops Console / api admin paths set.
+CREATE POLICY "sc_ops_insert" ON incident_action_templates
+  FOR INSERT
+  WITH CHECK (is_sc_ops());
+CREATE POLICY "sc_ops_update" ON incident_action_templates
+  FOR UPDATE
+  USING (is_sc_ops())
+  WITH CHECK (is_sc_ops());
+CREATE POLICY "sc_ops_delete" ON incident_action_templates
+  FOR DELETE
+  USING (is_sc_ops());
 
 CREATE INDEX idx_iat_resolution ON incident_action_templates
   (incident_type, incident_subtype, staff_role, venue_id, venue_type)
@@ -482,11 +494,17 @@ CREATE POLICY "venue_or_global_read" ON incident_threshold_configs
     OR venue_id = current_setting('app.current_venue_id', TRUE)::UUID
   );
 
--- Write only by service role (SC Ops manages thresholds)
-CREATE POLICY "service_role_write" ON incident_threshold_configs
-  FOR ALL
-  USING (TRUE)
-  WITH CHECK (TRUE);
+-- Write only by SC Ops. Same rationale as incident_action_templates.
+CREATE POLICY "sc_ops_insert" ON incident_threshold_configs
+  FOR INSERT
+  WITH CHECK (is_sc_ops());
+CREATE POLICY "sc_ops_update" ON incident_threshold_configs
+  FOR UPDATE
+  USING (is_sc_ops())
+  WITH CHECK (is_sc_ops());
+CREATE POLICY "sc_ops_delete" ON incident_threshold_configs
+  FOR DELETE
+  USING (is_sc_ops());
 
 CREATE INDEX idx_itc_scope ON incident_threshold_configs(venue_id, venue_type, country);
 
@@ -549,6 +567,13 @@ COMMENT ON TABLE incident_dashboard_prompts IS
 -- app.current_venue_id session) can read base tables. Isolation enforced
 -- at the API middleware layer (enforceCorporateScope) + mandatory
 -- `corporate_account_id = $1` WHERE clause in every CORP query.
+--
+-- NOTE on column placeholders:
+--   - venues.type is the actual column name; aliased here as `venue_type`
+--   - venues.state and venues.country DO NOT EXIST yet (Phase 3 / BR-79
+--     international data residency adds them in a future migration). They
+--     are emitted as NULL::TEXT placeholders so consuming CORP queries can
+--     SELECT them without schema breakage when those columns ship.
 
 CREATE OR REPLACE VIEW corp_incident_aggregates
 WITH (security_invoker = false)
@@ -558,9 +583,9 @@ SELECT
   i.venue_id,
   v.corporate_account_id,
   v.city,
-  v.state,
-  v.country,
-  v.venue_type,
+  NULL::TEXT                   AS state,
+  NULL::TEXT                   AS country,
+  v.type::TEXT                 AS venue_type,
   i.incident_type,
   i.incident_subtype,
   i.severity,
@@ -602,8 +627,8 @@ LEFT JOIN incident_action_assignments iaa ON i.id = iaa.incident_id
 LEFT JOIN incident_response_actions ira ON i.id = ira.incident_id
 LEFT JOIN incident_evacuation_triggers iet ON i.id = iet.incident_id
 GROUP BY
-  i.id, i.venue_id, v.corporate_account_id, v.city, v.state, v.country,
-  v.venue_type, i.incident_type, i.incident_subtype, i.severity, i.status,
+  i.id, i.venue_id, v.corporate_account_id, v.city,
+  v.type, i.incident_type, i.incident_subtype, i.severity, i.status,
   i.is_drill, i.has_sire_data, i.building_id, b.name,
   i.declared_at, i.resolved_at;
 
