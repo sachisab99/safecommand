@@ -575,6 +575,13 @@ COMMENT ON TABLE incident_dashboard_prompts IS
 --     are emitted as NULL::TEXT placeholders so consuming CORP queries can
 --     SELECT them without schema breakage when those columns ship.
 
+-- ⚠ HARD RULE 25: This file creates corp_incident_aggregates view without an
+-- inline REVOKE. The security gap was fixed in mig 016 (2026-05-08).
+-- If you copy this view block as a template for a new view, you MUST add:
+--   REVOKE ALL PRIVILEGES ON TABLE [your_view_name] FROM anon;
+--   REVOKE ALL PRIVILEGES ON TABLE [your_view_name] FROM authenticated;
+-- immediately after the CREATE VIEW statement, plus a verification DO block.
+-- See Hard Rule 25 in CLAUDE.md and mig 016 for the correct pattern.
 CREATE OR REPLACE VIEW corp_incident_aggregates
 WITH (security_invoker = false)
 AS
