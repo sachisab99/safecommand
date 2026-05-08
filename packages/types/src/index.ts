@@ -377,3 +377,25 @@ export interface IncidentEscalationJob {
   venue_id: string;
   priority: 0;
 }
+
+// ─── Phase 5.21 SIRE — Incident Zone State Machine (BR-H) ──────────────────
+// State machine + transition matrix shared between api + mobile UI.
+// See `incident-zone-states.ts` for full implementation + helpers.
+
+export {
+  INCIDENT_ZONE_STATES,
+  ROLE_TO_ZONE_TRANSITION_KEY,
+  VALID_TRANSITIONS,
+  isValidZoneTransition,
+  getValidTransitions,
+  requiresReasonNote,
+  requiresEvidence,
+  isTerminalState,
+  ZONE_STATE_LABEL,
+  ZONE_STATE_COLOUR,
+} from './incident-zone-states.js';
+
+export type {
+  IncidentZoneState,
+  ZoneTransitionRole,
+} from './incident-zone-states.js';
