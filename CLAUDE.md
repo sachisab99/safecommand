@@ -1,10 +1,14 @@
-# SafeCommand — Claude Code Context (v7)
+# SafeCommand — Claude Code Context (v8)
 
-> **Spec authority (2026-05-10):** `nexus/specs/2026-05-10_prime_business-plan-report-gen.md` (Business Plan v2 — 91 BRs, 37 NFRs, 22 sections) and `nexus/specs/2026-05-10_SafeCommand_Architecture_v7_Complete.md` (Architecture v7 — 22 ECs, 22 Hard Rules, 6089 lines). These supersede all prior versions. When this file diverges from the spec, the spec wins.
+> **Spec authority (2026-05-10):** `nexus/specs/2026-05-10_prime_business-plan-report-gen_v8.md` (Business Plan v8.0 — **101 BRs, 37 NFRs, 6 ADRs, 23 sections, 1378 lines**) and `nexus/specs/2026-05-10_SafeCommand_Architecture_v8_Complete.md` (Architecture v8 — **23 ECs, 24 Hard Rules, 7221 lines**). These supersede all prior versions including v7. When this file diverges from the spec, the spec wins.
+>
+> **What v8 adds (vs v7):** Structured Incident Response Engine (SIRE) — 10 new BRs (BR-G through BR-P), 32 incident sub-types, 10-state zone state machine, 3-button staff action model, selective evacuation, per-role action templates. All 10 new BRs are Phase 2 (Phase 5.21–5.22), explicitly NOT Phase 1. New EC-23 (template fallback always resolves), Hard Rules 23–24 (no auto-evacuation; mig 014 before Phase 5.21 code). Two new ADRs: 0005 (workers always-on June onward) + 0006 (Apollo brand live demo replaces v7 mockup).
+>
+> **Engineering analysis backing v8 alignment:** `docs/specs/v8-alignment-analysis.md` (2026-05-08).
 >
 > **Working branch:** `safecommand_v7` (Phase A scaffold work). `main` is paused-pilot-ready. ADR 0002 captures branching rationale. Merge-back target: before June 2 unfreeze.
 >
-> **Build state:** Architecture v7 §16 explicitly preserves Sprint 1 work (BR-01 → BR-09). Workers paused (`WORKERS_PAUSED=true`); master-tick = 4 hr (hibernation). Resume from BR-10 in June after migrations 009 + 010 land.
+> **Build state:** Architecture v8 preserves Sprint 1 + Phase A + Phase 5 series (5.0 → 5.18). Workers paused (`WORKERS_PAUSED=true`); master-tick = 4 hr (hibernation). **Workers go always-on from 2026-06-01 per ADR 0005 — `WORKERS_PAUSED` becomes emergency kill switch only.** AWS Activate credits required pre-June (founder action). Phase 5.21 (SIRE core) build follows pilot validation gate.
 
 ---
 
@@ -17,6 +21,9 @@
 | **JUNE-2026 review required** | `JUNE-2026-REVIEW-REQUIRED.md` at product root | Mandatory checklist on first June 2026 work session. Verifies May spend, decides workers always-on, applies AWS Activate credits, fixes Railway worker Start Commands (per `2026-04-30-19:30_fix.md` G11). |
 | **Migration numbering offset** | ADR 0001 (`docs/adr/0001-migration-renumbering.md`) | Repo migrations 007/008 already deployed (schedule_time + comm_deliveries_nullable). Spec migration 007 (MBV) → repo `009_mbv.sql`. Spec migration 008 (brand+roaming+drill) → repo `010_brand_roaming_drill.sql`. **Hard Rule 3 forbids modifying deployed migrations.** Citations going forward: "Spec Migration N (repo: `0NN_*.sql`)". |
 | **Supabase opaque-token keys** | ADR 0003 (`docs/adr/0003-supabase-publishable-secret-keys.md`) | 2026-05-05 migrated from legacy `anon`/`service_role` JWTs to `sb_publishable_*`/`sb_secret_*` opaque tokens. Env var names unchanged (`SUPABASE_SERVICE_ROLE_KEY` holds `sb_secret_*`; `SUPABASE_ANON_KEY` holds `sb_publishable_*`). **Do NOT click "Reset JWT secret"** (would mass-logout all users). Phase B June: shard to per-service keys. |
+| **Workers always-on from June 2026 (v8 NEW)** | ADR 0005 (`docs/adr/0005-workers-always-on-from-june.md`) + `docs/operations/workers-unfreeze-runbook.md` | `WORKERS_PAUSED` repurposed: cost-discipline (May) → emergency kill switch only (June onward). Pre-June 1 founder must apply AWS Activate credits + verify cost alerts. Workers-unfreeze runbook documents 45-min transition window with rollback at every step. |
+| **Apollo brand live demo (v8 NEW)** | ADR 0006 (`docs/adr/0006-apollo-brand-live-demo.md`) + `docs/sales/demo-runbook.md` §11 (DEMO-APOLLO-LIVE) | v7 static mockup → v8 production-like replica. Apollo `#C8102E` confirms NFR-35 (8.0:1 contrast). Mandatory fair-use disclaimer; direct sales conversations only; never publicly published. |
+| **Structured Incident Response Engine (v8 NEW; Phase 5.21–5.22)** | `docs/specs/incident-response-activity-templates.md` (v8-aligned spec) + Architecture v8 §SIRE | 10 new BRs (BR-G through BR-P), 32 incident sub-types, 10-state zone state machine, 3-button staff action, selective evacuation, per-role action templates. Schema migration 014 (`014_sire_engine.sql`) when Phase 5.21 begins. Phase 5.21 build follows pilot validation gate (post-Oct 2026). |
 | **GitHub history rewrite (2026-05-05)** | Backup tag `backup/pre-history-rewrite-2026-05-04` on origin | Pre-rewrite SHA `772fd85` preserved for ≥30-day recovery window (suggested deletion 2026-06-04). Post-rewrite `main` HEAD = `96594ad`. 4 secrets scrubbed: Firebase RSA key, Supabase service_role/anon JWTs, Upstash TLS password. |
 | **Deferred work in May 2026** | `UX-DESIGN-DECISIONS.md` Phases 1-5 | Mobile responsive dashboard redesign — fully analyzed. Phase 1 of responsive redesign **bundled with ThemeProvider scaffold** as Phase A work on `safecommand_v7` (per Q3 decision). |
 
@@ -71,13 +78,16 @@ Apollo India example: 65 venues × Professional + Corp Enterprise + Brand Layer 
 | **Spec 008 (Brand+Roaming+Drill)** | `010_brand_roaming_drill.sql` | **Pending Phase B (June 2026)** | `corporate_brand_configs` (with CHECK `powered_by_text = 'Platform by SafeCommand'`), `roaming_staff_assignments`, `drill_sessions`, `drill_session_participants` |
 | **— (repo only)** | `011_staff_lifecycle.sql` | Deployed 2026-05-06 | 4-state lifecycle enum + status_reason + is_active becomes generated column + enforce_terminated_oneway trigger |
 | **— (repo only)** | `012_rls_schedule_template_seeds.sql` | Deployed 2026-05-06 | Security patch: enable RLS on reference table flagged by Supabase linter (`rls_disabled_in_public`) |
-| **— (repo only)** | `013_drill_participant_reason.sql` | **Pending Phase 5.18 deploy 2026-05-07** | Adds `reason_code` (TEXT + CHECK 6-value taxonomy) + `reason_notes` + audit columns (`reason_set_by` / `reason_set_at`) + `OTHER`-requires-notes CHECK + RLS SELECT policy on `drill_session_participants`. Backed by ADR 0004 + `docs/research/drill-participant-reason-taxonomy.md`. |
+| **— (repo only)** | `013_drill_participant_reason.sql` | Deployed 2026-05-07 | Adds `reason_code` (TEXT + CHECK 6-value taxonomy) + `reason_notes` + audit columns (`reason_set_by` / `reason_set_at`) + `OTHER`-requires-notes CHECK + RLS SELECT policy on `drill_session_participants`. Backed by ADR 0004 + `docs/research/drill-participant-reason-taxonomy.md`. |
+| **Spec migration 011 (v8 NEW)** | `014_sire_engine.sql` | **Pending Phase 5.21 build (post-pilot validation gate)** | Adds Structured Incident Response Engine schema: 6 new tables (`incident_zone_states` / `incident_zone_state_log` / `incident_evacuation_triggers` / `incident_action_templates` / `incident_response_actions` / `incident_dashboard_prompts`) + `incident_subtype` column on `incidents` (TEXT NULL CHECK 32 values) + RLS policies + `corp_incident_aggregates` view for CORP-* aggregate visibility. Hard Rule 24 enforces this migration applies before any Phase 5.21 code deploys. Backed by `docs/specs/incident-response-activity-templates.md`. |
 
 ---
 
 ## Business requirements
 
-### Functional Requirements — 91 BRs total
+### Functional Requirements — 101 BRs total (v8 — see Business Plan v8 §18)
+
+> **v8 added 10 new BRs (BR-G through BR-P) — all Phase 2 (Phase 5.21–5.22).** They live in §7 of v8 Business Plan (Structured Incident Response Engine). Below shows the v7 baseline 91 BRs; v8 BRs G-P are summarised at the end of this section.
 
 Phase tagging: **P1** = Phase 1 (Weeks 1–16, May→Oct 2026); **P2** = Phase 2 (Month 5–10, Roaming + Brand UI + GCP); **P3** = Phase 3 (Month 11–18, Corporate Governance).
 
@@ -221,6 +231,23 @@ Phase tagging: **P1** = Phase 1 (Weeks 1–16, May→Oct 2026); **P2** = Phase 2
 | BR-87 | Enterprise subdomain — `app.[enterprise_code].safecommand.in` via Cloudflare CNAME | Medium | P3 |
 | BR-88 | Report branding — enterprise logo + header + colours; WCAG 2.1 AA validated by SC Ops | High | P2 |
 
+#### Structured Incident Response Engine (BR-G to BR-P) — v8 NEW; all Phase 2 (Phase 5.21–5.22)
+
+| ID | Title | Phase | Refs |
+|---|---|---|---|
+| BR-G | Incident sub-type taxonomy — 32 sub-types across 6 parent types | 5.21 | mig 014 |
+| BR-H | Zone state machine during incidents — 10 states per zone per incident; real-time grid for SH/SC | 5.21 | mig 014; NFR-10 |
+| BR-I | 3-button evolved staff action model — `SAFE+CLEAR` / `NEEDS_ATTENTION` / `TRIGGER_EVACUATION` for FIRE + EVACUATION | 5.21 | mig 014; replaces binary "I Am Safe" |
+| BR-J | Selective zone evacuation — SH multi-selects from live grid; targeted fan-out + auto-drafted PA | 5.21 | NFR-02 ≤5s |
+| BR-K | Full venue evacuation trigger from dashboard — single-tap with mandatory reason | 5.21 | append-only audit |
+| BR-L | Auto-evacuation suggestion — soft prompt only, never auto-trigger (Hard Rule 23) | 5.22 | per-venue threshold + standards comparison |
+| BR-M | Sub-type template resolution — 5-step graceful fallback per EC-23 | 5.21 | EC-23 |
+| BR-N | PA announcement auto-draft — English + venue regional language; SH can edit before broadcast | 5.22 | i18n |
+| BR-O | Zone assignment to GS at shift start — drives zone-grid assignment during incidents | 5.21 | shift roster |
+| BR-P | Evacuation trigger log — immutable per-decision audit (who/when/what zones/why) | 5.21 | Hard Rule 4 append-only |
+
+> **Per founder direction:** Phase 5.21 ships 16 priority sub-types (FIRE: 4, MEDICAL: 2, SECURITY: 2, EVACUATION: 5, STRUCTURAL: 2, OTHER: 1); Phase 5.22 fills remaining 16. See `docs/specs/incident-response-activity-templates.md` §5 for the priority list.
+
 ---
 
 ## Non-Functional Requirements — 37 NFRs
@@ -267,7 +294,7 @@ Phase tagging: **P1** = Phase 1 (Weeks 1–16, May→Oct 2026); **P2** = Phase 2
 
 ---
 
-## Engineering Constraints — 22 ECs (non-negotiable; violation in code review = blocker)
+## Engineering Constraints — 23 ECs (v8; non-negotiable; violation in code review = blocker)
 
 | ID | Constraint |
 |----|-----------|
@@ -292,10 +319,11 @@ Phase tagging: **P1** = Phase 1 (Weeks 1–16, May→Oct 2026); **P2** = Phase 2
 | **EC-19** | **Roaming `active_venue_id` validated against `venue_roles` on EVERY request** (middleware enforces; 403 on mismatch) |
 | **EC-20** | **CORP-* roles NEVER access individual PII** (aggregation queries return scores/counts only; code review hard blocker) |
 | **EC-21** | **Raw PII never crosses country boundaries** (India venue data stays in GCP asia-south1; only anonymised scores aggregate globally) |
+| **EC-23 (v8 NEW)** | **Per-role action templates always resolve to SOMETHING** — graceful 5-step fallback chain: venue+sub-type → venue+parent → venue-type+sub-type → venue-type+parent → global+sub-type → global+parent (mandatory). A guard declaring FIRE must always receive an action list. Seed gate enforces every parent type has a global default per role. |
 
 ---
 
-## Engineering Hard Rules — 22 Rules (violation in PR = blocker)
+## Engineering Hard Rules — 24 Rules (v8; violation in PR = blocker)
 
 | Rule | Statement |
 |------|-----------|
@@ -321,6 +349,8 @@ Phase tagging: **P1** = Phase 1 (Weeks 1–16, May→Oct 2026); **P2** = Phase 2
 | 20 | **'Powered by SafeCommand' is hard-coded** — DB CHECK constraint enforces `powered_by_text = 'Platform by SafeCommand'`; Settings > About + PDF footers literal strings in code (EC-18) |
 | 21 | **Roaming validation is double-enforced** — JWT `venue_roles` + middleware validates `active_venue_id ∈ venue_roles` on EVERY request (EC-19) |
 | 22 | **CORP-* roles never return individual PII** — aggregation only; code review hard blocker (EC-20) |
+| **23 (v8 NEW)** | **SIRE auto-evacuation suggestion (BR-L) is NEVER an auto-trigger — ALWAYS a suggestion.** Soft prompt to SH dashboard if ≥2 zones NEEDS_ATTENTION in 3 min during FIRE; SH must explicitly tap "Trigger Evacuation" to execute. **No code path may bypass the human command loop.** Test gate: ≥2 NEEDS_ATTENTION zones → verify prompt appears, NO fan-out fires until SH explicitly triggers. |
+| **24 (v8 NEW)** | **Migration 014 (`014_sire_engine.sql`) MUST be applied before any Phase 5.21 code deploys.** The `incident_zone_states`, `incident_evacuation_triggers`, and `incident_subtype` column must exist in DB before API routes using them are deployed. Apply migration → verify row counts → deploy code. **Never the reverse.** A 500 error on incident declaration during active incident because tables don't exist is unacceptable. |
 
 ---
 
@@ -840,7 +870,13 @@ Per Business Plan §15.1 — all 25 must pass before first pilot venue live.
 - **ADR 0002 — `safecommand_v7` branch:** `docs/adr/0002-safecommand-v7-branch.md`
 - **ADR 0003 — Supabase opaque-token keys:** `docs/adr/0003-supabase-publishable-secret-keys.md`
 - **ADR 0004 — Drill participant non-acknowledgement reason codes:** `docs/adr/0004-drill-participant-reason-codes.md`
+- **ADR 0005 — Workers always-on from June (v8 codification):** `docs/adr/0005-workers-always-on-from-june.md`
+- **ADR 0006 — Apollo brand live demo strategy (v8 codification):** `docs/adr/0006-apollo-brand-live-demo.md`
+- **v8 alignment analysis:** `docs/specs/v8-alignment-analysis.md` (engineering response to v8 spec evolution)
+- **SIRE activity templates spec (v8-aligned):** `docs/specs/incident-response-activity-templates.md`
+- **Workers unfreeze runbook:** `docs/operations/workers-unfreeze-runbook.md`
 - **Industry research — Drill reason taxonomy:** `docs/research/drill-participant-reason-taxonomy.md` (Phase 5.18 backing reference; sales/audit/demo asset)
+- **Demo runbook (with DEMO-APOLLO-LIVE entry §11):** `docs/sales/demo-runbook.md`
 
 ### Prior versions (kept for archaeology only — DO NOT cite for new work)
 - `../../nexus/specs/2026-05-07_prime_business-plan-report-gen.md` (superseded by v2)

@@ -1,12 +1,13 @@
 # SafeCommand — State of Work
 
-> **Last updated:** 2026-05-07 (Phase 5.18 drill audit-grade detail complete)
-> **Branch:** `main` and `safecommand_v7` synced at HEAD `96a30dd` — 65 commits past `96594ad`
+> **Last updated:** 2026-05-08 (v8 spec alignment; Phase 5.18 drill audit-grade detail complete)
+> **Branch:** `main` and `safecommand_v7` synced; HEAD updated continuously
 > **Deploy state:** Railway api + AWS Amplify dashboard auto-deploy from `main` on push. Workers PAUSED via `WORKERS_PAUSED=true`. Mig 013 deployed live to Supabase via Dashboard SQL Editor 2026-05-07.
 > **BR-14 Health Score:** **100% surface LIVE** — all 5 components compute live (Tasks 40 / Incidents 25 / Equipment 10 / Drills 10 / Certs 15)
 > **Two-tier admin parity:** **COMPLETE** — SH-tier write surfaces live for Equipment / Drills / Certifications / Shifts & Roster / Staff across mobile + dashboard, parallel to SC Ops Console.
 > **BR-A drill management:** **COMPLETE** — Schedule / Run / Time / Document / Per-staff acknowledgement / Reason taxonomy. Audit-grade per-drill detail (timeline + participation + reasons) on mobile + dashboard. PDF rendering = Phase B (data substrate ready).
-> **Spec authority:** Business Plan v2 (91 BRs / 37 NFRs / 22 sections, 2026-05-10) + Architecture v7 (22 ECs / 22 Hard Rules / 6089 lines, 2026-05-10)
+> **Spec authority:** Business Plan v8.0 (101 BRs / 37 NFRs / 6 ADRs / 23 sections / 1378 lines, 2026-05-10) + Architecture v8 (23 ECs / 24 Hard Rules / 7221 lines, 2026-05-10)
+> **v8 additions vs v7:** SIRE (Structured Incident Response Engine) — 10 new BRs (BR-G through BR-P) all Phase 2 (5.21–5.22); EC-23 + Hard Rules 23–24; ADR 0005 (workers always-on June+) + ADR 0006 (Apollo live demo). All Phase 5.13–5.18 work preserved verbatim. See `docs/specs/v8-alignment-analysis.md` for engineering analysis.
 >
 > This document is a comprehensive snapshot of what's built, what's deployed, what's deferred, and where things sit operationally. Companion: `docs/security/POSTURE_AND_ROADMAP.md` for security/compliance posture.
 
@@ -26,6 +27,8 @@
 | Phase B Stage A — `safecommand_v7 → main` merge | 2026-05-06 | ✅ COMPLETE (early) | Founder Choice A: continuous fast-forward merges keep main current; Railway api + AWS Amplify dashboard auto-deploy from `main` on push. Workers stay paused via env var. |
 | Phase B Stage 3 — BR resume | 2026-06-02 onwards | ⏳ PENDING | June unfreeze: workers always-on, BR-10 → BR-32 sequence per `JUNE-2026-REVIEW-REQUIRED.md` |
 | Phase B Stage 4 — Pilot go-live | Q3 2026 (target) | ⏳ PENDING | 25-item go-live checklist; pilot mix = 1 single-building (clinic/boutique hotel) + 1 multi-building (Hyderabad supermall, MBV proof) |
+| Phase 5.21 — SIRE core (v8) | Q1 2027 (post-pilot validation) | ⏳ PENDING | Mig 014 (SIRE schema) + 6 api endpoints + 16 priority sub-type templates + zone state machine + 3-button staff action + selective evacuation + per-role action templates. ~3 weeks engineering. Backed by `docs/specs/incident-response-activity-templates.md`. |
+| Phase 5.22 — SIRE polish (v8) | Q1–Q2 2027 | ⏳ PENDING | PA auto-draft (English first, regional Phase B) + remaining 16 sub-type templates + SC Ops Console template editor + threshold configuration UI with standards comparison. ~2 weeks engineering. |
 | Phase C — GCP migration + Roaming + Brand UI + Corporate Governance | Month 5–18 (post-pilot) | ⏳ FUTURE | Phase 2/3 work; international data residency; SOC 2 / ISO readiness |
 
 ---
