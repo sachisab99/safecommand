@@ -123,6 +123,12 @@ export function IncidentScreen({ onBack, onDeclared }: Props): React.JSX.Element
   const [zones, setZones] = useState<Zone[]>([]);
   const [zonesLoading, setZonesLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  // Phase 5.21 SIRE toggle — when on, the api fans out per-role action
+  // assignments + creates incident_zone_states + snapshots resolved_templates.
+  // Only FIRE and EVACUATION have templates seeded today (mig 015 + 017);
+  // other incident types fall back to v1 binary "I AM SAFE" path.
+  const [enableSire, setEnableSire] = useState(false);
+  const [selectedSubtype, setSelectedSubtype] = useState<string | null>(null);
 
   useEffect(() => {
     if (step === 2 && zones.length === 0) {
@@ -143,6 +149,11 @@ export function IncidentScreen({ onBack, onDeclared }: Props): React.JSX.Element
       incident_type: selectedType,
       severity: selectedSev,
       zone_id: selectedZone?.id,
+      // Phase 5.21 SIRE: activate the v2 path if user toggled it on.
+      // affected_zone_ids defaults to [zone_id] in the api when not provided.
+      enable_sire: enableSire || undefined,
+      incident_subtype: enableSire ? selectedSubtype ?? undefined : undefined,
+      affected_zone_ids: enableSire && selectedZone?.id ? [selectedZone.id] : undefined,
     });
     setSubmitting(false);
     if (success && incident_id) {
@@ -364,6 +375,89 @@ export function IncidentScreen({ onBack, onDeclared }: Props): React.JSX.Element
             All on-duty staff will be alerted immediately.
           </Text>
 
+          {/* Phase 5.21 SIRE — only show toggle for FIRE + EVACUATION
+              (the types with seeded templates per mig 015 + 017). */}
+          {(selectedType === 'FIRE' || selectedType === 'EVACUATION') && (
+            <View style={[s.sireToggleRow, { backgroundColor: c.surface, borderColor: c.divider }]}>
+              <View style={s.sireToggleLabel}>
+                <Text style={[s.sireToggleTitle, { color: c.textPrimary }]}>
+                  ⚙ Use SIRE response engine
+                </Text>
+                <Text style={[s.sireToggleSub, { color: c.textMuted }]}>
+                  Activates per-role action checklists + 10-state zone tracking
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setEnableSire(!enableSire)}
+                style={[
+                  s.sireToggle,
+                  { backgroundColor: enableSire ? c.primary : c.surfaceMuted },
+                ]}
+                hitSlop={touch.hitSlop}
+              >
+                <View
+                  style={[
+                    s.sireToggleThumb,
+                    {
+                      backgroundColor: c.background,
+                      transform: [{ translateX: enableSire ? 22 : 2 }],
+                    },
+                  ]}
+                />
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* Sub-type picker — appears when SIRE is on */}
+          {enableSire && selectedType === 'FIRE' && (
+            <View style={s.subtypeGrid}>
+              {['FIRE_CONTAINED', 'FIRE_SPREADING', 'FIRE_SUSPECTED', 'FIRE_DRILL'].map((st) => {
+                const selected = selectedSubtype === st;
+                return (
+                  <TouchableOpacity
+                    key={st}
+                    onPress={() => setSelectedSubtype(selected ? null : st)}
+                    style={[
+                      s.subtypeChip,
+                      {
+                        backgroundColor: selected ? c.primary : c.surfaceMuted,
+                        borderColor: selected ? c.primary : c.divider,
+                      },
+                    ]}
+                  >
+                    <Text style={[s.subtypeChipText, { color: selected ? c.textOnPrimary : c.textPrimary }]}>
+                      {st.replace('FIRE_', '').replace('_', ' ')}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
+          {enableSire && selectedType === 'EVACUATION' && (
+            <View style={s.subtypeGrid}>
+              {['EVACUATION_FULL', 'EVACUATION_PARTIAL_ZONE', 'EVACUATION_SHELTER_IN_PLACE', 'EVACUATION_DRILL'].map((st) => {
+                const selected = selectedSubtype === st;
+                return (
+                  <TouchableOpacity
+                    key={st}
+                    onPress={() => setSelectedSubtype(selected ? null : st)}
+                    style={[
+                      s.subtypeChip,
+                      {
+                        backgroundColor: selected ? c.primary : c.surfaceMuted,
+                        borderColor: selected ? c.primary : c.divider,
+                      },
+                    ]}
+                  >
+                    <Text style={[s.subtypeChipText, { color: selected ? c.textOnPrimary : c.textPrimary }]}>
+                      {st.replace('EVACUATION_', '').replace('_', ' ')}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
+
           <TouchableOpacity
             style={[
               s.declareBtn,
@@ -563,4 +657,56 @@ const s = StyleSheet.create({
   },
   goBackLink: { paddingVertical: spacing.md },
   goBackText: { fontSize: fontSize.body },
+  // Phase 5.21 SIRE toggle styles
+  sireToggleRow: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    marginVertical: spacing.sm,
+  },
+  sireToggleLabel: { flex: 1 },
+  sireToggleTitle: {
+    fontSize: fontSize.body,
+    fontWeight: fontWeight.semibold,
+  },
+  sireToggleSub: {
+    fontSize: fontSize.small,
+    marginTop: 2,
+  },
+  sireToggle: {
+    width: 48,
+    height: 26,
+    borderRadius: 13,
+    padding: 2,
+    justifyContent: 'center',
+  },
+  sireToggleThumb: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
+  },
+  subtypeGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginVertical: spacing.sm,
+  },
+  subtypeChip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: 1,
+  },
+  subtypeChipText: {
+    fontSize: fontSize.small,
+    fontWeight: fontWeight.medium,
+  },
 });
