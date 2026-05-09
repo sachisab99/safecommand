@@ -15,6 +15,14 @@ export interface DeclarePayload {
   severity: Severity;
   zone_id?: string;
   description?: string;
+  // Phase 5.21 SIRE additions — optional. Setting enable_sire=true switches
+  // the incident to the SIRE v2 path: 10-state zone grid + per-role action
+  // templates + immutable resolved_templates snapshot + per-staff
+  // action assignments fanned out via bootstrapSireIncident on the api.
+  incident_subtype?: string;
+  enable_sire?: boolean;
+  is_drill?: boolean;
+  affected_zone_ids?: string[];
 }
 
 export interface ActiveIncident {
@@ -86,6 +94,11 @@ export interface IncidentDetail {
   zones: { name: string; floor_id: string | null } | null;
   staff: { name: string; role: string } | null;
   incident_timeline: TimelineEvent[];
+  // Phase 5.21 SIRE additions — present on incidents declared with enable_sire=true.
+  // Legacy incidents have these as undefined / false / null.
+  has_sire_data?: boolean;
+  incident_subtype?: string | null;
+  is_drill?: boolean;
 }
 
 export interface StaffRef {

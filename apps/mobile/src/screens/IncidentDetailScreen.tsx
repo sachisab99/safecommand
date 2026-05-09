@@ -37,6 +37,8 @@ import {
   type TimelineEvent,
   type StaffRef,
 } from '../services/incidents';
+import { SireSection } from '../components/sire/SireSection';
+import { getStoredSession } from '../services/auth';
 import {
   Screen,
   useColours,
@@ -169,6 +171,19 @@ export function IncidentDetailScreen({ incidentId, onBack }: Props): React.JSX.E
   const [error, setError] = useState<string | null>(null);
   const [markingSafe, setMarkingSafe] = useState(false);
   const [safeFeedback, setSafeFeedback] = useState<string | null>(null);
+  // Session — used to identify caller for SIRE section (staff_id + role)
+  const [callerStaffId, setCallerStaffId] = useState<string | null>(null);
+  const [callerRole, setCallerRole] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    getStoredSession().then((session) => {
+      if (!mounted || !session) return;
+      setCallerStaffId(session.staff.id);
+      setCallerRole(session.staff.role);
+    });
+    return () => { mounted = false; };
+  }, []);
 
   const load = useCallback(
     async (isRefresh = false): Promise<void> => {
@@ -265,6 +280,16 @@ export function IncidentDetailScreen({ incidentId, onBack }: Props): React.JSX.E
           <Header incident={incident} colours={c} />
           {incident.description && (
             <DescriptionCard description={incident.description} colours={c} />
+          )}
+          {/* SIRE v2 section — only for incidents declared with enable_sire=true.
+              Renders zone state grid + per-staff action checklist + evacuation
+              triggers. Polls /v1/sire/state every 3s. */}
+          {incident.has_sire_data && callerStaffId && callerRole && (
+            <SireSection
+              incidentId={incident.id}
+              staffId={callerStaffId}
+              staffRole={callerRole}
+            />
           )}
           <TimelineCard
             events={incident.incident_timeline}
