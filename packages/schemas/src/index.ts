@@ -157,11 +157,39 @@ export const CompleteTaskSchema = z
 
 // ─── Incident Schemas ─────────────────────────────────────────────────────────
 
+/**
+ * 32 SIRE sub-types (BR-G). Optional; if present the incident routes to
+ * the SIRE v2 path. Mirrors mig 014 line 70 CHECK constraint.
+ */
+export const IncidentSubtypeEnum = z.enum([
+  'FIRE_CONTAINED', 'FIRE_SPREADING', 'FIRE_SUSPECTED', 'FIRE_DRILL',
+  'MEDICAL_CARDIAC', 'MEDICAL_TRAUMA', 'MEDICAL_MASS_CASUALTY',
+  'MEDICAL_MENTAL_HEALTH', 'MEDICAL_OBSTETRIC',
+  'SECURITY_ACTIVE_AGGRESSOR', 'SECURITY_BOMB_THREAT', 'SECURITY_SUSPICIOUS_ITEM',
+  'SECURITY_ABDUCTION', 'SECURITY_TRESPASS', 'SECURITY_CIVIL_UNREST',
+  'SECURITY_CYBER_PHYSICAL',
+  'EVACUATION_FULL', 'EVACUATION_PARTIAL_ZONE', 'EVACUATION_PARTIAL_FLOOR',
+  'EVACUATION_SHELTER_IN_PLACE', 'EVACUATION_DRILL',
+  'STRUCTURAL_GAS_LEAK', 'STRUCTURAL_FLOOD_WATER', 'STRUCTURAL_BUILDING_DAMAGE',
+  'STRUCTURAL_POWER_FAILURE', 'STRUCTURAL_LIFT_ENTRAPMENT',
+  'STRUCTURAL_HAZMAT', 'STRUCTURAL_SEVERE_WEATHER',
+  'OTHER_VIP_EVENT', 'OTHER_MEDIA_INCIDENT',
+  'OTHER_UTILITY_SERVICE', 'OTHER_UNKNOWN',
+]);
+
 export const CreateIncidentSchema = z.object({
   incident_type: z.enum(['FIRE', 'MEDICAL', 'SECURITY', 'EVACUATION', 'STRUCTURAL', 'OTHER']),
   severity: z.enum(['SEV1', 'SEV2', 'SEV3']),
   zone_id: z.string().uuid().optional(),
   description: z.string().max(2000).optional(),
+  // Phase 5.21 SIRE additions — all optional. Default behaviour is the v1
+  // "I AM SAFE" binary flow that's been live since Phase 1. Setting
+  // enable_sire=true switches to the SIRE v2 path (10-state zone grid,
+  // per-role action templates, immutable resolved_templates snapshot).
+  incident_subtype: IncidentSubtypeEnum.optional(),
+  enable_sire: z.boolean().optional().default(false),
+  is_drill: z.boolean().optional().default(false),
+  affected_zone_ids: z.array(z.string().uuid()).optional(),
 });
 
 export const UpdateIncidentStatusSchema = z.object({
