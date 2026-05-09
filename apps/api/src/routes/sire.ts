@@ -17,9 +17,19 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, requireRole } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
+import { auditLog } from '../middleware/audit.js';
 import { getServiceClient } from '@safecommand/db';
+import {
+  isValidZoneTransition,
+  getValidTransitions,
+  requiresReasonNote,
+  requiresEvidence,
+  type IncidentZoneState,
+  INCIDENT_ZONE_STATES,
+} from '@safecommand/types';
+import { logger } from '../services/logger.js';
 import {
   resolveTemplate,
   EC23ViolationError,
@@ -257,3 +267,541 @@ sireRouter.get('/state/:incidentId', async (req: Request, res: Response): Promis
     evacuation_triggers: triggers ?? [],
   });
 });
+
+// ──────────────────────────────────────────────────────────────────────────
+// PATCH /v1/sire/incidents/:incidentId/zones/:zoneId/state
+//
+// Drive the zone state machine. Validates the proposed transition against
+// the shared VALID_TRANSITIONS matrix (the single source of truth for
+// role-authority). Enforces the architect's safety rules:
+//   - GS cannot exit EVACUATION_TRIGGERED (false-green prevention; §3 R1)
+//   - SH_CONFIRMED_CLEAR is terminal
+//   - LOCKED_DOWN release: SH/DSH only
+//   - reason_note mandatory for NEEDS_ATTENTION/INACCESSIBLE/LOCKED_DOWN
+//   - evidence_url mandatory for EVACUATION_COMPLETE
+//
+// Optimistic lock: caller passes the current state_changed_at as a
+// precondition. If another caller updated in between, returns 409
+// STATE_CHANGED with the latest row so the client can merge + retry.
+//
+// Body: {
+//   to_state: IncidentZoneState,
+//   prev_state_changed_at: ISO timestamp (current row's state_changed_at),
+//   reason_note?: string,
+//   evidence_url?: string
+// }
+//
+// Authorisation:
+//   - Caller's staff_id matches incident_zone_states.assigned_gs_id, OR
+//   - Caller's role ∈ {SH, DSH, SHIFT_COMMANDER, FM}
+//   Anything else → 403.
+
+sireRouter.patch(
+  '/incidents/:incidentId/zones/:zoneId/state',
+  auditLog('SIRE_ZONE_STATE_CHANGE'),
+  async (req: Request, res: Response): Promise<void> => {
+    const { incidentId, zoneId } = req.params as { incidentId: string; zoneId: string };
+    const venueId = req.auth.venue_id;
+    const staffId = req.auth.staff_id;
+    const role = req.auth.role;
+
+    const { to_state, prev_state_changed_at, reason_note, evidence_url } = (req.body ?? {}) as {
+      to_state?: string;
+      prev_state_changed_at?: string;
+      reason_note?: string;
+      evidence_url?: string;
+    };
+
+    // ─── Validate to_state is a real zone state ───
+    if (!to_state || !(INCIDENT_ZONE_STATES as readonly string[]).includes(to_state)) {
+      res.status(400).json({
+        error: { code: 'INVALID_TO_STATE', message: 'to_state must be one of: ' + INCIDENT_ZONE_STATES.join(', ') },
+      });
+      return;
+    }
+    const targetState = to_state as IncidentZoneState;
+
+    // ─── Read current row + verify caller can update ───
+    const { data: currentRow, error: readErr } = await getServiceClient()
+      .from('incident_zone_states')
+      .select('id, state, assigned_gs_id, state_changed_at')
+      .eq('incident_id', incidentId)
+      .eq('zone_id', zoneId)
+      .eq('venue_id', venueId)
+      .single();
+
+    if (readErr || !currentRow) {
+      res.status(404).json({
+        error: { code: 'NOT_FOUND', message: 'Incident zone state not found' },
+      });
+      return;
+    }
+
+    // ─── Authorisation check ───
+    const isCommandRole = role === 'SH' || role === 'DSH' || role === 'SHIFT_COMMANDER' || role === 'FM';
+    const isAssignedGs = currentRow.assigned_gs_id === staffId;
+    if (!isCommandRole && !isAssignedGs) {
+      res.status(403).json({
+        error: {
+          code: 'NOT_AUTHORISED',
+          message: 'Only the assigned ground staff or command roles (SH/DSH/SC/FM) can update this zone state',
+        },
+      });
+      return;
+    }
+
+    const fromState = currentRow.state as IncidentZoneState;
+
+    // ─── Same-state idempotent no-op ───
+    if (fromState === targetState) {
+      res.json({ status: 'NO_OP', current: currentRow });
+      return;
+    }
+
+    // ─── Transition matrix validation ───
+    if (!isValidZoneTransition(fromState, targetState, role)) {
+      const valid = getValidTransitions(fromState, role);
+      res.status(422).json({
+        error: {
+          code: 'INVALID_TRANSITION',
+          message: `Role ${role} cannot transition zone from ${fromState} to ${targetState}.`,
+          valid_transitions: valid,
+        },
+      });
+      return;
+    }
+
+    // ─── Required-field gates per state semantic ───
+    if (requiresReasonNote(targetState) && (!reason_note || reason_note.trim().length === 0)) {
+      res.status(400).json({
+        error: {
+          code: 'REASON_NOTE_REQUIRED',
+          message: `${targetState} requires a non-empty reason_note`,
+        },
+      });
+      return;
+    }
+    if (requiresEvidence(targetState) && (!evidence_url || evidence_url.trim().length === 0)) {
+      res.status(400).json({
+        error: {
+          code: 'EVIDENCE_REQUIRED',
+          message: `${targetState} requires evidence_url (photo of cleared zone)`,
+        },
+      });
+      return;
+    }
+
+    // ─── Optimistic lock check ───
+    if (
+      prev_state_changed_at &&
+      new Date(prev_state_changed_at).getTime() !== new Date(currentRow.state_changed_at).getTime()
+    ) {
+      res.status(409).json({
+        error: {
+          code: 'STATE_CHANGED',
+          message: 'Zone state was updated by another caller; reload and retry',
+        },
+        current: currentRow,
+      });
+      return;
+    }
+
+    // ─── Apply the transition ───
+    const now = new Date().toISOString();
+    const { data: updated, error: upErr } = await getServiceClient()
+      .from('incident_zone_states')
+      .update({
+        state: targetState,
+        reason_note: reason_note ?? null,
+        evidence_url: evidence_url ?? null,
+        last_updated_by: staffId,
+        last_updated_by_role: role,
+        state_changed_at: now,
+      })
+      .eq('id', currentRow.id)
+      .eq('venue_id', venueId)
+      // Defence-in-depth: re-check the prev state_changed_at to catch races
+      // between the read above and the write here.
+      .eq('state_changed_at', currentRow.state_changed_at)
+      .select()
+      .single();
+
+    if (upErr || !updated) {
+      // Race lost or DB error — return 409 (assume race) and let client retry
+      res.status(409).json({
+        error: {
+          code: 'STATE_CHANGED',
+          message: 'Zone state was updated by another caller; reload and retry',
+        },
+      });
+      return;
+    }
+
+    // ─── Append-only audit log row ───
+    const { error: logErr } = await getServiceClient()
+      .from('incident_zone_state_log')
+      .insert({
+        venue_id: venueId,
+        incident_id: incidentId,
+        zone_id: zoneId,
+        previous_state: fromState,
+        new_state: targetState,
+        changed_by: staffId,
+        changed_by_role: role,
+        reason_note: reason_note ?? null,
+        evidence_url: evidence_url ?? null,
+        changed_at: now,
+      });
+    if (logErr) {
+      // Audit-log write failure is non-fatal (zone state already updated)
+      // but should be logged for ops investigation.
+      logger.error({ logErr, incidentId, zoneId }, 'Failed to write zone_state_log row');
+    }
+
+    res.json(updated);
+  },
+);
+
+// ──────────────────────────────────────────────────────────────────────────
+// PATCH /v1/sire/action-assignments/:id
+//
+// Drive the per-staff action status machine: ASSIGNED → IN_PROGRESS →
+// DONE / SKIPPED / BLOCKED.
+//
+// Sets started_at on first IN_PROGRESS and completed_at on terminal states.
+// On DONE: writes a row to incident_response_actions (the evidence ledger).
+// blocked_reason mandatory when status=BLOCKED.
+//
+// Authorisation: only the assigned staff_id can update. (Command roles
+// override on someone-else's-behalf is Day 4+ if needed.)
+//
+// Body: {
+//   status: 'IN_PROGRESS' | 'DONE' | 'SKIPPED' | 'BLOCKED',
+//   blocked_reason?: string,
+//   evidence?: {
+//     evidence_url?: string,
+//     evidence_note?: string,
+//     signature_data?: string,
+//     gps_latitude?: number,
+//     gps_longitude?: number,
+//   }
+// }
+
+const VALID_ASSIGNMENT_STATUSES = ['ASSIGNED', 'IN_PROGRESS', 'DONE', 'SKIPPED', 'BLOCKED'] as const;
+type AssignmentStatus = (typeof VALID_ASSIGNMENT_STATUSES)[number];
+
+const VALID_ASSIGNMENT_TRANSITIONS: Record<AssignmentStatus, AssignmentStatus[]> = {
+  ASSIGNED: ['IN_PROGRESS', 'DONE', 'SKIPPED', 'BLOCKED'],
+  IN_PROGRESS: ['DONE', 'SKIPPED', 'BLOCKED'],
+  DONE: [],
+  SKIPPED: [],
+  BLOCKED: ['IN_PROGRESS'], // Unblock back to in-progress allowed
+};
+
+sireRouter.patch(
+  '/action-assignments/:id',
+  auditLog('SIRE_ACTION_STATUS_CHANGE'),
+  async (req: Request, res: Response): Promise<void> => {
+    const assignmentId = req.params['id']!;
+    const venueId = req.auth.venue_id;
+    const staffId = req.auth.staff_id;
+
+    const { status, blocked_reason, evidence } = (req.body ?? {}) as {
+      status?: string;
+      blocked_reason?: string;
+      evidence?: {
+        evidence_url?: string;
+        evidence_note?: string;
+        signature_data?: string;
+        gps_latitude?: number;
+        gps_longitude?: number;
+      };
+    };
+
+    if (!status || !(VALID_ASSIGNMENT_STATUSES as readonly string[]).includes(status)) {
+      res.status(400).json({
+        error: { code: 'INVALID_STATUS', message: 'status must be one of: ' + VALID_ASSIGNMENT_STATUSES.join(', ') },
+      });
+      return;
+    }
+    const targetStatus = status as AssignmentStatus;
+
+    // Read current assignment + check ownership
+    const { data: row, error: readErr } = await getServiceClient()
+      .from('incident_action_assignments')
+      .select('*')
+      .eq('id', assignmentId)
+      .eq('venue_id', venueId)
+      .single();
+
+    if (readErr || !row) {
+      res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Assignment not found' } });
+      return;
+    }
+
+    if (row.staff_id !== staffId) {
+      res.status(403).json({
+        error: { code: 'NOT_OWNER', message: 'Only the assigned staff can update this action' },
+      });
+      return;
+    }
+
+    const fromStatus = row.status as AssignmentStatus;
+
+    // Same-status no-op
+    if (fromStatus === targetStatus) {
+      res.json({ status: 'NO_OP', assignment: row });
+      return;
+    }
+
+    // Validate transition
+    const allowed = VALID_ASSIGNMENT_TRANSITIONS[fromStatus] ?? [];
+    if (!allowed.includes(targetStatus)) {
+      res.status(422).json({
+        error: {
+          code: 'INVALID_STATUS_TRANSITION',
+          message: `Cannot transition assignment from ${fromStatus} to ${targetStatus}`,
+          valid_transitions: allowed,
+        },
+      });
+      return;
+    }
+
+    if (targetStatus === 'BLOCKED' && (!blocked_reason || blocked_reason.trim().length === 0)) {
+      res.status(400).json({
+        error: { code: 'BLOCKED_REASON_REQUIRED', message: 'BLOCKED status requires blocked_reason' },
+      });
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const updates: Record<string, unknown> = { status: targetStatus };
+    if (targetStatus === 'IN_PROGRESS' && !row.started_at) {
+      updates['started_at'] = now;
+    }
+    if (targetStatus === 'DONE' || targetStatus === 'SKIPPED' || targetStatus === 'BLOCKED') {
+      updates['completed_at'] = now;
+    }
+    if (targetStatus === 'BLOCKED') {
+      updates['blocked_reason'] = blocked_reason;
+    }
+
+    const { data: updated, error: upErr } = await getServiceClient()
+      .from('incident_action_assignments')
+      .update(updates)
+      .eq('id', assignmentId)
+      .eq('venue_id', venueId)
+      .select()
+      .single();
+
+    if (upErr || !updated) {
+      res.status(500).json({
+        error: { code: 'UPDATE_FAILED', message: 'Could not update assignment status' },
+      });
+      return;
+    }
+
+    // On DONE: write evidence record (incident_response_actions)
+    if (targetStatus === 'DONE') {
+      const { error: evErr } = await getServiceClient()
+        .from('incident_response_actions')
+        .insert({
+          venue_id: venueId,
+          incident_id: row.incident_id,
+          assignment_id: assignmentId,
+          staff_id: staffId,
+          role: row.role,
+          action_order: row.action_order,
+          evidence_type: row.evidence_type,
+          evidence_url: evidence?.evidence_url ?? null,
+          evidence_note: evidence?.evidence_note ?? null,
+          signature_data: evidence?.signature_data ?? null,
+          gps_latitude: evidence?.gps_latitude ?? null,
+          gps_longitude: evidence?.gps_longitude ?? null,
+          photo_upload_pending: false,
+          completed_at: now,
+        });
+      if (evErr) {
+        logger.error(
+          { evErr, assignmentId },
+          'Failed to write incident_response_actions evidence row',
+        );
+        // Non-fatal: assignment is DONE; evidence row missing is logged for ops.
+      }
+    }
+
+    res.json(updated);
+  },
+);
+
+// ──────────────────────────────────────────────────────────────────────────
+// POST /v1/sire/incidents/:incidentId/evacuation-triggers
+//
+// Selective + full venue evacuation. Mandatory reason_note (BR-J/BR-K).
+// Inserts an immutable incident_evacuation_triggers row (Hard Rule 4 +
+// BR-P). For ZONE_SELECTIVE / FLOOR_SELECTIVE / FULL_VENUE, also UPSERTs
+// the affected zones to EVACUATION_TRIGGERED state (caller-bypass since
+// command roles override the matrix here — they're the ones who'd be
+// declaring the evacuation).
+//
+// Authorisation: SH / DSH / SHIFT_COMMANDER only.
+//
+// Body: {
+//   trigger_type: 'ZONE_SELECTIVE' | 'FLOOR_SELECTIVE' | 'FULL_VENUE' | 'STAFF_TRIGGERED',
+//   zones_affected: UUID[]  // non-empty for SELECTIVE; can be empty for FULL_VENUE
+//   building_id?: string,   // optional for FLOOR_SELECTIVE / FULL_VENUE
+//   reason_note: string,    // MANDATORY
+//   pa_text_broadcast?: string,  // SH may pre-write the PA text
+//   pa_language?: string    // ISO locale; defaults to 'en-IN'
+// }
+
+const VALID_TRIGGER_TYPES = ['ZONE_SELECTIVE', 'FLOOR_SELECTIVE', 'FULL_VENUE', 'STAFF_TRIGGERED'];
+
+sireRouter.post(
+  '/incidents/:incidentId/evacuation-triggers',
+  requireRole('SH', 'DSH', 'SHIFT_COMMANDER'),
+  auditLog('SIRE_EVACUATION_TRIGGER'),
+  async (req: Request, res: Response): Promise<void> => {
+    const incidentId = req.params['incidentId']!;
+    const venueId = req.auth.venue_id;
+    const staffId = req.auth.staff_id;
+    const role = req.auth.role;
+
+    const {
+      trigger_type,
+      zones_affected,
+      building_id,
+      reason_note,
+      pa_text_broadcast,
+      pa_language,
+    } = (req.body ?? {}) as {
+      trigger_type?: string;
+      zones_affected?: string[];
+      building_id?: string;
+      reason_note?: string;
+      pa_text_broadcast?: string;
+      pa_language?: string;
+    };
+
+    if (!trigger_type || !VALID_TRIGGER_TYPES.includes(trigger_type)) {
+      res.status(400).json({
+        error: { code: 'INVALID_TRIGGER_TYPE', message: 'trigger_type must be one of: ' + VALID_TRIGGER_TYPES.join(', ') },
+      });
+      return;
+    }
+    if (!reason_note || reason_note.trim().length === 0) {
+      res.status(400).json({
+        error: { code: 'REASON_NOTE_REQUIRED', message: 'Evacuation triggers require reason_note' },
+      });
+      return;
+    }
+    if (
+      (trigger_type === 'ZONE_SELECTIVE' || trigger_type === 'FLOOR_SELECTIVE') &&
+      (!zones_affected || zones_affected.length === 0)
+    ) {
+      res.status(400).json({
+        error: {
+          code: 'ZONES_REQUIRED',
+          message: `${trigger_type} requires non-empty zones_affected array`,
+        },
+      });
+      return;
+    }
+
+    // Confirm incident exists in caller's venue
+    const { data: incident, error: iErr } = await getServiceClient()
+      .from('incidents')
+      .select('id, venue_id, has_sire_data')
+      .eq('id', incidentId)
+      .eq('venue_id', venueId)
+      .single();
+    if (iErr || !incident) {
+      res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Incident not found' } });
+      return;
+    }
+    if (!incident.has_sire_data) {
+      res.status(422).json({
+        error: {
+          code: 'NOT_SIRE_INCIDENT',
+          message: 'Evacuation triggers can only be raised on SIRE-enabled incidents (has_sire_data=true)',
+        },
+      });
+      return;
+    }
+
+    // Insert the immutable trigger row (Hard Rule 4 / BR-P)
+    const triggeredAt = new Date().toISOString();
+    const { data: trigger, error: tErr } = await getServiceClient()
+      .from('incident_evacuation_triggers')
+      .insert({
+        venue_id: venueId,
+        incident_id: incidentId,
+        trigger_type,
+        triggered_by: staffId,
+        triggered_by_role: role,
+        zones_affected: zones_affected ?? [],
+        building_id: building_id ?? null,
+        reason_note,
+        pa_text_generated: null,
+        pa_text_broadcast: pa_text_broadcast ?? null,
+        pa_language: pa_language ?? 'en-IN',
+        triggered_at: triggeredAt,
+      })
+      .select()
+      .single();
+
+    if (tErr || !trigger) {
+      logger.error({ tErr, incidentId }, 'Failed to insert incident_evacuation_triggers row');
+      res.status(500).json({
+        error: { code: 'TRIGGER_FAILED', message: 'Could not record evacuation trigger' },
+      });
+      return;
+    }
+
+    // For SELECTIVE / FULL_VENUE: UPSERT affected zone states to EVACUATION_TRIGGERED.
+    // (For STAFF_TRIGGERED, the GS already updated their own zone via PATCH; no fan-out here.)
+    if (
+      trigger_type === 'ZONE_SELECTIVE' ||
+      trigger_type === 'FLOOR_SELECTIVE' ||
+      trigger_type === 'FULL_VENUE'
+    ) {
+      const zonesToUpdate = zones_affected ?? [];
+      if (zonesToUpdate.length > 0) {
+        // Bulk update — flip to EVACUATION_TRIGGERED for all listed zones.
+        // Optimistic lock not used here: command-role evacuation overrides
+        // any concurrent state changes by design.
+        const { error: zsErr } = await getServiceClient()
+          .from('incident_zone_states')
+          .update({
+            state: 'EVACUATION_TRIGGERED',
+            last_updated_by: staffId,
+            last_updated_by_role: role,
+            state_changed_at: triggeredAt,
+          })
+          .eq('venue_id', venueId)
+          .eq('incident_id', incidentId)
+          .in('zone_id', zonesToUpdate);
+        if (zsErr) {
+          logger.error({ zsErr, incidentId, zonesToUpdate }, 'Failed to flip zone states to EVACUATION_TRIGGERED');
+        }
+
+        // Append zone_state_log rows for each zone that was flipped
+        const logRows = zonesToUpdate.map((zid) => ({
+          venue_id: venueId,
+          incident_id: incidentId,
+          zone_id: zid,
+          previous_state: null, // We don't read prior; selective override is intentional
+          new_state: 'EVACUATION_TRIGGERED',
+          changed_by: staffId,
+          changed_by_role: role,
+          reason_note: `Evacuation: ${reason_note}`,
+          changed_at: triggeredAt,
+        }));
+        await getServiceClient().from('incident_zone_state_log').insert(logRows);
+      }
+    }
+
+    res.status(201).json(trigger);
+  },
+);
+

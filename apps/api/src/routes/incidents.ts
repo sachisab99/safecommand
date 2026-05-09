@@ -7,6 +7,7 @@ import { getServiceClient } from '@safecommand/db';
 import { incidentEscalationsQueue } from '@safecommand/queue';
 import { CreateIncidentSchema, UpdateIncidentStatusSchema } from '@safecommand/schemas';
 import { resolveTemplate, EC23ViolationError } from '../services/sire/templateResolver.js';
+import { bootstrapSireIncident } from '../services/sire/bootstrapIncident.js';
 import { logger } from '../services/logger.js';
 
 export const incidentsRouter = Router();
@@ -165,52 +166,76 @@ incidentsRouter.post(
         .eq('venue_id', venueId);
     }
 
-    // ─── SIRE: create incident_zone_states rows for affected zones ───
-    // The state grid that the SH dashboard + GS mobile poll. Each row starts
-    // in UNVALIDATED; transitions are driven by the PATCH /v1/sire/zones/:id/state
-    // endpoint (Day 2). assigned_gs_id is left null here — shift-roster
-    // assignment is BR-O / Phase 5.22.
+    // Return 201 immediately — bootstrap continues async below (NFR-02: ≤5 seconds)
+    res.status(201).json(data);
+
+    // ─── SIRE: multi-role bootstrap (best-effort; logs errors) ───
+    // Day 2 fans assignments out to all roles with seeded templates:
+    //   - 1 GS per affected zone (round-robin from active GS)
+    //   - 1 FS per affected zone (round-robin from active FS)
+    //   - declaring SH/DSH (or first active if declaring is GM/FM)
+    //   - 1 active DSH (if not declaring)
+    //   - 1 active SHIFT_COMMANDER
+    // Each picked staff gets one assignment row per action_step in their
+    // role's resolved template. Real shift-roster integration: BR-O / Phase 5.22.
     if (useSire) {
-      const zonesToCreate = affected_zone_ids && affected_zone_ids.length > 0
+      const zonesToBootstrap = affected_zone_ids && affected_zone_ids.length > 0
         ? affected_zone_ids
         : (zone_id ? [zone_id] : []);
 
-      if (zonesToCreate.length > 0) {
-        const zoneStateRows = zonesToCreate.map((zid) => ({
-          venue_id: venueId,
-          incident_id: data.id,
-          zone_id: zid,
-          state: 'UNVALIDATED' as const,
-          state_changed_at: declaredAt,
-        }));
+      if (zonesToBootstrap.length > 0) {
+        // Need venue_type for the EC-23 chain inside bootstrap; re-fetch
+        // (cheap; cached at Postgres level — Day 1 already paid the round-trip
+        // for the declaring role's resolution; bootstrap re-uses).
+        const { data: venueRow2 } = await getServiceClient()
+          .from('venues')
+          .select('type')
+          .eq('id', venueId)
+          .single();
 
-        const { error: zsErr } = await getServiceClient()
-          .from('incident_zone_states')
-          .insert(zoneStateRows);
-        if (zsErr) {
-          logger.error({ zsErr, incidentId: data.id }, 'Failed to create incident_zone_states');
-          // Non-fatal: incident declared, but state grid will be empty.
-          // Day 2 PATCH endpoint will UPSERT to recover.
+        if (venueRow2) {
+          const result = await bootstrapSireIncident({
+            client: getServiceClient(),
+            incidentId: data.id,
+            venueId,
+            venueType: venueRow2.type,
+            incidentType: incident_type,
+            incidentSubtype: incident_subtype ?? null,
+            declaringStaffId: req.auth.staff_id,
+            declaringRole,
+            affectedZoneIds: zonesToBootstrap,
+            declaredAt,
+          });
+
+          if (result.errors.length > 0) {
+            logger.error(
+              { incidentId: data.id, errors: result.errors },
+              'SIRE bootstrap had errors',
+            );
+          } else {
+            logger.info(
+              {
+                incidentId: data.id,
+                zone_states: result.zone_states_created,
+                assignments: result.assignments_created,
+                roles_resolved: Object.keys(result.resolved_templates),
+              },
+              'SIRE bootstrap completed',
+            );
+          }
+
+          // Update the incident's resolved_templates with the multi-role snapshot.
+          // (Day 1 only stored the declaring role; bootstrap may have resolved more.)
+          if (Object.keys(result.resolved_templates).length > 0) {
+            await getServiceClient()
+              .from('incidents')
+              .update({ resolved_templates: result.resolved_templates })
+              .eq('id', data.id)
+              .eq('venue_id', venueId);
+          }
         }
-
-        // Append-only audit: log the initial state for each zone
-        const logRows = zonesToCreate.map((zid) => ({
-          venue_id: venueId,
-          incident_id: data.id,
-          zone_id: zid,
-          previous_state: null,
-          new_state: 'UNVALIDATED',
-          changed_by: req.auth.staff_id,
-          changed_by_role: declaringRole,
-          reason_note: 'Incident declared',
-          changed_at: declaredAt,
-        }));
-        await getServiceClient().from('incident_zone_state_log').insert(logRows);
       }
     }
-
-    // Return 201 immediately — notification fires async (NFR-02: ≤5 seconds)
-    res.status(201).json(data);
 
     // Async: enqueue incident escalation at highest priority (0)
     await incidentEscalationsQueue.add(
