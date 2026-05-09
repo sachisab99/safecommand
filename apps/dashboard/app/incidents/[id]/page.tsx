@@ -25,6 +25,8 @@ import { use, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { AppShell } from '../../../components/AppShell';
 import { apiFetch } from '../../../lib/api';
+import { getSession } from '../../../lib/auth';
+import { SireSection } from '../../../components/sire/SireSection';
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
 
@@ -55,6 +57,10 @@ interface IncidentDetail {
   zones: { name: string; floor_id: string | null } | null;
   staff: { name: string; role: string } | null;
   incident_timeline: TimelineEvent[];
+  // Phase 5.21 SIRE additions
+  has_sire_data?: boolean;
+  incident_subtype?: string | null;
+  is_drill?: boolean;
 }
 
 interface StaffRef {
@@ -226,6 +232,20 @@ export default function IncidentDetailPage({
             {incident.description && (
               <DescriptionCard description={incident.description} />
             )}
+            {/* SIRE v2 section — only for incidents declared with enable_sire=true.
+                Renders zone state grid + per-staff completion view + evacuation
+                triggers. Polls /v1/sire/state every 3s. */}
+            {incident.has_sire_data && (() => {
+              const session = getSession();
+              if (!session) return null;
+              return (
+                <SireSection
+                  incidentId={incident.id}
+                  staffId={session.staff.id}
+                  staffRole={session.staff.role}
+                />
+              );
+            })()}
             <TimelineCard
               events={incident.incident_timeline}
               staffMap={staffMap}
