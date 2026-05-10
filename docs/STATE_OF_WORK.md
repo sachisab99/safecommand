@@ -1,8 +1,9 @@
 # SafeCommand — State of Work
 
-> **Last updated:** 2026-05-08 evening (Phase 5.21 Day 1 SHIPPED)
-> **Branch:** `safecommand_v7` HEAD `ffccdc3` — 3 commits past Phase 5.18 HEAD `96a30dd`. `main` paused at Phase 5.18 binary; merge-back is on the next-session checklist (Day 1 commits are schema + types only — no functional code, so Railway/Amplify do not need to redeploy).
-> **Deploy state:** Railway api + AWS Amplify dashboard continue auto-deploying from `main` on push. Workers PAUSED via `WORKERS_PAUSED=true`. **Production schema:** post mig 009 + 010 + 011 + 012 + 013 + 014 + 015. Mig 013 deployed via Supabase Dashboard SQL Editor 2026-05-07; mig 014 + 015 deployed 2026-05-08 via `psql --single-transaction -v ON_ERROR_STOP=1` against the Supavisor session pooler (`aws-1-ap-northeast-1.pooler.supabase.com`); both verification blocks RAISE NOTICE'd "All checks PASSED".
+> **Last updated:** 2026-05-10 (Phase 5.21 Days 1-5 SHIPPED + MERGED; Day 6 partial; Day 7 pending)
+> **Branch:** `main` HEAD `652bc0b` — Days 1-5 merged via fast-forward 2026-05-09. `feat/sire-day2-day7` branch is in sync with `main` and can be deleted. Total Phase 5.21 contribution: **+4,373 lines / 21 files / 5 commits** on top of the Day 1 schema work.
+> **Deploy state:** **Railway api LIVE with all SIRE endpoints** (`/v1/sire/templates/resolve`, `/v1/sire/state/:id`, `PATCH /zones/:id/state`, `PATCH /action-assignments/:id`, `POST /evacuation-triggers` — all returning 401 to unauthenticated curl = routes mounted with auth gate active). **Amplify dashboard deploy NOT yet visible** post-merge — bundle URL hashes unchanged after 17+ min polling; AWS user lacks Amplify IAM perms to investigate; founder action required via Amplify Console. Workers stay PAUSED (`WORKERS_PAUSED=true`). **Production schema:** post mig 009 + 010 + 011 + 012 + 013 + 014 + 015 + 016 + 017. All deploy via `psql --single-transaction -v ON_ERROR_STOP=1` against Supavisor session pooler (`aws-1-ap-northeast-1.pooler.supabase.com`); verification blocks all RAISE NOTICE'd "All checks PASSED".
+> **Live SIRE demo incident** in production: `a4c716c6-e5e4-4fc3-8739-fff704c04e0a` (FIRE / SEV2 / FIRE_CONTAINED at T2-Parking-Entrance, Hyderabad Demo Supermall). Multi-role bootstrap fanned out 29 assignments across SH+DSH+SC+FS+GS roles + 1 zone state with assigned GS. Visible via dashboard once Amplify redeploys; via mobile once EAS Build completes.
 > **BR-14 Health Score:** **100% surface LIVE** — all 5 components compute live (Tasks 40 / Incidents 25 / Equipment 10 / Drills 10 / Certs 15)
 > **Two-tier admin parity:** **COMPLETE** — SH-tier write surfaces live for Equipment / Drills / Certifications / Shifts & Roster / Staff across mobile + dashboard, parallel to SC Ops Console.
 > **BR-A drill management:** **COMPLETE** — Schedule / Run / Time / Document / Per-staff acknowledgement / Reason taxonomy. Audit-grade per-drill detail (timeline + participation + reasons) on mobile + dashboard. PDF rendering = Phase B (data substrate ready).
@@ -28,7 +29,9 @@
 | Phase B Stage 3 — BR resume | 2026-06-02 onwards | ⏳ PENDING | June unfreeze: workers always-on, BR-10 → BR-32 sequence per `JUNE-2026-REVIEW-REQUIRED.md` |
 | Phase B Stage 4 — Pilot go-live | Q3 2026 (target) | ⏳ PENDING | 25-item go-live checklist; pilot mix = 1 single-building (clinic/boutique hotel) + 1 multi-building (Hyderabad supermall, MBV proof) |
 | **Phase 5.21 Day 1 — SIRE schema + state machine + EC-23 fallback** | **2026-05-08** | **✅ SHIPPED (ahead of post-pilot gate)** | Founder elected early build. Mig 014 (8 SIRE tables + 1 view + 5 incidents columns + global threshold seed) + mig 015 (EC-23 tier-6 fallback for FIRE/SH; 6 mandatory + life-critical actions) deployed to Supabase production. `packages/types/src/incident-zone-states.ts` (10-state × 5-role transition matrix; 5 helper functions; ROLE_TO_ZONE_TRANSITION_KEY) exported from `@safecommand/types`. Schema dormant in production — no Phase 5.21 endpoints / mobile UI / dashboard UI deployed yet. Hard Rule 24 satisfied for any subsequent code deploys. Pre-deploy fixes caught: 3 broken view column refs + 4 over-permissive RLS policies (commit `27e44f7`). EC-23 chain verified end-to-end (in-mig DO block + out-of-band re-verification with venue/role context). See §13 for full reference. |
-| Phase 5.21 Days 2-N — api endpoints + mobile UI + dashboard SIRE extension + remaining templates | TBD per founder | ⏳ PENDING | api endpoint scaffolding (PATCH `/v1/incidents/:id/zones/:zoneId/state` + GET `/v1/incidents/:id/sire-state` + POST `/v1/incidents/:id/evacuation-triggers` + …) → mobile IncidentDetailScreen v2 (10-state grid + 3-button staff action + drawer banner extension) → dashboard `/incidents/[id]` SIRE extension (selective evacuation modal + zone state grid + per-role completion view) → remaining 15 priority sub-type templates per founder Phase 5.21 list. Tied to existing post-pilot validation if founder reverts to original cadence; otherwise paced as the founder directs. |
+| **Phase 5.21 Days 2-5 — api mutations + mobile UI + dashboard UI + multi-role fan-out** | **2026-05-09** | **✅ SHIPPED + MERGED to main** | Day 2 (`d95f792`) 3 mutation endpoints + mig 017 (5 templates: FIRE+GS/FS/SC/DSH + EVACUATION+SH) + `bootstrapSireIncident.ts` multi-role fan-out service. Day 3 (`a924161`) mobile `services/sire.ts` + 840-line `SireSection` component (zone grid + 3 modal sheets + 3s polling). Day 4 (`151bbee`) dashboard `lib/sire.ts` + 480-line `SireSection` (zone grid + per-staff completion table + selective-evac modal). Day 5 (`652bc0b`) mobile `IncidentScreen` SIRE toggle + DSH demo seed. Total +4,373 lines / 21 files / 5 commits. Phase 1 v1 path preserved verbatim (`enable_sire` defaults false). All 4 apps tsc clean throughout; 45 vitest tests pass. **Live SIRE demo incident `a4c716c6-…` declared in production** with 29 multi-role assignments. See §14 for full Days 2-5 reference. |
+| **Phase 5.21 Day 6 — production deploy** | **2026-05-09** | **🟡 PARTIAL** | ✅ Railway api auto-redeployed (verified: all 5 `/v1/sire/*` routes return 401 = mounted with auth gate; legacy routes still 401; `/health` 200 OK with database+firebase healthy). 🟡 **Amplify dashboard NOT yet redeployed** — bundle URL hashes unchanged after 17+ min polling post-merge; local `npm run build` succeeds cleanly so code is correct; AWS user `safecommand-api` lacks Amplify IAM perms (S3-only) — cannot read deploy status from CLI. **Founder action:** open AWS Amplify Console → app `d3t439ur25l1xc` → main branch → check job status. See `reference_amplify_dashboard_deploy_issue.md` memory for IAM policy snippet to grant + investigation playbook. |
+| Phase 5.21 Day 7 — end-to-end device test | TBD post Amplify fix + EAS Build | ⏳ PENDING | EAS Build mobile binary (`cd apps/mobile && eas build --profile development --platform android` ~15-20 min) → install APK → walk through demo flow on Android (SH declares SIRE FIRE → GS taps Zone Clear → SH dashboard polls + sees update → SH triggers selective evac → audit trail rolls forward). Recorded Loom. Final demo runbook commit. |
 | Phase 5.22 — SIRE polish (v8) | Post Phase 5.21 | ⏳ PENDING | PA auto-draft (English first, regional Phase B) + remaining 16 sub-type templates + SC Ops Console template editor + threshold configuration UI with standards comparison. ~2 weeks engineering. |
 | Phase C — GCP migration + Roaming + Brand UI + Corporate Governance | Month 5–18 (post-pilot) | ⏳ FUTURE | Phase 2/3 work; international data residency; SOC 2 / ISO readiness |
 
@@ -710,3 +713,95 @@ Without the tier-6 row, an SH declaring an unanticipated FIRE sub-type would hav
 - **Schema dormant in production:** until Day 2+ endpoints land, the SIRE tables are not read or written by any deployed binary. Existing incident declarations continue using the Phase 1 binary "I AM SAFE" model (`has_sire_data=FALSE` is the default for any new row). This means the Day 1 schema change is zero-risk to live operations.
 - **Hard Rule 24 inversion-proofed:** because the schema deployed first, any subsequent Phase 5.21 endpoint deploy can land on `main` without "tables don't exist" 500s. The Hard Rule 24 enforcement is honoured at the operational level.
 - **Merge-back from `safecommand_v7` to `main`:** Day 1 commits don't change runtime behaviour, so the merge can happen at any convenient point — there's no rush. Recommended: merge before Day 2 work begins so the api endpoints can be authored on a clean main with the types package + schema visible.
+
+---
+
+## 14. Phase 5.21 Days 2-7 build state (full reference)
+
+**Status:** Days 1-5 SHIPPED + MERGED to main 2026-05-09. Day 6 partial. Day 7 pending.
+
+### 14.1 Commit chain on main
+
+| Commit | Day | Description | Lines |
+|---|---|---|---|
+| `251f4ab` | 1 | api foundation: vitest + 31 transition matrix tests + 14 templateResolver tests + GET endpoints + POST /incidents extension | +750 |
+| `d95f792` | 2 | 3 mutation endpoints + mig 017 (5 templates: FIRE+GS/FS/SC/DSH + EVACUATION+SH) + bootstrapSireIncident multi-role fan-out | +1,371 |
+| `a924161` | 3 | mobile services/sire.ts + 840-line SireSection (zone grid + 3 modal sheets + 3s polling) | +1,081 |
+| `151bbee` | 4 | dashboard lib/sire.ts + 480-line SireSection (zone grid + per-staff completion table + selective-evac modal) | +688 |
+| `652bc0b` | 5 | mobile IncidentScreen SIRE toggle + DSH staff seed (out-of-repo) | +146 |
+
+**Total: +4,373 lines / 21 files / 5 commits.** Phase 1 v1 path preserved verbatim throughout.
+
+### 14.2 Production state post-deploy
+
+**Schema (mig 014/015/016/017 all deployed):**
+- 8 SIRE tables · 1 view · 5 incidents columns · 6 global+parent action templates seeded
+- Hyderabad Demo Supermall: 20 active staff (SH=2, DSH=1, SC=1, FS=3, GS=13)
+
+**Live SIRE demo incident:**
+- ID: `a4c716c6-e5e4-4fc3-8739-fff704c04e0a`
+- FIRE / SEV2 / FIRE_CONTAINED at T2-Parking-Entrance
+- 1 zone state (UNVALIDATED, GS = TEST_DEMO_Security_S01)
+- 29 assignments: SH/DSH/SC/FS each 6 actions · GS 5 actions · all status=ASSIGNED
+- 0 evacuation triggers (none yet)
+
+**Railway api LIVE (verified):**
+```
+GET  /health                                       → 200 OK · database+firebase healthy
+GET  /v1/sire/templates/resolve                    → 401 (route mounted with requireAuth)
+GET  /v1/sire/state/:id                            → 401 (route mounted)
+PATCH /v1/sire/incidents/:id/zones/:zoneId/state   → route mounted
+PATCH /v1/sire/action-assignments/:id              → route mounted
+POST /v1/sire/incidents/:id/evacuation-triggers    → route mounted
+GET  /v1/incidents (legacy)                        → 401 (no regression)
+GET  /v1/zones, drill-sessions, equipment, etc     → 401 (no regression)
+```
+
+### 14.3 Day 6 follow-up needed (Amplify deploy stalled)
+
+- Bundle URL hashes on `https://main.d3t439ur25l1xc.amplifyapp.com` unchanged after 17+ min polling
+- Local `npm run build --workspace=apps/dashboard` succeeds cleanly (all 14 routes generated)
+- AWS user `safecommand-api` is S3-only (no `amplify:GetApp` / `amplify:ListJobs` / `amplify:StartJob`)
+- **Founder action:** open AWS Amplify Console → app `d3t439ur25l1xc` → main branch → latest job
+  - If "Failed": paste build logs to me; I fix from here
+  - If "In Progress": wait
+  - If no job triggered: click "Redeploy this version"
+  - Or: grant Amplify IAM perms to `safecommand-api` user (policy in `reference_amplify_dashboard_deploy_issue.md`)
+- **Workaround until Amplify is fixed:** run dashboard locally
+  ```bash
+  cd "/Volumes/Crucial X9/claude_code/NEXUS_system/products/Safecommand"
+  npm run dev --workspace=apps/dashboard
+  # then open http://localhost:3000/incidents/a4c716c6-...
+  ```
+
+### 14.4 Day 7 — end-to-end device test (founder action)
+
+Pending: EAS Build mobile binary
+```bash
+cd "/Volumes/Crucial X9/claude_code/NEXUS_system/products/Safecommand/apps/mobile"
+eas build --profile development --platform android
+# ~15-20 min cloud build; install fresh APK on Android device
+```
+
+After EAS APK installed + Amplify dashboard fixed, demo flow:
+1. SH on dashboard `https://main.d3t439ur25l1xc.amplifyapp.com/incidents/a4c716c6-…` → see live zone grid + completion table
+2. GS on Android phone (Firebase test number `+917032701272` is at a different venue; use mobile login as +919999000003 (Anil Reddy, GS at Hyderabad) once mobile binary is fresh — note: TEST_PHONE_PAIRS bypass for non-Firebase test numbers needs verification on the new mobile binary)
+3. GS taps assigned zone in mobile → state action sheet → ZONE_CLEAR / NEEDS_ATTENTION / EVACUATION_TRIGGERED
+4. SH dashboard polls every 3s → state update visible within ~3s
+5. SH triggers selective evacuation → zone flips to EVACUATION_TRIGGERED · row added to evacuation_triggers audit list
+6. Recorded Loom
+
+### 14.5 Operational notes for next session
+
+- **JWT for service-side curl tests:** local `.env` JWT_SECRET is dev placeholder; use Railway env JWT_SECRET. Pull via `railway variables --service api --kv | grep JWT_SECRET`.
+- **Test JWT generation pattern (working):**
+  ```js
+  // node -e with @safecommand workspace's jsonwebtoken module
+  const jwt = require('jsonwebtoken');
+  jwt.sign({sub, venue_id, staff_id, role}, prodSecret, {expiresIn: '1h'});
+  ```
+- **Hyderabad demo venue UUID:** `096a3701-beb0-4ffe-9e74-43af3c26e09f`
+- **TEST_DEMO_Security_Head staff_id:** `8782b217-e023-4b37-8d63-3593069fa33f` (phone +919000012300)
+- **TEST_DEMO_Security_S01 staff_id:** `7bc9c06d-2e74-4f25-a749-399e71366bd5` (GS, phone +919000012301)
+- **TEST_DEMO_Deputy_Security_Head staff_id:** `538d36ad-2837-4049-85bc-c952d08c4bec` (DSH, phone +919000012302; seeded Day 5)
+- **T2-Parking-Entrance zone_id:** `0ba4d669-0746-4f64-999d-56ed11385578` (the demo zone for the active incident)
