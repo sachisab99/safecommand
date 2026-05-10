@@ -5,11 +5,11 @@ applications:
       phases:
         preBuild:
           commands:
-            - npm install --no-audit --no-fund --no-package-lock
+            - (cd ../.. && npm install --no-audit --no-fund --no-package-lock)
             - env | grep -e NEXT_PUBLIC_ >> .env.production || true
         build:
           commands:
-            - npm run build
+            - (cd ../.. && npm run build --workspace=packages/types && npm run build --workspace=apps/dashboard)
       artifacts:
         baseDirectory: .next
         files:
