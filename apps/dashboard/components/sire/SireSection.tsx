@@ -26,6 +26,8 @@ import {
   fetchSireState,
   patchZoneState,
   postEvacuationTrigger,
+  dismissPrompt,
+  uploadIncidentPhotoWeb,
   summariseAssignments,
   zoneStateClasses,
   statusClasses,
@@ -37,6 +39,7 @@ import {
   getValidTransitions,
   requiresReasonNote,
   requiresEvidence,
+  draftPaAnnouncement,
   ZONE_STATE_LABEL,
   type IncidentZoneState,
 } from '@safecommand/types';
@@ -61,6 +64,9 @@ export function SireSection({
   const [loading, setLoading] = useState(true);
   const [zoneTarget, setZoneTarget] = useState<SireZoneState | null>(null);
   const [evacOpen, setEvacOpen] = useState(false);
+  const [busyPrompt, setBusyPrompt] = useState<string | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const refresh = useCallback(async () => {
@@ -68,6 +74,31 @@ export function SireSection({
     if (fresh) setState(fresh);
     setLoading(false);
   }, [incidentId]);
+
+  const handleDismissPrompt = useCallback(
+    async (promptId: string) => {
+      setBusyPrompt(promptId);
+      const res = await dismissPrompt(promptId);
+      setBusyPrompt(null);
+      if (res.ok) refresh();
+    },
+    [refresh],
+  );
+
+  const handlePhotoUpload = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      e.target.value = ''; // reset so the same file can be re-picked
+      if (!file) return;
+      setUploadingPhoto(true);
+      setPhotoError(null);
+      const res = await uploadIncidentPhotoWeb(incidentId, file);
+      setUploadingPhoto(false);
+      if (res.ok) refresh();
+      else setPhotoError(res.error ?? 'Upload failed');
+    },
+    [incidentId, refresh],
+  );
 
   useEffect(() => {
     refresh();
@@ -95,6 +126,46 @@ export function SireSection({
 
   return (
     <section className="space-y-6">
+      {/* ─── BR-L soft suggestion banner (Hard Rule 23: NEVER auto-trigger) ───
+          Command-only (server-gated data). A SUGGESTION surface only — the SH
+          must still explicitly use the evacuation trigger. No code path here
+          fires an evacuation. */}
+      {state.active_prompts.map((p) => (
+        <div
+          key={p.id}
+          className="rounded-lg border border-amber-400 bg-amber-50 p-4"
+          role="status"
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-sm font-bold text-amber-900">
+                ⚠ Suggestion — not automatic
+              </p>
+              <p className="mt-1 text-sm text-amber-900">{p.message}</p>
+            </div>
+            <div className="flex shrink-0 gap-2">
+              {canTriggerEvac && (
+                <button
+                  type="button"
+                  onClick={() => setEvacOpen(true)}
+                  className="rounded-md bg-amber-200 px-3 py-1.5 text-sm font-semibold text-amber-900 transition hover:bg-amber-300"
+                >
+                  Review evacuation →
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => handleDismissPrompt(p.id)}
+                disabled={busyPrompt === p.id}
+                className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+              >
+                {busyPrompt === p.id ? 'Dismissing…' : 'Dismiss'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ))}
+
       {/* ─── Zone state grid ─── */}
       <div className="rounded-lg border border-slate-200 bg-white p-5">
         <div className="mb-4 flex items-center justify-between">
@@ -243,6 +314,61 @@ export function SireSection({
         </div>
       )}
 
+      {/* ─── Shared incident photo wall (Rec 2b) — any staff posts, all see ─── */}
+      <div className="rounded-lg border border-slate-200 bg-white p-5">
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">Incident photos</h2>
+            <p className="text-xs text-slate-500">
+              {state.evidence_wall.length} photo{state.evidence_wall.length !== 1 ? 's' : ''} ·
+              {' '}visible to everyone on this incident
+            </p>
+          </div>
+          <label className="cursor-pointer rounded-md border border-blue-400 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-800 transition hover:bg-blue-100">
+            {uploadingPhoto ? 'Uploading…' : '📷 Add a photo'}
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handlePhotoUpload}
+              disabled={uploadingPhoto}
+            />
+          </label>
+        </div>
+        {photoError && <p className="mb-2 text-sm text-red-600">{photoError}</p>}
+        {state.evidence_wall.length === 0 ? (
+          <p className="text-sm italic text-slate-500">No photos posted yet.</p>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
+            {state.evidence_wall.map((ev) => (
+              <a
+                key={ev.id}
+                href={ev.evidence_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block overflow-hidden rounded-md border border-slate-200 transition hover:shadow-md"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={ev.evidence_url}
+                  alt={ev.caption ?? 'Incident photo'}
+                  className="h-32 w-full bg-slate-100 object-cover"
+                />
+                <div className="p-2">
+                  <p className="truncate text-xs text-slate-600">
+                    {ev.staff?.name ?? ev.posted_by_role ?? 'Staff'} ·{' '}
+                    {new Date(ev.created_at).toLocaleTimeString('en-IN')}
+                  </p>
+                  {ev.caption && (
+                    <p className="mt-0.5 line-clamp-2 text-xs text-slate-800">{ev.caption}</p>
+                  )}
+                </div>
+              </a>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* ─── Zone state action modal ─── */}
       {zoneTarget && (
         <ZoneStateModal
@@ -380,6 +506,7 @@ function EvacuationModal(props: {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [reasonNote, setReasonNote] = useState('');
   const [paText, setPaText] = useState('');
+  const [paEdited, setPaEdited] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -389,6 +516,21 @@ function EvacuationModal(props: {
     else next.add(zoneId);
     setSelected(next);
   };
+
+  // BR-N: auto-draft PA text from current selection (selective if zones
+  // picked, else full-venue). Does not clobber SH manual edits.
+  useEffect(() => {
+    if (paEdited) return;
+    const names = props.zoneStates
+      .filter((z) => selected.has(z.zone_id))
+      .map((z) => z.zones?.name ?? z.zone_id.slice(0, 8));
+    setPaText(
+      draftPaAnnouncement({
+        triggerType: selected.size > 0 ? 'ZONE_SELECTIVE' : 'FULL_VENUE',
+        zoneNames: names,
+      }).en,
+    );
+  }, [selected, paEdited, props.zoneStates]);
 
   const submit = async (triggerType: 'ZONE_SELECTIVE' | 'FULL_VENUE') => {
     if (reasonNote.trim().length === 0) {
@@ -454,13 +596,32 @@ function EvacuationModal(props: {
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
             rows={2}
           />
-          <textarea
-            value={paText}
-            onChange={(e) => setPaText(e.target.value)}
-            placeholder="PA broadcast text (optional)"
-            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-            rows={3}
-          />
+          <div>
+            <div className="mb-1 flex items-center justify-between">
+              <label className="text-xs text-slate-500">
+                PA announcement (auto-drafted — edit before broadcast)
+              </label>
+              {paEdited && (
+                <button
+                  type="button"
+                  onClick={() => setPaEdited(false)}
+                  className="text-xs font-semibold text-blue-700 hover:underline"
+                >
+                  ↻ Reset to suggested
+                </button>
+              )}
+            </div>
+            <textarea
+              value={paText}
+              onChange={(e) => {
+                setPaEdited(true);
+                setPaText(e.target.value);
+              }}
+              placeholder="PA broadcast text"
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              rows={4}
+            />
+          </div>
           {error && <p className="text-sm text-red-600">{error}</p>}
         </div>
 

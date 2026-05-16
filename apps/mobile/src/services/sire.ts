@@ -14,6 +14,7 @@
 
 import { apiFetch } from '../config/api';
 import { getStoredSession } from './auth';
+import { uploadToS3 } from './tasks';
 import type { IncidentZoneState } from '@safecommand/types';
 
 // ─── Types (mirror api response shapes) ─────────────────────────────────────
@@ -65,6 +66,34 @@ export interface SireEvacuationTrigger {
   triggered_at: string;
 }
 
+export interface SireEvidenceItem {
+  id: string;
+  incident_id: string;
+  posted_by: string | null;
+  posted_by_role: string | null;
+  evidence_url: string;
+  content_type: string | null;
+  caption: string | null;
+  gps_latitude: number | null;
+  gps_longitude: number | null;
+  created_at: string;
+  staff?: { name: string } | null;
+}
+
+export interface SireDashboardPrompt {
+  id: string;
+  prompt_type: string;
+  message: string;
+  trigger_metadata: {
+    zones_in_attention?: string[];
+    window_minutes?: number;
+    threshold_zones?: number;
+  } | null;
+  created_at: string;
+  dismissed_at: string | null;
+  dismissed_by: string | null;
+}
+
 export interface SireState {
   incident_id: string;
   has_sire_data: boolean;
@@ -75,6 +104,10 @@ export interface SireState {
   zone_states: SireZoneState[];
   assignments: SireAssignment[];
   evacuation_triggers: SireEvacuationTrigger[];
+  /** Shared incident photo wall (mig 018, Rec 2b) — every incident */
+  evidence_wall: SireEvidenceItem[];
+  /** BR-L soft suggestions — command roles only (Hard Rule 23: never auto-trigger) */
+  active_prompts: SireDashboardPrompt[];
 }
 
 // ─── GET /v1/sire/state/:incidentId ─────────────────────────────────────────
@@ -169,6 +202,74 @@ export async function postEvacuationTrigger(
     },
   );
   return { ok: !error, error, trigger: data ?? undefined };
+}
+
+// ─── Incident photo wall (mig 018, Rec 2b) ─────────────────────────────────
+
+/**
+ * Capture→S3 helper: presign for purpose=incident_evidence, PUT the local
+ * file to S3, return the public URL. Reuses uploadToS3 from services/tasks
+ * (same pattern as task photo evidence — BR-07).
+ */
+export async function uploadIncidentPhoto(
+  incidentId: string,
+  localUri: string,
+  contentType = 'image/jpeg',
+): Promise<{ ok: boolean; publicUrl?: string; error?: string }> {
+  const session = await getStoredSession();
+  if (!session) return { ok: false, error: 'Not authenticated' };
+
+  const { data, error } = await apiFetch<{
+    upload_url: string;
+    file_key: string;
+    public_url: string;
+  }>(
+    `/upload/presign?purpose=incident_evidence&ref_id=${incidentId}&content_type=${encodeURIComponent(contentType)}`,
+    { token: session.access_token },
+  );
+  if (error || !data) return { ok: false, error: error ?? 'Could not get upload URL' };
+
+  const uploaded = await uploadToS3(data.upload_url, localUri, contentType);
+  if (!uploaded) return { ok: false, error: 'Photo upload failed' };
+
+  return { ok: true, publicUrl: data.public_url };
+}
+
+export interface PostIncidentEvidencePayload {
+  evidence_url: string;
+  content_type?: string;
+  caption?: string;
+  gps_latitude?: number;
+  gps_longitude?: number;
+}
+
+export async function postIncidentEvidence(
+  incidentId: string,
+  payload: PostIncidentEvidencePayload,
+): Promise<{ ok: boolean; error: string | null }> {
+  const session = await getStoredSession();
+  if (!session) return { ok: false, error: 'Not authenticated' };
+  const { error } = await apiFetch<{ id: string }>(`/sire/incidents/${incidentId}/evidence`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+    token: session.access_token,
+  });
+  return { ok: !error, error };
+}
+
+// ─── BR-L soft prompt dismiss (command roles only) ─────────────────────────
+
+export async function dismissPrompt(
+  promptId: string,
+): Promise<{ ok: boolean; error: string | null }> {
+  const session = await getStoredSession();
+  if (!session) return { ok: false, error: 'Not authenticated' };
+  const { error } = await apiFetch<{ id: string }>(`/sire/prompts/${promptId}/dismiss`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+    token: session.access_token,
+  });
+  return { ok: !error, error };
 }
 
 // ─── Helpers for UI ─────────────────────────────────────────────────────────

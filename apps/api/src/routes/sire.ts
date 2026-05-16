@@ -26,6 +26,7 @@ import {
   getValidTransitions,
   requiresReasonNote,
   requiresEvidence,
+  draftPaAnnouncement,
   type IncidentZoneState,
   INCIDENT_ZONE_STATES,
 } from '@safecommand/types';
@@ -186,7 +187,21 @@ sireRouter.get('/state/:incidentId', async (req: Request, res: Response): Promis
     return;
   }
 
+  // ── Shared incident photo wall (mig 018) — present on EVERY incident,
+  // SIRE or legacy, per founder Rec 2b. Fetched before the has_sire_data
+  // branch so the legacy fallback still carries the wall. Newest first.
+  const { data: evidenceWall } = await getServiceClient()
+    .from('incident_evidence')
+    .select(
+      'id, incident_id, posted_by, posted_by_role, evidence_url, content_type, ' +
+        'caption, gps_latitude, gps_longitude, created_at, staff:posted_by(name)',
+    )
+    .eq('incident_id', incidentId!)
+    .eq('venue_id', venueId)
+    .order('created_at', { ascending: false });
+
   // Non-SIRE incidents return 200 + empty SIRE payload (caller falls back)
+  // but still carry the photo wall (generic incident feature, not SIRE-only).
   if (!incident.has_sire_data) {
     res.json({
       incident_id: incident.id,
@@ -194,6 +209,8 @@ sireRouter.get('/state/:incidentId', async (req: Request, res: Response): Promis
       zone_states: [],
       assignments: [],
       evacuation_triggers: [],
+      evidence_wall: evidenceWall ?? [],
+      active_prompts: [],
     });
     return;
   }
@@ -255,6 +272,27 @@ sireRouter.get('/state/:incidentId', async (req: Request, res: Response): Promis
     return;
   }
 
+  // 5. Active BR-L soft prompts (un-dismissed AUTO_EVAC_SUGGESTION etc.)
+  //    Hard Rule 23: these are SUGGESTIONS only — is_auto_trigger is FALSE
+  //    by DB CHECK; no code path here triggers an evacuation.
+  //    Command-only: mirrors incident_dashboard_prompts.command_only_read
+  //    RESTRICTIVE RLS (service_role bypasses RLS, so gate explicitly here).
+  const isCommandViewer =
+    req.auth.role === 'SH' || req.auth.role === 'DSH' || req.auth.role === 'SHIFT_COMMANDER';
+  let prompts: unknown[] = [];
+  if (isCommandViewer) {
+    const { data: promptRows } = await getServiceClient()
+      .from('incident_dashboard_prompts')
+      .select(
+        'id, prompt_type, message, trigger_metadata, created_at, dismissed_at, dismissed_by',
+      )
+      .eq('incident_id', incidentId!)
+      .eq('venue_id', venueId)
+      .is('dismissed_at', null)
+      .order('created_at', { ascending: false });
+    prompts = promptRows ?? [];
+  }
+
   res.json({
     incident_id: incident.id,
     has_sire_data: true,
@@ -265,6 +303,8 @@ sireRouter.get('/state/:incidentId', async (req: Request, res: Response): Promis
     zone_states: zoneStates ?? [],
     assignments: assignments ?? [],
     evacuation_triggers: triggers ?? [],
+    evidence_wall: evidenceWall ?? [],
+    active_prompts: prompts ?? [],
   });
 });
 
@@ -456,6 +496,87 @@ sireRouter.patch(
       // Audit-log write failure is non-fatal (zone state already updated)
       // but should be logged for ops investigation.
       logger.error({ logErr, incidentId, zoneId }, 'Failed to write zone_state_log row');
+    }
+
+    // ─── BR-L auto-evacuation SUGGESTION detector (Hard Rule 23) ───
+    //
+    // CRITICAL: this NEVER triggers an evacuation. It only inserts a soft
+    // prompt row for the SH dashboard. is_auto_trigger is FALSE by DB CHECK;
+    // there is deliberately NO call to the evacuation path here. Wrapped so
+    // any failure is swallowed — it must never affect the zone-state result.
+    //
+    // Fires when: a zone enters NEEDS_ATTENTION during an active FIRE and
+    // ≥2 zones are in NEEDS_ATTENTION within a 3-minute window, and no
+    // un-dismissed AUTO_EVAC_SUGGESTION already exists for this incident.
+    if (targetState === 'NEEDS_ATTENTION') {
+      try {
+        const { data: inc } = await getServiceClient()
+          .from('incidents')
+          .select('incident_type')
+          .eq('id', incidentId)
+          .eq('venue_id', venueId)
+          .single();
+
+        if (inc?.incident_type === 'FIRE') {
+          const WINDOW_MIN = 3;
+          const THRESHOLD = 2;
+          const since = new Date(Date.now() - WINDOW_MIN * 60_000).toISOString();
+
+          const { data: hotZones } = await getServiceClient()
+            .from('incident_zone_states')
+            .select('zone_id')
+            .eq('incident_id', incidentId)
+            .eq('venue_id', venueId)
+            .eq('state', 'NEEDS_ATTENTION')
+            .gte('state_changed_at', since);
+
+          const zoneIds = (hotZones ?? []).map((z) => z.zone_id);
+
+          if (zoneIds.length >= THRESHOLD) {
+            // Only one active suggestion per incident — don't spam the SH.
+            const { data: existing } = await getServiceClient()
+              .from('incident_dashboard_prompts')
+              .select('id')
+              .eq('incident_id', incidentId)
+              .eq('venue_id', venueId)
+              .eq('prompt_type', 'AUTO_EVAC_SUGGESTION')
+              .is('dismissed_at', null)
+              .limit(1);
+
+            if (!existing || existing.length === 0) {
+              const { error: promptErr } = await getServiceClient()
+                .from('incident_dashboard_prompts')
+                .insert({
+                  venue_id: venueId,
+                  incident_id: incidentId,
+                  prompt_type: 'AUTO_EVAC_SUGGESTION',
+                  message:
+                    `${zoneIds.length} zones reported NEEDS ATTENTION within ${WINDOW_MIN} ` +
+                    `minutes during an active FIRE. Consider a selective or full evacuation. ` +
+                    `This is a suggestion only — you must explicitly trigger any evacuation.`,
+                  // is_auto_trigger intentionally omitted → DB default FALSE
+                  // (CHECK constraint also enforces FALSE — Hard Rule 23).
+                  trigger_metadata: {
+                    zones_in_attention: zoneIds,
+                    window_minutes: WINDOW_MIN,
+                    threshold_zones: THRESHOLD,
+                  },
+                });
+              if (promptErr) {
+                logger.error({ promptErr, incidentId }, 'BR-L: failed to insert suggestion prompt');
+              } else {
+                logger.info(
+                  { incidentId, zoneCount: zoneIds.length },
+                  'BR-L: auto-evac SUGGESTION raised (no auto-trigger — Hard Rule 23)',
+                );
+              }
+            }
+          }
+        }
+      } catch (brlErr) {
+        // Absolutely non-fatal: the zone state change already succeeded.
+        logger.error({ brlErr, incidentId, zoneId }, 'BR-L detector errored (non-fatal)');
+      }
     }
 
     res.json(updated);
@@ -729,6 +850,28 @@ sireRouter.post(
       return;
     }
 
+    // BR-N: auto-draft the PA announcement (immutable audit baseline). Resolve
+    // human zone names for the affected zones so the text is meaningful. The
+    // operational reason_note is deliberately NOT injected into the public PA
+    // (panic hazard) — it stays in the audit row only.
+    let paZoneNames: string[] = [];
+    if ((zones_affected ?? []).length > 0) {
+      const { data: zoneRows } = await getServiceClient()
+        .from('zones')
+        .select('name')
+        .eq('venue_id', venueId)
+        .in('id', zones_affected ?? []);
+      paZoneNames = (zoneRows ?? []).map((z) => z.name).filter(Boolean);
+    }
+    const paDraft = draftPaAnnouncement({
+      triggerType: trigger_type as
+        | 'ZONE_SELECTIVE'
+        | 'FLOOR_SELECTIVE'
+        | 'FULL_VENUE'
+        | 'STAFF_TRIGGERED',
+      zoneNames: paZoneNames,
+    }).en;
+
     // Insert the immutable trigger row (Hard Rule 4 / BR-P)
     const triggeredAt = new Date().toISOString();
     const { data: trigger, error: tErr } = await getServiceClient()
@@ -742,7 +885,7 @@ sireRouter.post(
         zones_affected: zones_affected ?? [],
         building_id: building_id ?? null,
         reason_note,
-        pa_text_generated: null,
+        pa_text_generated: paDraft,
         pa_text_broadcast: pa_text_broadcast ?? null,
         pa_language: pa_language ?? 'en-IN',
         triggered_at: triggeredAt,
@@ -802,6 +945,145 @@ sireRouter.post(
     }
 
     res.status(201).json(trigger);
+  },
+);
+
+// ──────────────────────────────────────────────────────────────────────────
+// POST /v1/sire/incidents/:incidentId/evidence
+//
+// Shared incident photo wall (mig 018, Rec 2b). ANY authenticated venue
+// staff may post a photo against an incident; it is visible to every venue
+// user on that incident via GET /sire/state (evidence_wall[]).
+//
+// Append-only (Hard Rule 4) — INSERT only, never UPDATE/DELETE. The photo
+// itself is uploaded directly to S3 by the client via /v1/upload/presign
+// (purpose=incident_evidence); this endpoint records the resulting file
+// key + optional caption / GPS.
+//
+// No requireRole — deliberately open to all venue staff (GS included), the
+// same trust posture as the v1 "I AM SAFE" report. Venue isolation is
+// enforced by venue_id scoping on insert + read.
+//
+// Body: { evidence_url: string (required), content_type?, caption?,
+//         gps_latitude?, gps_longitude? }
+
+sireRouter.post(
+  '/incidents/:incidentId/evidence',
+  auditLog('SIRE_INCIDENT_EVIDENCE_POST'),
+  async (req: Request, res: Response): Promise<void> => {
+    const incidentId = req.params['incidentId']!;
+    const venueId = req.auth.venue_id;
+    const staffId = req.auth.staff_id;
+    const role = req.auth.role;
+
+    const { evidence_url, content_type, caption, gps_latitude, gps_longitude } =
+      (req.body ?? {}) as {
+        evidence_url?: string;
+        content_type?: string;
+        caption?: string;
+        gps_latitude?: number;
+        gps_longitude?: number;
+      };
+
+    if (!evidence_url || evidence_url.trim().length === 0) {
+      res.status(400).json({
+        error: { code: 'EVIDENCE_URL_REQUIRED', message: 'evidence_url is required' },
+      });
+      return;
+    }
+
+    // Confirm incident exists in caller's venue (tenant isolation)
+    const { data: incident, error: iErr } = await getServiceClient()
+      .from('incidents')
+      .select('id, venue_id')
+      .eq('id', incidentId)
+      .eq('venue_id', venueId)
+      .single();
+    if (iErr || !incident) {
+      res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Incident not found' } });
+      return;
+    }
+
+    const { data: row, error: insErr } = await getServiceClient()
+      .from('incident_evidence')
+      .insert({
+        venue_id: venueId,
+        incident_id: incidentId,
+        posted_by: staffId,
+        posted_by_role: role,
+        evidence_url: evidence_url.trim(),
+        content_type: content_type ?? null,
+        caption: caption?.trim() || null,
+        gps_latitude: gps_latitude ?? null,
+        gps_longitude: gps_longitude ?? null,
+      })
+      .select()
+      .single();
+
+    if (insErr || !row) {
+      logger.error({ insErr, incidentId }, 'Failed to insert incident_evidence row');
+      res.status(500).json({
+        error: { code: 'EVIDENCE_INSERT_FAILED', message: 'Could not record incident photo' },
+      });
+      return;
+    }
+
+    res.status(201).json(row);
+  },
+);
+
+// ──────────────────────────────────────────────────────────────────────────
+// POST /v1/sire/prompts/:promptId/dismiss
+//
+// SH/DSH/SHIFT_COMMANDER dismisses a BR-L soft suggestion (e.g. after
+// reviewing it and deciding evacuation is NOT warranted, or after acting
+// on it). Sets dismissed_at + dismissed_by. The row is immutable otherwise
+// (no other mutation path). This does NOT trigger or cancel anything
+// operationally — it only clears the prompt from the SH surface.
+//
+// Body: {} (no body required)
+
+sireRouter.post(
+  '/prompts/:promptId/dismiss',
+  requireRole('SH', 'DSH', 'SHIFT_COMMANDER'),
+  auditLog('SIRE_PROMPT_DISMISS'),
+  async (req: Request, res: Response): Promise<void> => {
+    const promptId = req.params['promptId']!;
+    const venueId = req.auth.venue_id;
+    const staffId = req.auth.staff_id;
+
+    const { data: prompt, error: readErr } = await getServiceClient()
+      .from('incident_dashboard_prompts')
+      .select('id, dismissed_at')
+      .eq('id', promptId)
+      .eq('venue_id', venueId)
+      .single();
+
+    if (readErr || !prompt) {
+      res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Prompt not found' } });
+      return;
+    }
+    if (prompt.dismissed_at) {
+      res.json({ status: 'NO_OP', prompt });
+      return;
+    }
+
+    const { data: updated, error: upErr } = await getServiceClient()
+      .from('incident_dashboard_prompts')
+      .update({ dismissed_at: new Date().toISOString(), dismissed_by: staffId })
+      .eq('id', promptId)
+      .eq('venue_id', venueId)
+      .select()
+      .single();
+
+    if (upErr || !updated) {
+      res.status(500).json({
+        error: { code: 'DISMISS_FAILED', message: 'Could not dismiss prompt' },
+      });
+      return;
+    }
+
+    res.json(updated);
   },
 );
 

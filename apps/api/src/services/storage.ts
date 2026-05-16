@@ -18,7 +18,11 @@ function getS3Client(): S3Client {
 const BUCKET = process.env['AWS_S3_BUCKET'] ?? 'safecommand-uploads-prod';
 const PRESIGN_TTL_SECONDS = 300; // 5 minutes
 
-export type UploadPurpose = 'task_evidence' | 'id_photo' | 'visitor_photo';
+export type UploadPurpose =
+  | 'task_evidence'
+  | 'id_photo'
+  | 'visitor_photo'
+  | 'incident_evidence'; // Phase 5.21 Day 7 — shared incident photo stream (Rec 2b)
 
 export async function getPresignedUploadUrl(
   purpose: UploadPurpose,

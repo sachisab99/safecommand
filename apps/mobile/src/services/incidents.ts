@@ -33,6 +33,8 @@ export interface ActiveIncident {
   status: 'ACTIVE' | 'CONTAINED';
   declared_at: string;
   zones: { name: string } | null;
+  /** Phase 5.21: true → SIRE incident; banner shows "Take Action" not "I AM SAFE" (Rec 1) */
+  has_sire_data?: boolean;
 }
 
 export async function fetchActiveIncidents(): Promise<ActiveIncident[]> {
