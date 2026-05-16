@@ -407,3 +407,7 @@ export type {
   PaAnnouncementInput,
   PaAnnouncementDraft,
 } from './pa-announcement.js';
+
+// ─── Structured error-code catalog ────────────────────────────────────────────
+export { describeError, classifyTransport, CLIENT_ERROR_CODES } from './error-codes.js';
+export type { ErrorCategory, ErrorDescriptor } from './error-codes.js';

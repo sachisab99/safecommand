@@ -103,9 +103,37 @@ export interface SireState {
 
 // ─── API calls ──────────────────────────────────────────────────────────────
 
+/**
+ * Trust-boundary normalisation — coerce every array to [] so an older
+ * deployed api (or a partial response) can never cause a `.map of
+ * undefined` render crash. Single chokepoint; mirrors mobile.
+ */
+function asArray<T>(v: unknown): T[] {
+  return Array.isArray(v) ? (v as T[]) : [];
+}
+
+export function normalizeSireState(
+  raw: Partial<SireState> | null | undefined,
+): SireState | null {
+  if (!raw || typeof raw !== 'object') return null;
+  return {
+    incident_id: raw.incident_id ?? '',
+    has_sire_data: raw.has_sire_data ?? false,
+    incident_type: raw.incident_type,
+    incident_subtype: raw.incident_subtype ?? null,
+    status: raw.status,
+    declared_at: raw.declared_at,
+    zone_states: asArray<SireZoneState>(raw.zone_states),
+    assignments: asArray<SireAssignment>(raw.assignments),
+    evacuation_triggers: asArray<SireEvacuationTrigger>(raw.evacuation_triggers),
+    evidence_wall: asArray<SireEvidenceItem>(raw.evidence_wall),
+    active_prompts: asArray<SireDashboardPrompt>(raw.active_prompts),
+  };
+}
+
 export async function fetchSireState(incidentId: string): Promise<SireState | null> {
-  const { data } = await apiFetch<SireState>(`/sire/state/${incidentId}`);
-  return data;
+  const { data } = await apiFetch<Partial<SireState>>(`/sire/state/${incidentId}`);
+  return normalizeSireState(data);
 }
 
 export interface PatchZoneStatePayload {

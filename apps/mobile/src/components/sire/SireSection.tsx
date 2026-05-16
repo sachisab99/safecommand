@@ -176,10 +176,16 @@ export function SireSection(props: SireSectionProps) {
     return null; // Caller will fall back to v1 layout
   }
 
-  const myAssignments = assignmentsForStaff(state.assignments, staffId);
+  // Defensive locals (defence-in-depth — the service already normalises,
+  // but never let a missing array reach `.map`/`.length` in render).
+  const myAssignments = assignmentsForStaff(state.assignments ?? [], staffId);
   const summary = summariseAssignments(myAssignments);
   const isCommand = COMMAND_ROLES.has(staffRole);
   const canTriggerEvac = EVAC_TRIGGER_ROLES.has(staffRole);
+  const zoneStates = state.zone_states ?? [];
+  const evacTriggers = state.evacuation_triggers ?? [];
+  const evidenceWall = state.evidence_wall ?? [];
+  const activePrompts = state.active_prompts ?? [];
 
   return (
     <View style={styles.container}>
@@ -187,7 +193,7 @@ export function SireSection(props: SireSectionProps) {
           Command-only data (server-gated). This is a SUGGESTION surface only —
           the SH must still explicitly use "Trigger selective evacuation"
           below. No code path here triggers an evacuation. */}
-      {state.active_prompts.map((p) => (
+      {activePrompts.map((p) => (
         <View key={p.id} style={styles.brlBanner}>
           <Text style={styles.brlTitle}>⚠ Suggestion — not automatic</Text>
           <Text style={styles.brlMessage}>{p.message}</Text>
@@ -217,10 +223,10 @@ export function SireSection(props: SireSectionProps) {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Zone state grid</Text>
         <Text style={styles.sectionMeta}>
-          {state.zone_states.length} zone{state.zone_states.length !== 1 ? 's' : ''} · auto-refreshing
+          {zoneStates.length} zone{zoneStates.length !== 1 ? 's' : ''} · auto-refreshing
         </Text>
         <View style={styles.zoneGrid}>
-          {state.zone_states.map((zs) => {
+          {zoneStates.map((zs) => {
             const isAssignedToMe = zs.assigned_gs_id === staffId;
             const canTap = isAssignedToMe || isCommand;
             return (
@@ -313,10 +319,10 @@ export function SireSection(props: SireSectionProps) {
       )}
 
       {/* ─── Evacuation triggers (audit list) ─── */}
-      {state.evacuation_triggers.length > 0 && (
+      {evacTriggers.length > 0 && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Evacuation triggers</Text>
-          {state.evacuation_triggers.map((t) => (
+          {evacTriggers.map((t) => (
             <View key={t.id} style={styles.triggerCard}>
               <Text style={styles.triggerType}>
                 {t.trigger_type.replace('_', ' ')} · {t.zones_affected.length} zone{t.zones_affected.length !== 1 ? 's' : ''}
@@ -334,7 +340,7 @@ export function SireSection(props: SireSectionProps) {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Incident photos</Text>
         <Text style={styles.sectionMeta}>
-          {state.evidence_wall.length} photo{state.evidence_wall.length !== 1 ? 's' : ''} ·
+          {evidenceWall.length} photo{evidenceWall.length !== 1 ? 's' : ''} ·
           {' '}visible to everyone on this incident
         </Text>
         <CaptureEvidence
@@ -342,9 +348,9 @@ export function SireSection(props: SireSectionProps) {
           onUploaded={handlePostPhoto}
           label="📷 Add a photo"
         />
-        {state.evidence_wall.length > 0 && (
+        {evidenceWall.length > 0 && (
           <View style={styles.photoGrid}>
-            {state.evidence_wall.map((ev) => (
+            {evidenceWall.map((ev) => (
               <View key={ev.id} style={styles.photoCard}>
                 <Image
                   source={{ uri: ev.evidence_url }}
@@ -396,7 +402,7 @@ export function SireSection(props: SireSectionProps) {
       {evacOpen && (
         <EvacuationTriggerSheet
           incidentId={incidentId}
-          zoneStates={state.zone_states}
+          zoneStates={zoneStates}
           onClose={() => setEvacOpen(false)}
           onSuccess={() => {
             setEvacOpen(false);
