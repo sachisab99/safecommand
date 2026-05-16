@@ -153,17 +153,55 @@ export async function getPresignedUploadUrl(
   return { uploadUrl: data.upload_url, fileKey: data.file_key, publicUrl: data.public_url };
 }
 
-export async function uploadToS3(uploadUrl: string, uri: string, contentType: string): Promise<boolean> {
+export interface UploadResult {
+  ok: boolean;
+  status?: number;
+  /** Diagnostic reason on failure (S3 <Code>, HTTP status, or net message). */
+  detail?: string;
+}
+
+export async function uploadToS3(
+  uploadUrl: string,
+  uri: string,
+  contentType: string,
+): Promise<UploadResult> {
   try {
-    const response = await fetch(uri);
-    const blob = await response.blob();
+    const fileResp = await fetch(uri);
+    const blob = await fileResp.blob();
+    if (!blob || (blob as { size?: number }).size === 0) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        JSON.stringify({ code: 'RESP_SHAPE', where: 'uploadToS3', detail: 'empty blob from local uri' }),
+      );
+      return { ok: false, detail: 'Could not read the photo file.' };
+    }
     const result = await fetch(uploadUrl, {
       method: 'PUT',
       body: blob,
       headers: { 'Content-Type': contentType },
     });
-    return result.ok;
-  } catch {
-    return false;
+    if (!result.ok) {
+      const body = await result.text().catch(() => '');
+      // S3 errors are XML: <Error><Code>SignatureDoesNotMatch</Code>…
+      const codeMatch = body.match(/<Code>([^<]+)<\/Code>/);
+      const s3Code = codeMatch ? codeMatch[1] : `HTTP ${result.status}`;
+      // eslint-disable-next-line no-console
+      console.warn(
+        JSON.stringify({
+          code: 'UPLOAD_S3_REJECTED',
+          status: result.status,
+          s3Code,
+          body: body.slice(0, 300),
+        }),
+      );
+      return { ok: false, status: result.status, detail: s3Code };
+    }
+    return { ok: true, status: result.status };
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      JSON.stringify({ code: 'NET_OFFLINE', where: 'uploadToS3', detail: (e as Error).message }),
+    );
+    return { ok: false, detail: (e as Error).message };
   }
 }

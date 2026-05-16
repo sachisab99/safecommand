@@ -139,8 +139,10 @@ export function TaskDetailScreen({ task, onBack, onCompleted }: Props): React.JS
           return null;
         }
         const uploaded = await uploadToS3(presign.uploadUrl, photoUri, 'image/jpeg');
-        if (!uploaded) {
-          setError('Photo upload failed. Try again.');
+        if (!uploaded.ok) {
+          setError(
+            `Photo upload failed${uploaded.detail ? `: ${uploaded.detail}` : ''}. Try again.`,
+          );
           return null;
         }
         return { evidence_type: 'PHOTO', evidence_url: presign.publicUrl };
