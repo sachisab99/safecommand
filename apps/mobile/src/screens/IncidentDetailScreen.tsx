@@ -38,6 +38,7 @@ import {
   type StaffRef,
 } from '../services/incidents';
 import { SireSection } from '../components/sire/SireSection';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 import { getStoredSession } from '../services/auth';
 import {
   Screen,
@@ -285,11 +286,13 @@ export function IncidentDetailScreen({ incidentId, onBack }: Props): React.JSX.E
               Renders zone state grid + per-staff action checklist + evacuation
               triggers. Polls /v1/sire/state every 3s. */}
           {incident.has_sire_data && callerStaffId && callerRole && (
-            <SireSection
-              incidentId={incident.id}
-              staffId={callerStaffId}
-              staffRole={callerRole}
-            />
+            <ErrorBoundary label="incident response view">
+              <SireSection
+                incidentId={incident.id}
+                staffId={callerStaffId}
+                staffRole={callerRole}
+              />
+            </ErrorBoundary>
           )}
           <TimelineCard
             events={incident.incident_timeline}
