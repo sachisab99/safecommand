@@ -46,6 +46,8 @@
 | Crash hardening | ✅ | `normalizeSireState()` trust-boundary coercion (mobile+dashboard) + `ErrorBoundary` wrap; version-skew crash fixed & verified on device |
 | Structured error catalog | ✅ | `@safecommand/types/error-codes` (`describeError`/`classifyTransport`); applied at SIRE surface + upload diagnostics; incremental adoption elsewhere |
 | S3 presign SSE bug | ✅ Fixed | PR #2 — dropped signed SSE header; **mobile upload confirmed working in prod**; encryption-at-rest via S3 bucket default |
+| Dashboard zone-evidence parity | ✅ | PR #3 — desktop zone-state evidence is real photo upload (was paste-URL) |
+| Dashboard command-desk declaration | ✅ | PR #4 — `DeclareIncidentButton` on /incidents + /dashboard (role-gated SH/DSH/SC/GM/FM = api requireRole), full parity incl. SIRE toggle + FIRE/EVAC sub-types; reuses `POST /v1/incidents`. Additive — mobile 3-tap (BR-11) remains primary path |
 
 ## 4. Honest deferred / out-of-scope (documented decisions, not gaps)
 

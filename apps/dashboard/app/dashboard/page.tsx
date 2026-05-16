@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { AppShell } from '../../components/AppShell';
+import { DeclareIncidentButton } from '../../components/DeclareIncidentModal';
 import { apiFetch } from '../../lib/api';
 
 interface AnalyticsSummary {
@@ -344,9 +345,12 @@ export default function DashboardPage() {
   return (
     <AppShell>
       <div className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
-        <div className="mb-6 lg:mb-8">
-          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">Dashboard</h1>
-          <p className="text-slate-500 text-sm mt-1">Live venue safety overview · refreshes every 30s</p>
+        <div className="mb-6 lg:mb-8 flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">Dashboard</h1>
+            <p className="text-slate-500 text-sm mt-1">Live venue safety overview · refreshes every 30s</p>
+          </div>
+          <DeclareIncidentButton />
         </div>
 
         {loading && (
