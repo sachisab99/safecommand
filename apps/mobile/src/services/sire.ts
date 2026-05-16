@@ -259,7 +259,12 @@ export async function uploadIncidentPhoto(
   if (error || !data) return { ok: false, error: error ?? 'Could not get upload URL' };
 
   const uploaded = await uploadToS3(data.upload_url, localUri, contentType);
-  if (!uploaded) return { ok: false, error: 'Photo upload failed' };
+  if (!uploaded.ok) {
+    return {
+      ok: false,
+      error: uploaded.detail ? `Upload failed: ${uploaded.detail}` : 'Photo upload failed',
+    };
+  }
 
   return { ok: true, publicUrl: data.public_url };
 }
