@@ -28,6 +28,7 @@ import {
   postEvacuationTrigger,
   dismissPrompt,
   uploadIncidentPhotoWeb,
+  uploadPhotoToS3Web,
   summariseAssignments,
   zoneStateClasses,
   statusClasses,
@@ -410,10 +411,23 @@ function ZoneStateModal(props: {
 }) {
   const [reasonNote, setReasonNote] = useState('');
   const [evidenceUrl, setEvidenceUrl] = useState('');
+  const [uploadingEvidence, setUploadingEvidence] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const validNextStates = getValidTransitions(props.zoneState.state, props.staffRole);
+
+  const handleEvidenceFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-pick of the same file
+    if (!file) return;
+    setUploadingEvidence(true);
+    setError(null);
+    const up = await uploadPhotoToS3Web(props.incidentId, file);
+    setUploadingEvidence(false);
+    if (up.ok && up.publicUrl) setEvidenceUrl(up.publicUrl);
+    else setError(`Photo upload failed${up.error ? `: ${up.error}` : ''}`);
+  };
 
   const submit = async (target: IncidentZoneState) => {
     if (requiresReasonNote(target) && reasonNote.trim().length === 0) {
@@ -421,7 +435,7 @@ function ZoneStateModal(props: {
       return;
     }
     if (requiresEvidence(target) && evidenceUrl.trim().length === 0) {
-      setError('This state requires photo evidence (paste any URL for demo)');
+      setError('This state requires a photo — attach one below before continuing.');
       return;
     }
     setSubmitting(true);
@@ -453,13 +467,26 @@ function ZoneStateModal(props: {
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
             rows={2}
           />
-          <input
-            type="text"
-            value={evidenceUrl}
-            onChange={(e) => setEvidenceUrl(e.target.value)}
-            placeholder="Evidence URL (required for EVACUATION_COMPLETE)"
-            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-          />
+          <div>
+            <label className="mb-1 block text-xs text-slate-500">
+              Photo evidence (required for EVACUATION_COMPLETE)
+            </label>
+            <div className="flex items-center gap-3">
+              <label className="cursor-pointer rounded-md border border-blue-400 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-800 transition hover:bg-blue-100">
+                {uploadingEvidence ? 'Uploading…' : evidenceUrl ? '📷 Replace photo' : '📷 Attach photo'}
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleEvidenceFile}
+                  disabled={uploadingEvidence}
+                />
+              </label>
+              {evidenceUrl && (
+                <span className="text-sm font-semibold text-emerald-700">✓ Photo attached</span>
+              )}
+            </div>
+          </div>
           {error && <p className="text-sm text-red-600">{error}</p>}
         </div>
 

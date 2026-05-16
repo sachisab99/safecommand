@@ -213,11 +213,16 @@ const ALLOWED_IMG = ['image/jpeg', 'image/png', 'image/webp', 'image/heic'];
  * → POST the resulting URL to the incident wall. Mirrors the mobile
  * uploadIncidentPhoto + postIncidentEvidence pair.
  */
-export async function uploadIncidentPhotoWeb(
+/**
+ * Upload-only: presign (purpose=incident_evidence) → PUT a File to S3 →
+ * return its public URL. Does NOT post to the incident wall. Used by the
+ * zone-state evidence field (which needs a URL, not a wall entry) so the
+ * dashboard has the same real-upload affordance as mobile (parity).
+ */
+export async function uploadPhotoToS3Web(
   incidentId: string,
   file: File,
-  caption?: string,
-): Promise<{ ok: boolean; error: string | null }> {
+): Promise<{ ok: boolean; publicUrl?: string; error: string | null }> {
   const contentType = ALLOWED_IMG.includes(file.type) ? file.type : 'image/jpeg';
 
   const { data: presign, error: pErr } = await apiFetch<{
@@ -234,18 +239,38 @@ export async function uploadIncidentPhotoWeb(
       body: file,
       headers: { 'Content-Type': contentType },
     });
-    if (!put.ok) return { ok: false, error: `S3 upload failed (HTTP ${put.status})` };
+    if (!put.ok) {
+      const body = await put.text().catch(() => '');
+      const m = body.match(/<Code>([^<]+)<\/Code>/); // surface S3 error code
+      return { ok: false, error: m ? m[1] : `S3 upload failed (HTTP ${put.status})` };
+    }
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }
+
+  return { ok: true, publicUrl: presign.public_url, error: null };
+}
+
+/**
+ * Upload + post to the shared incident photo wall. Composes
+ * uploadPhotoToS3Web so the wall and zone-evidence paths share one
+ * presign/PUT implementation (single chokepoint, consistent errors).
+ */
+export async function uploadIncidentPhotoWeb(
+  incidentId: string,
+  file: File,
+  caption?: string,
+): Promise<{ ok: boolean; error: string | null }> {
+  const up = await uploadPhotoToS3Web(incidentId, file);
+  if (!up.ok || !up.publicUrl) return { ok: false, error: up.error };
 
   const { error: postErr } = await apiFetch<{ id: string }>(
     `/sire/incidents/${incidentId}/evidence`,
     {
       method: 'POST',
       body: JSON.stringify({
-        evidence_url: presign.public_url,
-        content_type: contentType,
+        evidence_url: up.publicUrl,
+        content_type: file.type || 'image/jpeg',
         caption: caption?.trim() || undefined,
       }),
     },
