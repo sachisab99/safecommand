@@ -639,23 +639,38 @@ function IncidentBanner({
         </View>
       </TouchableOpacity>
       <View style={bs.bannerActions}>
-        <TouchableOpacity
-          style={[
-            bs.safeBtn,
-            { backgroundColor: c.status.successBg, borderColor: c.status.success },
-            markingSafe && bs.btnDisabled,
-          ]}
-          onPress={onMarkSafe}
-          disabled={markingSafe || resolving}
-          activeOpacity={0.8}
-          hitSlop={touch.hitSlop}
-        >
-          {markingSafe ? (
-            <ActivityIndicator color={c.status.success} size="small" />
-          ) : (
-            <Text style={[bs.safeBtnText, { color: c.status.success }]}>✓  I AM SAFE</Text>
-          )}
-        </TouchableOpacity>
+        {/* Context-aware (Rec 1): SIRE incident → "Take Action" (the 3-button
+            zone state + per-role actions live on the detail SireSection);
+            legacy incident → the v1 binary "I AM SAFE". */}
+        {incident.has_sire_data ? (
+          <TouchableOpacity
+            style={[bs.safeBtn, { backgroundColor: sevColor + '22', borderColor: sevColor }]}
+            onPress={onOpenDetail}
+            disabled={resolving}
+            activeOpacity={0.8}
+            hitSlop={touch.hitSlop}
+          >
+            <Text style={[bs.safeBtnText, { color: sevColor }]}>▶  Take Action</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={[
+              bs.safeBtn,
+              { backgroundColor: c.status.successBg, borderColor: c.status.success },
+              markingSafe && bs.btnDisabled,
+            ]}
+            onPress={onMarkSafe}
+            disabled={markingSafe || resolving}
+            activeOpacity={0.8}
+            hitSlop={touch.hitSlop}
+          >
+            {markingSafe ? (
+              <ActivityIndicator color={c.status.success} size="small" />
+            ) : (
+              <Text style={[bs.safeBtnText, { color: c.status.success }]}>✓  I AM SAFE</Text>
+            )}
+          </TouchableOpacity>
+        )}
         <TouchableOpacity
           style={[
             bs.resolveBtn,

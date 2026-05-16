@@ -29,6 +29,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
+  Image,
   ScrollView,
   TouchableOpacity,
   Modal,
@@ -41,16 +42,20 @@ import {
   patchZoneState,
   patchAssignmentStatus,
   postEvacuationTrigger,
+  postIncidentEvidence,
+  dismissPrompt,
   assignmentsForStaff,
   summariseAssignments,
   type SireState,
   type SireZoneState,
   type SireAssignment,
 } from '../../services/sire';
+import { CaptureEvidence } from '../CaptureEvidence';
 import {
   getValidTransitions,
   requiresReasonNote,
   requiresEvidence,
+  draftPaAnnouncement,
   ZONE_STATE_LABEL,
   type IncidentZoneState,
 } from '@safecommand/types';
@@ -110,11 +115,46 @@ export function SireSection(props: SireSectionProps) {
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const [busyId, setBusyId] = useState<string | null>(null);
+
   const refresh = useCallback(async () => {
     const fresh = await fetchSireState(incidentId);
     if (fresh) setState(fresh);
     setLoading(false);
   }, [incidentId]);
+
+  // One-tap "Initiate" (Rec 3a): assigned staff starts their own action
+  // (ASSIGNED → IN_PROGRESS) without opening the full status sheet.
+  const initiateAssignment = useCallback(
+    async (assignmentId: string) => {
+      setBusyId(assignmentId);
+      const res = await patchAssignmentStatus(assignmentId, { status: 'IN_PROGRESS' });
+      setBusyId(null);
+      if (res.ok) refresh();
+    },
+    [refresh],
+  );
+
+  const handleDismissPrompt = useCallback(
+    async (promptId: string) => {
+      setBusyId(promptId);
+      const res = await dismissPrompt(promptId);
+      setBusyId(null);
+      if (res.ok) refresh();
+    },
+    [refresh],
+  );
+
+  const handlePostPhoto = useCallback(
+    async (publicUrl: string) => {
+      await postIncidentEvidence(incidentId, {
+        evidence_url: publicUrl,
+        content_type: 'image/jpeg',
+      });
+      refresh();
+    },
+    [incidentId, refresh],
+  );
 
   useEffect(() => {
     refresh();
@@ -143,6 +183,36 @@ export function SireSection(props: SireSectionProps) {
 
   return (
     <View style={styles.container}>
+      {/* ─── BR-L soft suggestion banner (Hard Rule 23: NEVER auto-trigger) ───
+          Command-only data (server-gated). This is a SUGGESTION surface only —
+          the SH must still explicitly use "Trigger selective evacuation"
+          below. No code path here triggers an evacuation. */}
+      {state.active_prompts.map((p) => (
+        <View key={p.id} style={styles.brlBanner}>
+          <Text style={styles.brlTitle}>⚠ Suggestion — not automatic</Text>
+          <Text style={styles.brlMessage}>{p.message}</Text>
+          <View style={styles.brlActions}>
+            <TouchableOpacity
+              style={styles.brlDismiss}
+              onPress={() => handleDismissPrompt(p.id)}
+              disabled={busyId === p.id}
+            >
+              <Text style={styles.brlDismissText}>
+                {busyId === p.id ? 'Dismissing…' : 'Dismiss'}
+              </Text>
+            </TouchableOpacity>
+            {canTriggerEvac && (
+              <TouchableOpacity
+                style={styles.brlReview}
+                onPress={() => setEvacOpen(true)}
+              >
+                <Text style={styles.brlReviewText}>Review evacuation →</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      ))}
+
       {/* ─── Zone grid section ─── */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Zone state grid</Text>
@@ -223,6 +293,20 @@ export function SireSection(props: SireSectionProps) {
                   Target: {a.time_target_seconds}s · Evidence: {a.evidence_type ?? 'none'}
                 </Text>
               )}
+              {/* One-tap Initiate (Rec 3a) — only when ASSIGNED. Full
+                  Done/Skip/Block transitions stay in the card sheet (tap card). */}
+              {a.status === 'ASSIGNED' && (
+                <TouchableOpacity
+                  style={styles.initiateBtn}
+                  onPress={() => initiateAssignment(a.id)}
+                  disabled={busyId === a.id}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.initiateBtnText}>
+                    {busyId === a.id ? 'Initiating…' : '⏵ Initiate'}
+                  </Text>
+                </TouchableOpacity>
+              )}
             </TouchableOpacity>
           ))}
         </View>
@@ -245,6 +329,42 @@ export function SireSection(props: SireSectionProps) {
           ))}
         </View>
       )}
+
+      {/* ─── Shared incident photo wall (Rec 2b) — any staff posts, all see ─── */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Incident photos</Text>
+        <Text style={styles.sectionMeta}>
+          {state.evidence_wall.length} photo{state.evidence_wall.length !== 1 ? 's' : ''} ·
+          {' '}visible to everyone on this incident
+        </Text>
+        <CaptureEvidence
+          incidentId={incidentId}
+          onUploaded={handlePostPhoto}
+          label="📷 Add a photo"
+        />
+        {state.evidence_wall.length > 0 && (
+          <View style={styles.photoGrid}>
+            {state.evidence_wall.map((ev) => (
+              <View key={ev.id} style={styles.photoCard}>
+                <Image
+                  source={{ uri: ev.evidence_url }}
+                  style={styles.photoThumb}
+                  resizeMode="cover"
+                />
+                <Text style={styles.photoMeta} numberOfLines={1}>
+                  {ev.staff?.name ?? ev.posted_by_role ?? 'Staff'} ·{' '}
+                  {new Date(ev.created_at).toLocaleTimeString()}
+                </Text>
+                {ev.caption ? (
+                  <Text style={styles.photoCaption} numberOfLines={2}>
+                    {ev.caption}
+                  </Text>
+                ) : null}
+              </View>
+            ))}
+          </View>
+        )}
+      </View>
 
       {/* ─── Zone state action sheet ─── */}
       {zoneActionTarget && (
@@ -314,7 +434,7 @@ function ZoneStateActionSheet(props: {
       return;
     }
     if (requiresEvidence(target) && evidenceUrl.trim().length === 0) {
-      setError('This state requires photo evidence (paste any URL for demo)');
+      setError('This state requires a photo — tap "Capture photo evidence"');
       setPendingState(target);
       return;
     }
@@ -359,14 +479,19 @@ function ZoneStateActionSheet(props: {
                 />
               )}
               {needsEvidence && (
-                <TextInput
-                  style={styles.input}
-                  value={evidenceUrl}
-                  onChangeText={setEvidenceUrl}
-                  placeholder="Photo URL (required for evacuation complete)"
-                  placeholderTextColor={c.textMuted}
-                  autoCapitalize="none"
-                />
+                <View style={{ gap: spacing.xs }}>
+                  <CaptureEvidence
+                    incidentId={props.incidentId}
+                    onUploaded={(url) => {
+                      setEvidenceUrl(url);
+                      setError(null);
+                    }}
+                    label={evidenceUrl ? '📷 Replace photo' : '📷 Capture photo evidence'}
+                  />
+                  {evidenceUrl.length > 0 && (
+                    <Text style={styles.evidenceAttached}>✓ Photo attached</Text>
+                  )}
+                </View>
               )}
             </View>
           )}
@@ -509,6 +634,7 @@ function EvacuationTriggerSheet(props: {
   const [selectedZones, setSelectedZones] = useState<Set<string>>(new Set());
   const [reasonNote, setReasonNote] = useState('');
   const [paText, setPaText] = useState('');
+  const [paEdited, setPaEdited] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -518,6 +644,20 @@ function EvacuationTriggerSheet(props: {
     else next.add(zoneId);
     setSelectedZones(next);
   };
+
+  // BR-N: auto-draft the PA text from the current selection. Selective when
+  // zones are picked, full-venue otherwise. Does not clobber SH manual edits.
+  useEffect(() => {
+    if (paEdited) return;
+    const names = props.zoneStates
+      .filter((z) => selectedZones.has(z.zone_id))
+      .map((z) => z.zones?.name ?? z.zone_id.slice(0, 8));
+    const draft = draftPaAnnouncement({
+      triggerType: selectedZones.size > 0 ? 'ZONE_SELECTIVE' : 'FULL_VENUE',
+      zoneNames: names,
+    });
+    setPaText(draft.en);
+  }, [selectedZones, paEdited, props.zoneStates]);
 
   const submit = async (triggerType: 'ZONE_SELECTIVE' | 'FULL_VENUE') => {
     if (reasonNote.trim().length === 0) {
@@ -581,11 +721,22 @@ function EvacuationTriggerSheet(props: {
             placeholderTextColor={c.textMuted}
             multiline
           />
+          <View style={styles.paHeaderRow}>
+            <Text style={styles.paLabel}>PA announcement (auto-drafted — edit before broadcast)</Text>
+            {paEdited && (
+              <TouchableOpacity onPress={() => setPaEdited(false)}>
+                <Text style={styles.paReset}>↻ Reset to suggested</Text>
+              </TouchableOpacity>
+            )}
+          </View>
           <TextInput
-            style={styles.input}
+            style={[styles.input, { minHeight: 96 }]}
             value={paText}
-            onChangeText={setPaText}
-            placeholder="PA broadcast text (optional)"
+            onChangeText={(t) => {
+              setPaEdited(true);
+              setPaText(t);
+            }}
+            placeholder="PA broadcast text"
             placeholderTextColor={c.textMuted}
             multiline
           />
@@ -821,5 +972,66 @@ function makeStyles(c: Colours) {
     zoneToggleSelected: { backgroundColor: c.primary + '20', borderColor: c.primary, borderWidth: 1 },
     zoneToggleText: { color: c.textPrimary, fontSize: fontSize.body },
     zoneToggleSelectedText: { color: c.primary, fontWeight: fontWeight.bold },
+    // BR-L soft suggestion banner
+    brlBanner: {
+      backgroundColor: '#fffbeb',
+      borderColor: '#f59e0b',
+      borderWidth: 1,
+      borderRadius: radius.md,
+      padding: spacing.md,
+      marginBottom: spacing.md,
+      gap: spacing.xs,
+    },
+    brlTitle: { color: '#92400e', fontWeight: fontWeight.bold, fontSize: fontSize.small },
+    brlMessage: { color: '#78350f', fontSize: fontSize.body, lineHeight: 20 },
+    brlActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xs },
+    brlDismiss: {
+      paddingVertical: spacing.xs,
+      paddingHorizontal: spacing.md,
+      backgroundColor: c.surfaceMuted,
+      borderRadius: radius.sm,
+    },
+    brlDismissText: { color: c.textPrimary, fontSize: fontSize.small, fontWeight: fontWeight.medium },
+    brlReview: {
+      paddingVertical: spacing.xs,
+      paddingHorizontal: spacing.md,
+      backgroundColor: '#fef3c7',
+      borderRadius: radius.sm,
+    },
+    brlReviewText: { color: '#92400e', fontSize: fontSize.small, fontWeight: fontWeight.bold },
+    // One-tap Initiate
+    initiateBtn: {
+      marginTop: spacing.sm,
+      backgroundColor: c.primary,
+      paddingVertical: spacing.sm,
+      borderRadius: radius.sm,
+      alignItems: 'center',
+    },
+    initiateBtnText: { color: c.textOnPrimary, fontWeight: fontWeight.bold, fontSize: fontSize.body },
+    // Photo wall
+    photoGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: spacing.sm,
+      marginTop: spacing.sm,
+    },
+    photoCard: { width: '48%' },
+    photoThumb: {
+      width: '100%',
+      height: 120,
+      borderRadius: radius.md,
+      backgroundColor: c.surfaceMuted,
+    },
+    photoMeta: { fontSize: fontSize.caption, color: c.textMuted, marginTop: 4 },
+    photoCaption: { fontSize: fontSize.caption, color: c.textPrimary, marginTop: 2 },
+    evidenceAttached: { color: '#059669', fontSize: fontSize.small, fontWeight: fontWeight.bold },
+    paHeaderRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginTop: spacing.xs,
+    },
+    paLabel: { color: c.textMuted, fontSize: fontSize.caption, flex: 1 },
+    paReset: { color: c.primary, fontSize: fontSize.caption, fontWeight: fontWeight.bold },
   });
 }

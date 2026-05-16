@@ -298,8 +298,11 @@ export function IncidentDetailScreen({ incidentId, onBack }: Props): React.JSX.E
           />
           <ScopeCard incident={incident} colours={c} />
 
-          {/* Mark safe — only if incident is open and the user could be at risk */}
-          {isOpen && (
+          {/* Mark safe — legacy v1 binary path. Suppressed for SIRE incidents:
+              the SireSection above is the action surface (3-button zone state
+              + per-role actions). Context-aware per Rec 1; v1 path preserved
+              verbatim for non-SIRE incidents. */}
+          {isOpen && !incident.has_sire_data && (
             <View style={s.safeBlock}>
               <TouchableOpacity
                 onPress={handleMarkSafe}

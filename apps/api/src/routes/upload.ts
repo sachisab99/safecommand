@@ -5,7 +5,12 @@ import { getPresignedUploadUrl, getPublicUrl, type UploadPurpose } from '../serv
 export const uploadRouter = Router();
 uploadRouter.use(requireAuth);
 
-const ALLOWED_PURPOSES: UploadPurpose[] = ['task_evidence', 'id_photo', 'visitor_photo'];
+const ALLOWED_PURPOSES: UploadPurpose[] = [
+  'task_evidence',
+  'id_photo',
+  'visitor_photo',
+  'incident_evidence',
+];
 const ALLOWED_CONTENT_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic'];
 
 // GET /v1/upload/presign?purpose=task_evidence&ref_id=<task_id>&content_type=image/jpeg

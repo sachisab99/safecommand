@@ -399,3 +399,11 @@ export type {
   IncidentZoneState,
   ZoneTransitionRole,
 } from './incident-zone-states.js';
+
+// ─── BR-N — PA announcement auto-draft (Phase 5.22) ───────────────────────────
+export { draftPaAnnouncement } from './pa-announcement.js';
+export type {
+  PaTriggerType,
+  PaAnnouncementInput,
+  PaAnnouncementDraft,
+} from './pa-announcement.js';
