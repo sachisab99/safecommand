@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { AppShell } from '../../components/AppShell';
+import { DeclareIncidentButton } from '../../components/DeclareIncidentModal';
 import { apiFetch } from '../../lib/api';
 
 interface Incident {
@@ -65,12 +66,15 @@ export default function IncidentsPage() {
             <h1 className="text-2xl font-bold text-slate-900">Incidents</h1>
             <p className="text-slate-500 text-sm mt-1">Active and contained incidents · refreshes every 15s</p>
           </div>
-          {incidents.filter(i => i.status === 'ACTIVE').length > 0 && (
-            <div className="flex items-center gap-2 bg-red-100 text-red-700 px-3 py-1.5 rounded-full text-sm font-bold">
-              <span className="w-2 h-2 rounded-full bg-red-600 animate-pulse" />
-              {incidents.filter(i => i.status === 'ACTIVE').length} ACTIVE
-            </div>
-          )}
+          <div className="flex items-center gap-3">
+            {incidents.filter(i => i.status === 'ACTIVE').length > 0 && (
+              <div className="flex items-center gap-2 bg-red-100 text-red-700 px-3 py-1.5 rounded-full text-sm font-bold">
+                <span className="w-2 h-2 rounded-full bg-red-600 animate-pulse" />
+                {incidents.filter(i => i.status === 'ACTIVE').length} ACTIVE
+              </div>
+            )}
+            <DeclareIncidentButton />
+          </div>
         </div>
 
         {loading && <div className="text-slate-400 text-sm">Loading…</div>}
