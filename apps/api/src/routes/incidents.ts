@@ -15,19 +15,77 @@ import { logger } from '../services/logger.js';
 export const incidentsRouter = Router();
 incidentsRouter.use(requireAuth, setTenantContext);
 
+// Param-additive. BACKWARD-COMPATIBLE: with NO query params this is the
+// exact original query (ACTIVE+CONTAINED, no limit, declared_at desc) —
+// the mobile active-incident banner / ZoneStatusBoard / dashboard /zones
+// all rely on that and must not change. Opt-in historical/search via
+// ?status (csv | 'all') &from &to (declared_at ISO range) &q &limit.
+const VALID_STATUSES = ['ACTIVE', 'CONTAINED', 'RESOLVED', 'CLOSED'];
+
 incidentsRouter.get('/', async (req: Request, res: Response): Promise<void> => {
-  const { data, error } = await getServiceClient()
+  const venueId = req.auth.venue_id;
+  const q = req.query as {
+    status?: string;
+    from?: string;
+    to?: string;
+    q?: string;
+    limit?: string;
+  };
+  const hasParams = !!(q.status || q.from || q.to || q.q || q.limit);
+
+  let query = getServiceClient()
     .from('incidents')
     .select('*, zones(name), staff(name)')
-    .eq('venue_id', req.auth.venue_id)
-    .in('status', ['ACTIVE', 'CONTAINED'])
-    .order('declared_at', { ascending: false });
+    .eq('venue_id', venueId);
 
+  if (!hasParams) {
+    // ── Unchanged legacy path (provably identical to the original) ──
+    query = query.in('status', ['ACTIVE', 'CONTAINED']);
+  } else {
+    if (q.status && q.status !== 'all') {
+      const list = q.status
+        .split(',')
+        .map((s) => s.trim().toUpperCase())
+        .filter((s) => VALID_STATUSES.includes(s));
+      if (list.length > 0) query = query.in('status', list);
+    } else if (!q.status) {
+      // Other filters present but no explicit status → keep the safe
+      // default scope rather than silently exposing everything.
+      query = query.in('status', ['ACTIVE', 'CONTAINED']);
+    }
+    if (q.from) query = query.gte('declared_at', q.from);
+    if (q.to) query = query.lte('declared_at', q.to);
+    const limit = Math.min(Math.max(parseInt(q.limit ?? '200', 10) || 200, 1), 500);
+    query = query.limit(limit);
+  }
+
+  const { data, error } = await query.order('declared_at', { ascending: false });
   if (error) {
     res.status(500).json({ error: { code: 'QUERY_FAILED', message: 'Could not fetch incidents' } });
     return;
   }
-  res.json(data);
+
+  // Free-text filter applied over the already venue/status/time-bounded
+  // set (small, safe — avoids fragile cross-join ilike).
+  let rows = data ?? [];
+  if (q.q && q.q.trim()) {
+    const needle = q.q.trim().toLowerCase();
+    rows = rows.filter((r) => {
+      const hay = [
+        r.incident_type,
+        r.incident_subtype,
+        r.description,
+        r.status,
+        (r as { zones?: { name?: string } }).zones?.name,
+        String(r.id).slice(0, 8),
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return hay.includes(needle);
+    });
+  }
+  res.json(rows);
 });
 
 incidentsRouter.get('/:id', async (req: Request, res: Response): Promise<void> => {

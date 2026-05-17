@@ -44,6 +44,40 @@ export async function fetchActiveIncidents(): Promise<ActiveIncident[]> {
   return data ?? [];
 }
 
+// ─── Incidents list (Active / Past) — param-additive, separate from the
+// banner's fetchActiveIncidents (which stays untouched = zero regression).
+export interface IncidentListItem {
+  id: string;
+  incident_type: IncidentType;
+  incident_subtype?: string | null;
+  severity: Severity;
+  status: 'ACTIVE' | 'CONTAINED' | 'RESOLVED' | 'CLOSED';
+  declared_at: string;
+  resolved_at?: string | null;
+  zones: { name: string } | null;
+  staff?: { name: string } | null;
+  has_sire_data?: boolean;
+}
+
+export async function fetchIncidents(opts: {
+  status?: string;
+  from?: string;
+  to?: string;
+  q?: string;
+}): Promise<{ data: IncidentListItem[] | null; error: string | null }> {
+  const session = await getStoredSession();
+  if (!session) return { data: null, error: 'Not authenticated' };
+  const p = new URLSearchParams();
+  if (opts.status) p.set('status', opts.status);
+  if (opts.from) p.set('from', opts.from);
+  if (opts.to) p.set('to', opts.to);
+  if (opts.q && opts.q.trim()) p.set('q', opts.q.trim());
+  const qs = p.toString();
+  return apiFetch<IncidentListItem[]>(`/incidents${qs ? `?${qs}` : ''}`, {
+    token: session.access_token,
+  });
+}
+
 export async function markSafe(incidentId: string): Promise<boolean> {
   const session = await getStoredSession();
   if (!session) return false;

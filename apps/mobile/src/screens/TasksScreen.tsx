@@ -123,6 +123,7 @@ interface Props {
   onZoneStatusBoard: () => void;
   onMyShift: () => void;
   onIncidentDetail: (incidentId: string) => void;
+  onIncidentList: () => void;
   onEquipment: () => void;
   onDrills: () => void;
   onMyCerts: () => void;
@@ -140,6 +141,7 @@ export function TasksScreen({
   onZoneStatusBoard,
   onMyShift,
   onIncidentDetail,
+  onIncidentList,
   onEquipment,
   onDrills,
   onMyCerts,
@@ -330,6 +332,14 @@ export function TasksScreen({
           label: 'Zone Accountability',
           icon: '🗺️',
           onPress: onZoneAccountability,
+        },
+        // Standing Incidents list (Active/Past/Scheduled) — distinct from
+        // "Declare Incident" (the action). Viewing is not command-gated.
+        {
+          key: 'incidentsList',
+          label: 'Incidents',
+          icon: '⚡',
+          onPress: onIncidentList,
         },
         {
           key: 'incident',
