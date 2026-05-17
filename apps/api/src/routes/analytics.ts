@@ -166,3 +166,151 @@ analyticsRouter.get(
     });
   },
 );
+
+// ──────────────────────────────────────────────────────────────────────────
+// GET /v1/analytics/safety — Incident & Drill analytics (Phase 5.19 / BR-31)
+//
+// Single-venue safety BI: incident mix + resolution, SIRE action-completion,
+// evacuation frequency, zone hotspots, drill performance + the reason-code
+// "systemic gap" view (e.g. DEVICE_OR_NETWORK_ISSUE clusters = dead zones).
+// Read-only aggregation; no worker. Cross-venue (BR-32) is SC-Ops/P2 — out.
+analyticsRouter.get(
+  '/safety',
+  requireRole('SH', 'DSH', 'GM', 'AUDITOR', 'SHIFT_COMMANDER', 'FM'),
+  async (req: Request, res: Response): Promise<void> => {
+    const db = getServiceClient();
+    const venueId = req.auth.venue_id;
+
+    const [incRes, asgRes, evacRes, drillRes] = await Promise.all([
+      db.from('incidents')
+        .select('id, incident_type, severity, status, has_sire_data, zone_id, declared_at, resolved_at, zones(name)')
+        .eq('venue_id', venueId),
+      db.from('incident_action_assignments').select('status').eq('venue_id', venueId),
+      db.from('incident_evacuation_triggers').select('trigger_type').eq('venue_id', venueId),
+      db.from('drill_sessions')
+        .select('id, status, scheduled_for, ended_at')
+        .eq('venue_id', venueId),
+    ]);
+
+    const incidents = (incRes.data ?? []) as unknown as Array<{
+      incident_type: string; severity: string; status: string; has_sire_data: boolean | null;
+      zone_id: string | null; declared_at: string; resolved_at: string | null;
+      zones: { name: string } | null;
+    }>;
+    const assignments = (asgRes.data ?? []) as Array<{ status: string }>;
+    const triggers = (evacRes.data ?? []) as Array<{ trigger_type: string }>;
+    const drills = (drillRes.data ?? []) as Array<{
+      id: string; status: string; scheduled_for: string | null; ended_at: string | null;
+    }>;
+
+    const tally = (arr: Array<Record<string, unknown>>, key: string): Record<string, number> => {
+      const o: Record<string, number> = {};
+      for (const r of arr) { const k = String(r[key] ?? 'UNKNOWN'); o[k] = (o[k] ?? 0) + 1; }
+      return o;
+    };
+
+    // ── Incidents ──
+    const resolved = incidents.filter((i) => i.resolved_at);
+    const resMins = resolved
+      .map((i) => (new Date(i.resolved_at as string).getTime() - new Date(i.declared_at).getTime()) / 60000)
+      .filter((m) => Number.isFinite(m) && m >= 0);
+    const avgResolutionMinutes = resMins.length
+      ? Math.round(resMins.reduce((a, b) => a + b, 0) / resMins.length)
+      : null;
+
+    // ── Zone hotspots (top 5 by incident frequency) ──
+    const zoneCount = new Map<string, number>();
+    for (const i of incidents) {
+      const z = i.zones?.name ?? (i.zone_id ? i.zone_id.slice(0, 8) : 'Venue-wide');
+      zoneCount.set(z, (zoneCount.get(z) ?? 0) + 1);
+    }
+    const zoneHotspots = [...zoneCount.entries()]
+      .map(([zone, count]) => ({ zone, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+    // ── 8-week incident trend (week-ending buckets, oldest→newest) ──
+    const WEEK = 7 * 24 * 3600 * 1000;
+    const now = Date.now();
+    const trend8w = Array.from({ length: 8 }, (_, idx) => {
+      const end = now - (7 - idx) * WEEK;
+      const start = end - WEEK;
+      const count = incidents.filter((i) => {
+        const t = new Date(i.declared_at).getTime();
+        return t >= start && t < end;
+      }).length;
+      return { week_ending: new Date(end).toISOString().slice(0, 10), count };
+    });
+
+    // ── SIRE action completion ──
+    const asgByStatus = tally(assignments, 'status');
+    const asgTotal = assignments.length;
+    const asgDone = asgByStatus['DONE'] ?? 0;
+
+    // ── Drills + participants ──
+    const completedDrills = drills.filter((d) => d.status === 'COMPLETED');
+    const lastEnded = completedDrills
+      .map((d) => d.ended_at).filter(Boolean)
+      .sort((a, b) => new Date(b as string).getTime() - new Date(a as string).getTime())[0];
+    const lastCompletedDays = lastEnded
+      ? Math.floor((now - new Date(lastEnded as string).getTime()) / 86400000)
+      : null;
+
+    let pTotal = 0, pResponded = 0, pMissed = 0, ackLatencySum = 0, ackLatencyN = 0;
+    const reasonBreakdown: Record<string, number> = {};
+    if (drills.length > 0) {
+      const { data: parts } = await db
+        .from('drill_session_participants')
+        .select('status, reason_code, ack_latency_seconds')
+        .in('drill_session_id', drills.map((d) => d.id));
+      for (const p of (parts ?? []) as Array<{
+        status: string; reason_code: string | null; ack_latency_seconds: number | null;
+      }>) {
+        pTotal++;
+        if (p.status === 'ACKNOWLEDGED' || p.status === 'SAFE_CONFIRMED') pResponded++;
+        if (p.status === 'MISSED') pMissed++;
+        if (p.reason_code) reasonBreakdown[p.reason_code] = (reasonBreakdown[p.reason_code] ?? 0) + 1;
+        if (typeof p.ack_latency_seconds === 'number') { ackLatencySum += p.ack_latency_seconds; ackLatencyN++; }
+      }
+    }
+
+    res.json({
+      incidents: {
+        total: incidents.length,
+        open: incidents.filter((i) => i.status === 'ACTIVE' || i.status === 'CONTAINED').length,
+        resolved: resolved.length,
+        sire: incidents.filter((i) => i.has_sire_data === true).length,
+        legacy: incidents.filter((i) => i.has_sire_data !== true).length,
+        avg_resolution_minutes: avgResolutionMinutes,
+        by_type: tally(incidents, 'incident_type'),
+        by_severity: tally(incidents, 'severity'),
+        by_status: tally(incidents, 'status'),
+      },
+      sire_actions: {
+        total: asgTotal,
+        done: asgDone,
+        in_progress: asgByStatus['IN_PROGRESS'] ?? 0,
+        blocked: asgByStatus['BLOCKED'] ?? 0,
+        skipped: asgByStatus['SKIPPED'] ?? 0,
+        completion_pct: asgTotal ? Math.round((asgDone / asgTotal) * 100) : null,
+      },
+      evacuations: { total: triggers.length, by_type: tally(triggers, 'trigger_type') },
+      zone_hotspots: zoneHotspots,
+      drills: {
+        total: drills.length,
+        completed: completedDrills.length,
+        scheduled: drills.filter((d) => d.status === 'SCHEDULED').length,
+        last_completed_days: lastCompletedDays,
+        participants: {
+          total: pTotal,
+          responded: pResponded,
+          missed: pMissed,
+          ack_rate_pct: pTotal ? Math.round((pResponded / pTotal) * 100) : null,
+          avg_ack_latency_seconds: ackLatencyN ? Math.round(ackLatencySum / ackLatencyN) : null,
+          reason_breakdown: reasonBreakdown,
+        },
+      },
+      trend_8w: trend8w,
+    });
+  },
+);
