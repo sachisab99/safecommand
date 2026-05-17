@@ -875,5 +875,39 @@ GET; upserts `incident_reports` (no migration — table existed since mig
 002). Dashboard `IncidentReportCard` replaces the Phase-B placeholder.
 pdfkit added to apps/api. No worker dependency. The SIRE capstone /
 audit artifact for the 31-May validation conversations + pilots.
-**Build state:** code complete, tsc+build clean, PR #7 — pending merge
-→ Railway api + Amplify redeploy.
+**Build state:** ✅ PR #7 MERGED 2026-05-17 (batch with #8–#10).
+
+### 15.9 BR-31 Incident & Drill Analytics — Phase 5.19 (PR #8, merged 2026-05-17)
+
+`GET /v1/analytics/safety` (analytics.ts, role-gated, venue-scoped):
+incident mix + avg resolution, SIRE action-completion %, evacuation
+counts, zone hotspots, drill ack-rate + recency, reason-code
+systemic-gap breakdown (DEVICE_OR_NETWORK_ISSUE = dead-zone signal),
+8-week trend. Dashboard `/analytics` (Tailwind bars, no chart lib) +
+`lib/analytics.ts` + nav entry. Single-venue only (BR-32 cross-venue =
+SC-Ops/P2, out). No worker/migration; additive.
+
+### 15.10 BR-12 Shift Handover — dashboard + mobile (PR #9 + #10, merged 2026-05-17)
+
+`/v1/handovers` (handovers.ts, mounted index.ts): POST server-assembles
+an **immutable** snapshot (zones `current_status` + open incidents) so
+it can't be client-forged; PUT `/:id/accept` records the authority
+transfer; GET incl GM/AUDITOR. Dashboard `/handovers` (PR #9) + mobile
+`HandoverScreen` + command-gated drawer (PR #10). Reuses `shift_handovers`
+(mig 002) — no migration; no worker; **shift_instances lifecycle left to
+the existing /v1/shift-instances endpoints (non-breaking)**.
+Briefing/notification fan-out on handover = June (worker-dependent).
+
+### 15.11 Post-SIRE feature batch — merged & verified (2026-05-17)
+
+PRs **#7 BR-29 · #8 BR-31 · #9 BR-12(dash) · #10 BR-12(mobile)** merged
+to `main` in dependency order (#10 after #9). `main @ 9378c8b`.
+**Integrated-tree verification (the never-built-together check):**
+@safecommand/types build clean · api + mobile + dashboard tsc all clean
+*on the combined main* · dashboard prod build clean (**16 routes** incl
+`/analytics`, `/handovers`, `/incidents/[id]`). No cross-feature
+regression — the independence analysis held (only nav-config touched by
+2 PRs, non-overlapping hunks, git auto-merged). Railway api + Amplify
+redeploy in flight at reconciliation time (handovers route 404→401 once
+live). All four are additive, no migration, no worker; runtime gaps
+(notification dispatch / handover fan-out) remain June-gated (ADR 0005).
