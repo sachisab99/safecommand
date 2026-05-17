@@ -805,3 +805,61 @@ After EAS APK installed + Amplify dashboard fixed, demo flow:
 - **TEST_DEMO_Security_S01 staff_id:** `7bc9c06d-2e74-4f25-a749-399e71366bd5` (GS, phone +919000012301)
 - **TEST_DEMO_Deputy_Security_Head staff_id:** `538d36ad-2837-4049-85bc-c952d08c4bec` (DSH, phone +919000012302; seeded Day 5)
 - **T2-Parking-Entrance zone_id:** `0ba4d669-0746-4f64-999d-56ed11385578` (the demo zone for the active incident)
+
+---
+
+## 15. Session checkpoint — 2026-05-17 · SIRE COMPLETE & LIVE (5 PRs merged)
+
+**Headline:** Phase 5.21 + 5.22 SIRE is engineering-complete, deployed to production, validated end-to-end (non-hospital scope). `main @ 29daba9` — local == origin, tree clean. No engineering blockers.
+
+### 15.1 What shipped this session — 5 PRs (all merged, linear history)
+
+| PR | Title | Core content |
+|---|---|---|
+| #1 | complete SIRE for go-live — Phase 5.22 + Day 7 bundle | migs **018** (incident_evidence, append-only) + **019** (EC-23 completeness: 30 global+parent, 0 gaps, 6 Tier-B divergence sub-types) applied to prod; BR-L (Hard Rule 23, 3-layer); BR-N PA auto-draft; Rec 1 context-aware buttons; Rec 2b photo wall; Rec 3a one-tap Initiate; **crash hardening** (`normalizeSireState` + `ErrorBoundary`); structured **error-codes catalog** (`@safecommand/types`) |
+| #2 | S3 presigned PUT 403 fix | dropped signed `ServerSideEncryption` header from presign (was making `x-amz-sse` a required signed header → every upload 403'd; latent since storage.ts written — BR-07 never verified). Encryption-at-rest via S3 bucket default. + upload diagnostics |
+| #3 | dashboard zone-evidence parity | desktop zone-state evidence: paste-URL → real file upload; `uploadPhotoToS3Web` split; + `sire-delivery-validation.md` |
+| #4 | dashboard command-desk declaration | `DeclareIncidentButton` on /incidents + /dashboard, role-gated (SH/DSH/SC/GM/FM = api requireRole), full mobile parity; reuses `POST /v1/incidents`. Dashboard never had declare — mobile-by-design per BR-11; this is deliberate additive |
+| #5 | SIRE default-on + non-SIRE declarer hardening | `enable_sire` default **ON** all types (mobile+dashboard), opt-OUT toggle (was opt-in/default-off — Phase 5.21 transitional, obsolete post-EC-23). **api landmine fixed:** GM/FM/AUDITOR declarers snapshot against SH global floor instead of 500-ing |
+
+### 15.2 Build / deploy state
+
+| Surface | State |
+|---|---|
+| Railway **api** | LIVE `main @ 29daba9` · `/health` 200 (db+firebase ok) · POST /incidents 401 (gated, no 500) · legacy routes 401 (no regression) |
+| AWS Amplify **dashboard** | LIVE (auto-deploy from main; confirmed working by founder) |
+| **mobile** | dev-client via Metro (current code); standalone EAS build still optional/pending |
+| Supabase **schema** | migs 014–019 applied & verified in prod (`All checks PASSED`) |
+| **workers** | `WORKERS_PAUSED=true` — SIRE live via API/UI/3s-poll; notification *dispatch* → June 1 (ADR 0005, zero cost) |
+| tsc / build | api+mobile+dashboard+types all clean; dashboard prod build ✓ 14 routes |
+
+### 15.3 Engineering decisions / landmines defused
+
+- **Version-skew crash** (new client JS vs old api → `state.active_prompts.map` of undefined): fixed structurally via service-boundary `normalizeSireState()` (coerce all arrays []) + `ErrorBoundary` + error-code catalog. Not a one-off patch.
+- **S3 SSE signed-header**: presign must NOT bake `ServerSideEncryption`; rely on bucket default encryption. (Confirm/IaC `sc-evidence-prod` default SSE — open recommendation.)
+- **GM/FM declarer 500**: declarer-role template snapshot was over-strict; SIRE roles get templates (mig 019), non-SIRE declarers now snapshot vs SH floor. Prevented SIRE-default-on from breaking GM/FM declaration.
+- **SIRE opt-in was obsolete**: Phase 5.21 default-off was a templates-incomplete safety; mig 019 closed EC-23 → SIRE is now the default, opt-OUT.
+
+### 15.4 E2E verification (2026-05-17)
+
+- **My side:** git integrity (5 PRs merged, `29daba9`, clean) · prod liveness (health 200, routes 401 no-500/no-regression, dashboard up) · code-health (tsc×4 + dashboard prod build clean) · static path audit (declare→bootstrap→banner→grid→3-button→evac→audit→photo coherent).
+- **Operator side:** Day 7 Blocks A–E "all worked fine" (3-button ⇄ ≤3s sync, selective evac+audit, photo wall both ways, Hard Rule 23 gate held, defence-in-depth). Fresh declare `7F77B1C6` (SH +919000012300) → **SIRE active by default** confirmed.
+
+### 15.5 Test incident IDs
+
+- `a4c716c6-…` — original demo SIRE incident (early api bootstrap)
+- `423093EB…` — legacy (declared pre-#5, SIRE toggle off → `has_sire_data=false`; immutable, correct history)
+- `7F77B1C6…` — first SIRE-default-on incident (post-#5; confirms default)
+
+### 15.6 Open / deferred — NOT engineering
+
+- **June 1**: worker unfreeze → notification dispatch live (ADR 0005, `JUNE-2026-REVIEW-REQUIRED.md`); NFR-02/32 latency gates only.
+- Optional: EAS standalone build + Loom (distributable + sales asset).
+- BR-N regional language → Phase B (English live; i18n keys emitted).
+- Hospital-specific sub-types (OBSTETRIC/MASS_CASUALTY/HAZMAT) → hospital pilot under Rule 12 (degrade safely to parent meanwhile).
+- Confirm/IaC `sc-evidence-prod` S3 default encryption (defence-in-depth for the PR #2 approach).
+
+### 15.7 Authoritative references
+
+- **`docs/specs/sire-delivery-validation.md`** — per-BR/EC/Rule delivery matrix (reflects all 5 PRs). Single source of truth for "what's done".
+- **`docs/specs/phase-5-21-day7-walkthrough.md`** — acceptance checklist (P1–P10 / W1–W21 / R1–R6 / D1–D9).
