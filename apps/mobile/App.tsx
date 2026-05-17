@@ -9,6 +9,7 @@ import { ZonesScreen } from './src/screens/ZonesScreen';
 import { ZoneStatusBoardScreen } from './src/screens/ZoneStatusBoardScreen';
 import { MyShiftScreen } from './src/screens/MyShiftScreen';
 import { IncidentDetailScreen } from './src/screens/IncidentDetailScreen';
+import { IncidentsListScreen } from './src/screens/IncidentsListScreen';
 import { EquipmentScreen } from './src/screens/EquipmentScreen';
 import { DrillsScreen } from './src/screens/DrillsScreen';
 import { MyCertificationsScreen } from './src/screens/MyCertificationsScreen';
@@ -32,6 +33,7 @@ type ScreenName =
   | 'zoneStatusBoard'
   | 'myShift'
   | 'incidentDetail'
+  | 'incidentsList'
   | 'equipment'
   | 'drills'
   | 'myCerts'
@@ -121,6 +123,7 @@ function AppRouter(): React.JSX.Element {
             setViewIncidentId(id);
             setScreen('incidentDetail');
           }}
+          onIncidentList={() => setScreen('incidentsList')}
           onEquipment={() => setScreen('equipment')}
           onDrills={() => setScreen('drills')}
           onMyCerts={() => setScreen('myCerts')}
@@ -162,6 +165,15 @@ function AppRouter(): React.JSX.Element {
         <IncidentDetailScreen
           incidentId={viewIncidentId}
           onBack={() => setScreen('tasks')}
+        />
+      )}
+      {screen === 'incidentsList' && session && (
+        <IncidentsListScreen
+          onBack={() => setScreen('tasks')}
+          onOpenIncident={(id) => {
+            setViewIncidentId(id);
+            setScreen('incidentDetail');
+          }}
         />
       )}
       {screen === 'equipment' && session && (
