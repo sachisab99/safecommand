@@ -82,6 +82,27 @@ incidentsRouter.post(
     // assignment-creation pass (requires shift roster — BR-O Phase 5.22).
     let resolvedTemplatesSnapshot: Record<string, unknown> | null = null;
     if (useSire) {
+      // The snapshot is an immutable audit convenience for the *declaring*
+      // role. The real per-responder fan-out (GS/FS/SC/SH/DSH) happens in
+      // bootstrapSireIncident — those roles are guaranteed templates by
+      // mig 019 (EC-23 gap-free). But the route also allows GM/FM/AUDITOR to
+      // declare, and those roles have NO action templates BY DESIGN. With
+      // SIRE now default-on, resolving the snapshot for the declarer must
+      // never fail the declaration. So: snapshot against the declaring role
+      // only if it is itself a SIRE-template role; otherwise against the
+      // canonical command role (SH — guaranteed by the mig 015 global
+      // floor). EC23 only ever surfaces if even the SH floor is missing
+      // (impossible post mig 015/019) — kept as a defensive last resort.
+      const SIRE_TEMPLATE_ROLES = [
+        'SH',
+        'DSH',
+        'SHIFT_COMMANDER',
+        'FLOOR_SUPERVISOR',
+        'GROUND_STAFF',
+      ];
+      const snapshotRole = SIRE_TEMPLATE_ROLES.includes(declaringRole)
+        ? declaringRole
+        : 'SH';
       try {
         const { data: venueRow, error: vErr } = await getServiceClient()
           .from('venues')
@@ -95,16 +116,33 @@ incidentsRouter.post(
           return;
         }
 
-        const resolved = await resolveTemplate(getServiceClient(), {
-          venue_id: venueId,
-          venue_type: venueRow.type,
-          incident_type,
-          incident_subtype: incident_subtype ?? null,
-          staff_role: declaringRole,
-        });
+        const resolveFor = (role: string) =>
+          resolveTemplate(getServiceClient(), {
+            venue_id: venueId,
+            venue_type: venueRow.type,
+            incident_type,
+            incident_subtype: incident_subtype ?? null,
+            staff_role: role,
+          });
+
+        const resolveSnapshot = async (): Promise<{
+          resolved: Awaited<ReturnType<typeof resolveFor>>;
+          role: string;
+        }> => {
+          try {
+            return { resolved: await resolveFor(snapshotRole), role: snapshotRole };
+          } catch (inner) {
+            if (inner instanceof EC23ViolationError && snapshotRole !== 'SH') {
+              return { resolved: await resolveFor('SH'), role: 'SH' };
+            }
+            throw inner;
+          }
+        };
+
+        const { resolved, role: snapRole } = await resolveSnapshot();
 
         resolvedTemplatesSnapshot = {
-          [declaringRole]: {
+          [snapRole]: {
             template_id: resolved.id,
             template_version: resolved.template_version,
             tier: resolved.tier,
@@ -117,7 +155,7 @@ incidentsRouter.post(
           res.status(500).json({
             error: {
               code: 'EC23_VIOLATION',
-              message: `No SIRE template seeded for ${incident_type}+${declaringRole}. Contact SC Ops.`,
+              message: `No SIRE template seeded for ${incident_type} (SH global floor missing). Contact SC Ops.`,
             },
           });
           return;

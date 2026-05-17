@@ -127,7 +127,11 @@ export function IncidentScreen({ onBack, onDeclared }: Props): React.JSX.Element
   // assignments + creates incident_zone_states + snapshots resolved_templates.
   // Only FIRE and EVACUATION have templates seeded today (mig 015 + 017);
   // other incident types fall back to v1 binary "I AM SAFE" path.
-  const [enableSire, setEnableSire] = useState(false);
+  // SIRE is the default response path (Phase 5.22 / mig 019 made EC-23
+  // gap-free for every incident_type × SIRE role). Operators opt OUT for
+  // the rare legacy "I AM SAFE" path; they no longer have to remember to
+  // opt in. api hardened so non-SIRE declarers (GM/FM) never break.
+  const [enableSire, setEnableSire] = useState(true);
   const [selectedSubtype, setSelectedSubtype] = useState<string | null>(null);
 
   useEffect(() => {
@@ -375,10 +379,11 @@ export function IncidentScreen({ onBack, onDeclared }: Props): React.JSX.Element
             All on-duty staff will be alerted immediately.
           </Text>
 
-          {/* Phase 5.21 SIRE — only show toggle for FIRE + EVACUATION
-              (the types with seeded templates per mig 015 + 017). */}
-          {(selectedType === 'FIRE' || selectedType === 'EVACUATION') && (
-            <View style={[s.sireToggleRow, { backgroundColor: c.surface, borderColor: c.divider }]}>
+          {/* SIRE default-on, shown for ALL incident types as an opt-OUT
+              (Phase 5.22 / mig 019 made EC-23 gap-free for every type×role).
+              Sub-type pickers below stay FIRE/EVAC; other types resolve via
+              the EC-23 parent fallback, by design. */}
+          <View style={[s.sireToggleRow, { backgroundColor: c.surface, borderColor: c.divider }]}>
               <View style={s.sireToggleLabel}>
                 <Text style={[s.sireToggleTitle, { color: c.textPrimary }]}>
                   ⚙ Use SIRE response engine
@@ -406,7 +411,6 @@ export function IncidentScreen({ onBack, onDeclared }: Props): React.JSX.Element
                 />
               </TouchableOpacity>
             </View>
-          )}
 
           {/* Sub-type picker — appears when SIRE is on */}
           {enableSire && selectedType === 'FIRE' && (

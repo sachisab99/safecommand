@@ -48,6 +48,7 @@
 | S3 presign SSE bug | ✅ Fixed | PR #2 — dropped signed SSE header; **mobile upload confirmed working in prod**; encryption-at-rest via S3 bucket default |
 | Dashboard zone-evidence parity | ✅ | PR #3 — desktop zone-state evidence is real photo upload (was paste-URL) |
 | Dashboard command-desk declaration | ✅ | PR #4 — `DeclareIncidentButton` on /incidents + /dashboard (role-gated SH/DSH/SC/GM/FM = api requireRole), full parity incl. SIRE toggle + FIRE/EVAC sub-types; reuses `POST /v1/incidents`. Additive — mobile 3-tap (BR-11) remains primary path |
+| SIRE-by-default | ✅ | PR #5 — `enable_sire` now defaults **ON** for all incident types (mobile + dashboard), opt-OUT toggle (was opt-in default-off — Phase 5.21 transitional, obsolete post-EC-23). api hardened: non-SIRE declarers (GM/FM/AUDITOR) snapshot against the SH global floor instead of 500-ing — prevents the SIRE-default landmine. SIRE-role declarers unchanged |
 
 ## 4. Honest deferred / out-of-scope (documented decisions, not gaps)
 
