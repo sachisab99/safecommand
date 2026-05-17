@@ -46,6 +46,27 @@ export async function declareIncident(
   return { ok: true, incidentId: data.id, error: null };
 }
 
+// ─── BR-29 post-incident report ────────────────────────────────────────────
+
+export async function generateIncidentReport(
+  incidentId: string,
+): Promise<{ ok: boolean; url?: string; generatedAt?: string; error: string | null }> {
+  const { data, error } = await apiFetch<{
+    url: string;
+    generated_at: string;
+    incident_ref: string;
+  }>(`/incidents/${incidentId}/report`, { method: 'POST', body: '{}' });
+  if (error || !data) return { ok: false, error: error ?? 'Could not generate report' };
+  return { ok: true, url: data.url, generatedAt: data.generated_at, error: null };
+}
+
+// Roles permitted to generate the report — MUST match api requireRole on
+// POST /incidents/:id/report (command + GM + Auditor; BR-17 + BR-29).
+export const REPORT_ROLES = ['SH', 'DSH', 'SHIFT_COMMANDER', 'GM', 'AUDITOR'] as const;
+export function canGenerateReport(role: string | undefined | null): boolean {
+  return !!role && (REPORT_ROLES as readonly string[]).includes(role);
+}
+
 // Roles permitted to declare — MUST match api requireRole on POST /incidents
 // (apps/api/src/routes/incidents.ts). UI gate is defence-in-depth only;
 // the api + RLS are the real enforcement.

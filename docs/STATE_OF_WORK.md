@@ -861,5 +861,19 @@ After EAS APK installed + Amplify dashboard fixed, demo flow:
 
 ### 15.7 Authoritative references
 
-- **`docs/specs/sire-delivery-validation.md`** — per-BR/EC/Rule delivery matrix (reflects all 5 PRs). Single source of truth for "what's done".
+- **`docs/specs/sire-delivery-validation.md`** — per-BR/EC/Rule delivery matrix (reflects all 6 PRs incl. BR-29). Single source of truth for "what's done".
 - **`docs/specs/phase-5-21-day7-walkthrough.md`** — acceptance checklist (P1–P10 / W1–W21 / R1–R6 / D1–D9).
+
+### 15.8 Post-SIRE next feature — BR-29 Post-Incident Report PDF (2026-05-17, PR #7)
+
+Founder-elected next build after SIRE close-out. Server-rendered PDFKit
+report (`apps/api/src/services/incidentReport.ts` + `POST /v1/incidents/:id/report`,
+role-gated SH/DSH/SC/GM/AUDITOR): summary + timeline + (SIRE) zone-state
+history + per-role action completion + evacuation-trigger audit + photo
+ledger; 'Powered by SafeCommand' footer (EC-18/Rule 20); S3 + presigned
+GET; upserts `incident_reports` (no migration — table existed since mig
+002). Dashboard `IncidentReportCard` replaces the Phase-B placeholder.
+pdfkit added to apps/api. No worker dependency. The SIRE capstone /
+audit artifact for the 31-May validation conversations + pilots.
+**Build state:** code complete, tsc+build clean, PR #7 — pending merge
+→ Railway api + Amplify redeploy.
