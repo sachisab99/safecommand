@@ -56,7 +56,10 @@ function DeclareIncidentModal({ onClose }: { onClose: () => void }) {
   const [severity, setSeverity] = useState<IncidentSeverity | null>(null);
   const [zones, setZones] = useState<ZoneRef[]>([]);
   const [zoneId, setZoneId] = useState<string>('');
-  const [enableSire, setEnableSire] = useState(false);
+  // SIRE default-on (parity with mobile; Phase 5.22 made EC-23 gap-free).
+  // Checkbox below is an opt-OUT, shown for all types; sub-type chips stay
+  // FIRE/EVAC. api hardened so non-SIRE declarers never break.
+  const [enableSire, setEnableSire] = useState(true);
   const [subtype, setSubtype] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
