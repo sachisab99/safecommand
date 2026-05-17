@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 let _client: S3Client | null = null;
@@ -57,4 +57,39 @@ export async function getPresignedUploadUrl(
 
 export function getPublicUrl(fileKey: string): string {
   return `https://${BUCKET}.s3.${process.env['AWS_REGION'] ?? 'ap-south-1'}.amazonaws.com/${fileKey}`;
+}
+
+// ─── BR-29 post-incident report (server-generated PDF) ─────────────────────
+// Server PUTs the rendered PDF buffer to S3, then hands back a time-limited
+// presigned GET URL. No ServerSideEncryption header on the command (PR #2 —
+// signing it breaks presigned ops; encryption-at-rest is bucket-default).
+
+const REPORT_GET_TTL_SECONDS = 900; // 15 min — enough to open/download
+
+export async function putReportObject(
+  venueId: string,
+  incidentId: string,
+  body: Buffer,
+): Promise<string> {
+  const fileKey = `incident_reports/${venueId}/${incidentId}/${Date.now()}.pdf`;
+  await getS3Client().send(
+    new PutObjectCommand({
+      Bucket: BUCKET,
+      Key: fileKey,
+      Body: body,
+      ContentType: 'application/pdf',
+    }),
+  );
+  return fileKey;
+}
+
+export async function presignGetUrl(
+  fileKey: string,
+  ttlSeconds: number = REPORT_GET_TTL_SECONDS,
+): Promise<string> {
+  return getSignedUrl(
+    getS3Client(),
+    new GetObjectCommand({ Bucket: BUCKET, Key: fileKey }),
+    { expiresIn: ttlSeconds },
+  );
 }

@@ -8,6 +8,8 @@ import { incidentEscalationsQueue } from '@safecommand/queue';
 import { CreateIncidentSchema, UpdateIncidentStatusSchema } from '@safecommand/schemas';
 import { resolveTemplate, EC23ViolationError } from '../services/sire/templateResolver.js';
 import { bootstrapSireIncident } from '../services/sire/bootstrapIncident.js';
+import { buildIncidentReportPdf } from '../services/incidentReport.js';
+import { putReportObject, presignGetUrl } from '../services/storage.js';
 import { logger } from '../services/logger.js';
 
 export const incidentsRouter = Router();
@@ -349,3 +351,55 @@ incidentsRouter.post('/:id/staff-safe', auditLog('STAFF_SAFE'), async (req: Requ
   }
   res.status(200).json({ message: 'Safe confirmation recorded' });
 });
+
+// ──────────────────────────────────────────────────────────────────────────
+// POST /v1/incidents/:id/report — BR-29 post-incident report (PDF)
+//
+// Generates the full auditable PDF (summary + timeline + SIRE zone-state
+// history + per-role action completion + evacuation-trigger audit + photo
+// evidence ledger), stores it to S3, upserts incident_reports (1 per
+// incident — incident_id UNIQUE), and returns a time-limited presigned
+// GET URL. Idempotent: re-generates on each call (incident data evolves
+// until resolved). No worker dependency. Role: command + GM + Auditor
+// (BR-17 auditor compliance-report generation; BR-29).
+incidentsRouter.post(
+  '/:id/report',
+  requireRole('SH', 'DSH', 'SHIFT_COMMANDER', 'GM', 'AUDITOR'),
+  auditLog('INCIDENT_REPORT_GENERATE'),
+  async (req: Request, res: Response): Promise<void> => {
+    const incidentId = req.params['id']!;
+    const venueId = req.auth.venue_id;
+    try {
+      const built = await buildIncidentReportPdf(incidentId, venueId);
+      if (!built) {
+        res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Incident not found' } });
+        return;
+      }
+      const fileKey = await putReportObject(venueId, incidentId, built.buffer);
+      const generatedAt = new Date().toISOString();
+      const { error: upErr } = await getServiceClient()
+        .from('incident_reports')
+        .upsert(
+          {
+            venue_id: venueId,
+            incident_id: incidentId,
+            report_url: fileKey,
+            generated_at: generatedAt,
+          },
+          { onConflict: 'incident_id' },
+        );
+      if (upErr) {
+        // Non-fatal: the PDF is generated + stored; the index row is a
+        // convenience. Log for ops.
+        logger.error({ upErr, incidentId }, 'incident_reports upsert failed (PDF still generated)');
+      }
+      const url = await presignGetUrl(fileKey);
+      res.status(200).json({ url, generated_at: generatedAt, incident_ref: built.incidentRef });
+    } catch (err) {
+      logger.error({ err, incidentId }, 'BR-29 report generation failed');
+      res.status(500).json({
+        error: { code: 'REPORT_FAILED', message: 'Could not generate the report' },
+      });
+    }
+  },
+);

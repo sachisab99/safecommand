@@ -13,9 +13,10 @@
  * Actor names are resolved client-side via /v1/staff (the incidents endpoint
  * doesn't join the timeline → staff relation).
  *
- * BR-29: Post-incident report auto-generation. PDF export is Phase B (June);
- * this page renders the human-readable equivalent today and includes a
- * "Print this page" affordance as an interim escape hatch.
+ * BR-29: Post-incident report auto-generation — SHIPPED. The
+ * IncidentReportCard generates a server-rendered PDF (PDFKit →
+ * POST /v1/incidents/:id/report). The "Print this page" affordance
+ * remains as a quick browser-side fallback.
  *
  * EC-10 / Rule 4: timeline is append-only at DB level. This page is read-
  * only — no mutations from here.
@@ -26,6 +27,7 @@ import Link from 'next/link';
 import { AppShell } from '../../../components/AppShell';
 import { apiFetch } from '../../../lib/api';
 import { getSession } from '../../../lib/auth';
+import { generateIncidentReport, canGenerateReport } from '../../../lib/incidents';
 import { SireSection } from '../../../components/sire/SireSection';
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
@@ -252,7 +254,7 @@ export default function IncidentDetailPage({
               declaredAt={incident.declared_at}
             />
             <ScopeCard incident={incident} />
-            <PdfPlaceholderCard />
+            <IncidentReportCard incidentId={incident.id} />
           </article>
         )}
       </div>
@@ -498,23 +500,74 @@ function Field({ label, value, mono }: { label: string; value: string; mono?: bo
   );
 }
 
-/* ─── PDF placeholder (BR-29 Phase B) ────────────────────────────────────── */
+/* ─── BR-29 post-incident report (PDF) ───────────────────────────────────── */
 
-function PdfPlaceholderCard() {
+function IncidentReportCard({ incidentId }: { incidentId: string }) {
+  const [role, setRole] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [lastUrl, setLastUrl] = useState<string | null>(null);
+  const [lastAt, setLastAt] = useState<string | null>(null);
+
+  useEffect(() => {
+    setRole(getSession()?.staff.role ?? null);
+  }, []);
+
+  // Defence-in-depth — the api enforces requireRole; this just hides the
+  // control for roles that would 403.
+  if (!canGenerateReport(role)) return null;
+
+  const onGenerate = async () => {
+    setBusy(true);
+    setError(null);
+    const res = await generateIncidentReport(incidentId);
+    setBusy(false);
+    if (res.ok && res.url) {
+      setLastUrl(res.url);
+      setLastAt(res.generatedAt ?? null);
+      window.open(res.url, '_blank', 'noopener,noreferrer');
+    } else {
+      setError(res.error ?? 'Could not generate the report');
+    }
+  };
+
   return (
-    <section className="bg-slate-50 border border-dashed border-slate-200 rounded-2xl p-5 sm:p-6">
+    <section className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6">
       <div className="flex items-start gap-3">
         <span className="text-2xl shrink-0" aria-hidden="true">📄</span>
         <div className="flex-1">
-          <h3 className="font-semibold text-slate-700 text-sm">
-            Compliance PDF report
-          </h3>
+          <h3 className="font-semibold text-slate-900 text-sm">Post-incident report (PDF)</h3>
           <p className="text-slate-500 text-xs mt-1">
-            Auto-generated post-incident report (PDFKit) ships in Phase B (June 2026)
-            per <span className="font-mono">JUNE-2026-REVIEW-REQUIRED.md</span>. Until
-            then, use the Print button at the top to capture this view as a PDF via
-            your browser's print dialog.
+            Auditable record — summary, timeline, SIRE zone-state history, per-role
+            action completion, evacuation-trigger audit & photo-evidence ledger.
+            Fire-NOC / NABH / insurance-grade.
           </p>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={onGenerate}
+              disabled={busy}
+              className="rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-50"
+            >
+              {busy ? 'Generating…' : 'Generate & download report'}
+            </button>
+            {lastUrl && (
+              <a
+                href={lastUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm font-medium text-blue-700 hover:underline"
+              >
+                Open last report ↗
+              </a>
+            )}
+            {lastAt && (
+              <span className="text-xs text-slate-400">
+                generated {new Date(lastAt).toLocaleString('en-IN')}
+              </span>
+            )}
+          </div>
+          {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
         </div>
       </div>
     </section>
