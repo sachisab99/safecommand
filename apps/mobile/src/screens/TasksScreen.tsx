@@ -125,6 +125,7 @@ interface Props {
   onDrills: () => void;
   onMyCerts: () => void;
   onRoster: () => void;
+  onHandover: () => void;
   onDrillDetail: (drillId: string) => void;
 }
 
@@ -141,6 +142,7 @@ export function TasksScreen({
   onDrills,
   onMyCerts,
   onRoster,
+  onHandover,
   onDrillDetail,
 }: Props): React.JSX.Element {
   const c = useColours();
@@ -321,6 +323,12 @@ export function TasksScreen({
                 label: 'Shifts & Roster',
                 icon: '🛡',
                 onPress: onRoster,
+              },
+              {
+                key: 'handover',
+                label: 'Shift Handover',
+                icon: '⇄',
+                onPress: onHandover,
               },
             ]
           : []),

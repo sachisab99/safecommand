@@ -13,6 +13,7 @@ import { EquipmentScreen } from './src/screens/EquipmentScreen';
 import { DrillsScreen } from './src/screens/DrillsScreen';
 import { MyCertificationsScreen } from './src/screens/MyCertificationsScreen';
 import { RosterScreen } from './src/screens/RosterScreen';
+import { HandoverScreen } from './src/screens/HandoverScreen';
 import { DrillDetailScreen } from './src/screens/DrillDetailScreen';
 import { getStoredSession, clearSession } from './src/services/auth';
 import { initDb, syncPending } from './src/services/tasks';
@@ -35,6 +36,7 @@ type ScreenName =
   | 'drills'
   | 'myCerts'
   | 'roster'
+  | 'handover'
   | 'drillDetail';
 
 initDb(); // initialise SQLite tables at module load
@@ -123,6 +125,7 @@ function AppRouter(): React.JSX.Element {
           onDrills={() => setScreen('drills')}
           onMyCerts={() => setScreen('myCerts')}
           onRoster={() => setScreen('roster')}
+          onHandover={() => setScreen('handover')}
           onDrillDetail={(id) => {
             setViewDrillId(id);
             setScreen('drillDetail');
@@ -185,6 +188,12 @@ function AppRouter(): React.JSX.Element {
       )}
       {screen === 'roster' && session && (
         <RosterScreen
+          staffRole={session.staff.role}
+          onBack={() => setScreen('tasks')}
+        />
+      )}
+      {screen === 'handover' && session && (
+        <HandoverScreen
           staffRole={session.staff.role}
           onBack={() => setScreen('tasks')}
         />
