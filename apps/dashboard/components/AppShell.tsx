@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getSession } from '../lib/auth';
 import { Drawer } from './Drawer';
+import { FestivalPostureBanner } from './FestivalMode';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -38,7 +39,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="w-11" aria-hidden="true" /> {/* spacer for visual balance */}
         </header>
 
-        <main className="flex-1 overflow-y-auto bg-slate-50">{children}</main>
+        <main className="flex-1 overflow-y-auto bg-slate-50">
+          <FestivalPostureBanner />
+          {children}
+        </main>
       </div>
     </div>
   );

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { AppShell } from '../../components/AppShell';
 import { DeclareIncidentButton } from '../../components/DeclareIncidentModal';
+import { FestivalModeControl } from '../../components/FestivalMode';
 import { apiFetch } from '../../lib/api';
 
 interface AnalyticsSummary {
@@ -352,6 +353,8 @@ export default function DashboardPage() {
           </div>
           <DeclareIncidentButton />
         </div>
+
+        <FestivalModeControl />
 
         {loading && (
           <div className="flex items-center justify-center h-64 text-slate-400">Loading…</div>

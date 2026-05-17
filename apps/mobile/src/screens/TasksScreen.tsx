@@ -24,6 +24,8 @@ import {
 } from '../services/incidents';
 import type { StaffProfile } from '../services/auth';
 import { TaskDetailScreen } from './TaskDetailScreen';
+import { FestivalBanner } from '../components/FestivalBanner';
+import { fetchVenue, setFestivalMode, canToggleFestival } from '../services/venue';
 import {
   Screen,
   useColours,
@@ -238,6 +240,35 @@ export function TasksScreen({
     );
   }, []);
 
+  // BR-23 — command-gated Festival/Event Mode toggle. Isolated: fetches
+  // current state on demand, never touches the task/incident load path.
+  const handleFestivalToggle = useCallback(async (): Promise<void> => {
+    const { data } = await fetchVenue();
+    const current = data?.festival_mode === true;
+    const next = !current;
+    Alert.alert(
+      current ? 'Festival / Event Mode is ON' : 'Festival / Event Mode is OFF',
+      next
+        ? 'Activate elevated safety posture venue-wide?'
+        : 'Stand down and return to normal posture?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: next ? 'Activate' : 'Stand down',
+          onPress: async () => {
+            const res = await setFestivalMode(next);
+            Alert.alert(
+              res.ok ? 'Done' : 'Error',
+              res.ok
+                ? `Festival / Event Mode ${next ? 'activated' : 'stood down'}.`
+                : res.error ?? 'Could not update. Try again.',
+            );
+          },
+        },
+      ],
+    );
+  }, []);
+
   const handleComplete = useCallback((): void => {
     setSelectedTask(null);
     void load(true);
@@ -306,6 +337,18 @@ export function TasksScreen({
           icon: '⚠️',
           onPress: onDeclareIncident,
         },
+        // BR-23 Festival/Event Mode — command-gated (SH/DSH/GM, matches
+        // api requireRole on PUT /venue/festival-mode).
+        ...(canToggleFestival(staff.role)
+          ? [
+              {
+                key: 'festival',
+                label: 'Festival / Event Mode',
+                icon: '⚡',
+                onPress: handleFestivalToggle,
+              },
+            ]
+          : []),
       ],
     },
     {
@@ -475,6 +518,9 @@ export function TasksScreen({
           <Text style={[s.taskCountLabel, { color: c.textDisabled }]}>open</Text>
         </View>
       </View>
+
+      {/* BR-23 — elevated-posture indicator (self-contained, fail-safe) */}
+      <FestivalBanner />
 
       {/* Active incident banner — shown whenever an ACTIVE or CONTAINED incident exists */}
       {incidents.map((incident) => (
