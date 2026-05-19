@@ -114,3 +114,25 @@ export async function presignGetUrl(
     { expiresIn: ttlSeconds },
   );
 }
+
+// ─── BR-A per-drill Fire NOC report (server-generated PDF) ─────────────────
+// Same store-then-presign-GET mechanism as BR-29; distinct key prefix so
+// drill reports are lifecycle-separable. (Appended at EOF deliberately so
+// this hunk never conflicts with the BR-20 compliance-export branch, which
+// inserts its helper before presignGetUrl.)
+export async function putDrillReportObject(
+  venueId: string,
+  drillId: string,
+  body: Buffer,
+): Promise<string> {
+  const fileKey = `drill_reports/${venueId}/${drillId}/${Date.now()}.pdf`;
+  await getS3Client().send(
+    new PutObjectCommand({
+      Bucket: BUCKET,
+      Key: fileKey,
+      Body: body,
+      ContentType: 'application/pdf',
+    }),
+  );
+  return fileKey;
+}

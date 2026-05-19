@@ -36,6 +36,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   TextInput,
+  Linking,
 } from 'react-native';
 import {
   Screen,
@@ -55,6 +56,8 @@ import {
   markDrillSafe,
   setParticipantReason,
   canSetParticipantReason,
+  generateDrillReport,
+  canExportDrillReport,
   REASON_CODES,
   REASON_LABEL,
   REASON_HINT,
@@ -130,6 +133,7 @@ export function DrillDetailScreen({ drillId, staffId, staffRole, onBack }: Props
   const [actionInFlight, setActionInFlight] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterKey>('ALL');
   const [reasonTarget, setReasonTarget] = useState<DrillParticipant | null>(null);
+  const [reportBusy, setReportBusy] = useState(false);
 
   const load = useCallback(async (isRefresh = false): Promise<void> => {
     if (isRefresh) setRefreshing(true);
@@ -160,6 +164,21 @@ export function DrillDetailScreen({ drillId, staffId, staffRole, onBack }: Props
     () => detail?.participants.find((p) => p.staff_id === staffId) ?? null,
     [detail, staffId],
   );
+
+  const handleGenerateReport = useCallback(async (): Promise<void> => {
+    setReportBusy(true);
+    const { url, error: e } = await generateDrillReport(drillId);
+    setReportBusy(false);
+    if (e || !url) {
+      Alert.alert('Report failed', e ?? 'Could not generate the drill report.');
+      return;
+    }
+    try {
+      await Linking.openURL(url);
+    } catch {
+      Alert.alert('Report ready', 'Generated, but the device could not open the PDF link.');
+    }
+  }, [drillId]);
 
   const filteredParticipants = useMemo(() => {
     if (!detail) return [];
@@ -210,7 +229,25 @@ export function DrillDetailScreen({ drillId, staffId, staffRole, onBack }: Props
             </Text>
           )}
         </View>
-        <View style={s.backBtnSpacer} />
+        {detail && canExportDrillReport(staffRole) ? (
+          <TouchableOpacity
+            onPress={() => void handleGenerateReport()}
+            disabled={reportBusy}
+            style={s.backBtnSpacer}
+            hitSlop={touch.hitSlop}
+          >
+            <Text
+              style={[
+                s.backText,
+                { color: reportBusy ? c.textMuted : c.status.info, textAlign: 'right' },
+              ]}
+            >
+              {reportBusy ? '…' : 'Report'}
+            </Text>
+          </TouchableOpacity>
+        ) : (
+          <View style={s.backBtnSpacer} />
+        )}
       </View>
 
       {loading ? (

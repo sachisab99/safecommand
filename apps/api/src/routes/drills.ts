@@ -28,6 +28,9 @@ import { requireAuth, requireRole } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
 import { auditLog } from '../middleware/audit.js';
 import { getServiceClient } from '@safecommand/db';
+import { buildDrillReportPdf } from '../services/drillReport.js';
+import { putDrillReportObject, presignGetUrl } from '../services/storage.js';
+import { logger } from '../services/logger.js';
 
 export const drillsRouter = Router();
 drillsRouter.use(requireAuth, setTenantContext);
@@ -291,6 +294,53 @@ drillsRouter.get('/:id', async (req: Request, res: Response): Promise<void> => {
     requester_view: isFullView ? 'full' : 'self',
   });
 });
+
+// ──────────────────────────────────────────────────────────────────────────
+// POST /v1/drill-sessions/:id/report — BR-A per-drill Fire NOC report (PDF)
+//
+// On-demand, synchronous. Renders the timed drill record (particulars +
+// participation matrix with the ADR-0004 reason taxonomy + append-only
+// audit timeline), stores it to S3, best-effort writes the key into
+// drill_sessions.report_pdf_url (column exists since mig 010 — NOT a
+// migration), and returns a time-limited presigned GET URL. Role: the
+// same full-venue-read set that can already see the full drill detail
+// (SH/DSH/FM/SHIFT_COMMANDER/AUDITOR/GM). No worker dependency. The
+// auto-generate-on-completion hook is a separate June/worker concern.
+drillsRouter.post(
+  '/:id/report',
+  requireRole('SH', 'DSH', 'FM', 'SHIFT_COMMANDER', 'AUDITOR', 'GM'),
+  auditLog('DRILL_REPORT_GENERATE'),
+  async (req: Request, res: Response): Promise<void> => {
+    const drillId = req.params['id']!;
+    const venueId = req.auth.venue_id;
+    try {
+      const built = await buildDrillReportPdf(drillId, venueId);
+      if (!built) {
+        res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Drill not found' } });
+        return;
+      }
+      const fileKey = await putDrillReportObject(venueId, drillId, built.buffer);
+      const generatedAt = new Date().toISOString();
+      const { error: upErr } = await getServiceClient()
+        .from('drill_sessions')
+        .update({ report_pdf_url: fileKey, updated_at: generatedAt })
+        .eq('id', drillId)
+        .eq('venue_id', venueId);
+      if (upErr) {
+        // Non-fatal: the PDF is generated + stored; the column write is a
+        // convenience index. Log for ops (mirrors BR-29 behaviour).
+        logger.error({ upErr, drillId }, 'drill_sessions.report_pdf_url update failed (PDF still generated)');
+      }
+      const url = await presignGetUrl(fileKey);
+      res.status(200).json({ url, generated_at: generatedAt, drill_ref: built.drillRef });
+    } catch (err) {
+      logger.error({ err, drillId }, 'BR-A drill report generation failed');
+      res.status(500).json({
+        error: { code: 'REPORT_FAILED', message: 'Could not generate the drill report' },
+      });
+    }
+  },
+);
 
 drillsRouter.post(
   '/',

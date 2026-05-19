@@ -161,6 +161,12 @@ export function canWriteDrills(role: string): boolean {
   return ['SH', 'DSH', 'FM', 'SHIFT_COMMANDER'].includes(role);
 }
 
+/** Roles allowed to generate the BR-A Fire NOC drill report (PDF) —
+ *  must match api requireRole on POST /drill-sessions/:id/report exactly. */
+export function canExportDrillReport(role: string): boolean {
+  return ['SH', 'DSH', 'FM', 'SHIFT_COMMANDER', 'AUDITOR', 'GM'].includes(role);
+}
+
 // ─── Phase 5.18 — Detail / participants / reason taxonomy ──────────────────
 // Backed by ADR 0004 + docs/research/drill-participant-reason-taxonomy.md.
 
@@ -316,6 +322,21 @@ export async function setParticipantReason(
     },
   );
   return { ok: !error, error };
+}
+
+// BR-A — on-demand per-drill Fire NOC report (PDF). The api renders +
+// stores it and returns a short-lived presigned GET URL the device opens
+// via Linking. No worker dependency.
+export async function generateDrillReport(
+  drillId: string,
+): Promise<{ url: string | null; error: string | null }> {
+  const session = await getStoredSession();
+  if (!session) return { url: null, error: 'Not authenticated' };
+  const { data, error } = await apiFetch<{ url: string; drill_ref: string }>(
+    `/drill-sessions/${drillId}/report`,
+    { method: 'POST', token: session.access_token },
+  );
+  return { url: data?.url ?? null, error };
 }
 
 export interface ActiveDrillForMe {

@@ -174,6 +174,8 @@ const STATUS_LABEL: Record<ParticipantStatus, string> = {
 };
 
 const COMMAND_ROLES = ['SH', 'DSH', 'FM', 'SHIFT_COMMANDER'];
+// BR-A Fire NOC report — mirrors the api requireRole on POST /:id/report
+const REPORT_ROLES = ['SH', 'DSH', 'FM', 'SHIFT_COMMANDER', 'AUDITOR', 'GM'];
 
 type FilterKey = 'ALL' | 'NEEDS_REASON' | ParticipantStatus;
 
@@ -243,6 +245,22 @@ export default function DrillDetailPage({
   const [filter, setFilter] = useState<FilterKey>('ALL');
 
   const canSetReason = staffRole !== null && COMMAND_ROLES.includes(staffRole);
+  const canExportReport = staffRole !== null && REPORT_ROLES.includes(staffRole);
+  const [reportBusy, setReportBusy] = useState(false);
+
+  const genDrillReport = useCallback(async () => {
+    setReportBusy(true);
+    const { data, error: e } = await apiFetch<{ url: string }>(
+      `/drill-sessions/${id}/report`,
+      { method: 'POST' },
+    );
+    setReportBusy(false);
+    if (e || !data) {
+      setError(e ?? 'Report generation failed');
+      return;
+    }
+    if (typeof window !== 'undefined') window.open(data.url, '_blank', 'noopener');
+  }, [id]);
 
   useEffect(() => {
     const session = getSession();
@@ -360,14 +378,26 @@ export default function DrillDetailPage({
                       <span className="text-slate-400 font-normal ml-1">· your row only</span>
                     )}
                   </h2>
-                  {canSetReason && (
-                    <button
-                      onClick={() => window.print()}
-                      className="px-3 py-1 text-xs font-medium text-slate-600 bg-slate-50 border border-slate-200 hover:bg-slate-100 rounded-lg transition-colors"
-                    >
-                      Print
-                    </button>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {canExportReport && (
+                      <button
+                        onClick={() => void genDrillReport()}
+                        disabled={reportBusy}
+                        className="px-3 py-1 text-xs font-semibold text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                        title="Generate the timed Fire NOC / NABH §EM drill report (PDF)"
+                      >
+                        {reportBusy ? 'Generating…' : 'Fire NOC report'}
+                      </button>
+                    )}
+                    {canSetReason && (
+                      <button
+                        onClick={() => window.print()}
+                        className="px-3 py-1 text-xs font-medium text-slate-600 bg-slate-50 border border-slate-200 hover:bg-slate-100 rounded-lg transition-colors"
+                      >
+                        Print
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {detail.requester_view === 'full' && (
