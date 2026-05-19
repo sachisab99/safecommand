@@ -1,14 +1,23 @@
-# SafeCommand — Claude Code Context (v8)
+# SafeCommand — Claude Code Context (v9)
 
-> **Spec authority (2026-05-10):** `nexus/specs/2026-05-10_prime_business-plan-report-gen_v8.md` (Business Plan v8.0 — **101 BRs, 37 NFRs, 6 ADRs, 23 sections, 1378 lines**) and `nexus/specs/2026-05-10_SafeCommand_Architecture_v8_Complete.md` (Architecture v8 — **23 ECs, 24 Hard Rules + Rule 25 (codebase amendment 2026-05-08), 7221 lines**). These supersede all prior versions including v7. When this file diverges from the spec, the spec wins, except for Hard Rule 25 which is a codebase amendment landed via mig 016 (security gap fix) — that rule is authoritative until folded into a future spec revision.
+> **Spec authority:** Business Plan **v9.0** (`nexus/specs/2026-05-18_prime_business-plan-v9.md` — 116 BRs, 38 NFRs, 6 ADRs, 28 sections, 1770 lines; 2026-05-18) + Architecture **v9.1** (`nexus/specs/SafeCommand_Architecture_v91_Complete.md` — 25 ECs, 26 Hard Rules, 6 ADRs + 4 placeholders, 10372 lines; 2026-05-19). **Architecture v9.1 supersedes v9.0** (and all prior); BP remains v9.0 (not re-issued — it is the procurement-facing doc; the architecture was aligned to *its* numbering). When this file diverges from the spec, the spec wins, **except for the three reconciliation points below** which are codebase-authoritative.
 >
-> **What v8 adds (vs v7):** Structured Incident Response Engine (SIRE) — 10 new BRs (BR-G through BR-P), 32 incident sub-types, 10-state zone state machine, 3-button staff action model, selective evacuation, per-role action templates. All 10 new BRs are Phase 2 (Phase 5.21–5.22), explicitly NOT Phase 1. New EC-23 (template fallback always resolves), Hard Rules 23–24 (no auto-evacuation; mig 014 before Phase 5.21 code). Two new ADRs: 0005 (workers always-on June onward) + 0006 (Apollo brand live demo replaces v7 mockup).
+> **v9.1 (2026-05-19) — what changed vs v9.0 architecture:** No count change (116/38/25/26). Architect incorporated the validation report: NFR-31…37 numbering reconciled to BP; Section 12 BR/NFR Implementation Map completed to all 116 + NFR-38; **§1.3b ADR register fully detailed**; **new Section 23 — Standards-Closure BRs Architecture (~890 lines)** specifying **Migrations 021 / 022 / 023** for BR-AA…BR-AJ; BR-Y audit-export templates (Fire NOC / NABH §EM / DCD / FF-3 / JC EM); Premium Map Pack flag enforcement; Live-Mode 3-building/360-zone SEV1 budget. **Still nothing immediate-build — all of Section 23 is Phase 5.23 / Phase B (Q4 2027+).**
 >
-> **Engineering analysis backing v8 alignment:** `docs/specs/v8-alignment-analysis.md` (2026-05-08).
+> **Three reconciliation decisions (validated 2026-05-19 — captured here + ADR 0001 + `docs/STATE_OF_WORK.md` §v9-delta):**
+> 1. **Hard Rule 25 — NOT a collision (spec-codified).** Architecture v9.x §13 Rule 25 ("every `CREATE VIEW` REVOKEs anon/authenticated") is *semantically identical* to our codebase Rule 25 (mig 016, 2026-05-08) — the spec **formally codifies what was our codebase amendment**; they agree. Rule 25 text below is unchanged and now spec-backed. Hard Rule 24 is **extended** to require mig 014 *and* migs 020/021/022/023 before their respective Phase 5.23 code. v9's only genuinely-new rule is **Rule 26 = Evacuation Map Studio canonical format IMDF-compatible GeoJSON, never proprietary** (mirrors EC-24).
+> 2. **Migration numbering — NOW SPEC-RATIFIED (resolved).** BP v9 "Migration 012_evacuation_map_studio.sql" is a *logical label only*. **Architecture v9.1 §1.3b formally adopts the repo file-number as authoritative** and declares the sequence `009`…`019` → **`020_evacuation_map_studio.sql`** · **`021_standards_closure_p1.sql`** · **`022_lms_integration.sql`** · **`023_drill_tabletop_nabh_qis.sql`** (all Phase 5.23). The spec↔repo offset is **eliminated for 020+** — architecture and repo numbering now coincide; only the legacy BP "012" string is a logical label. ADR 0001 (2026-05-19 amendment) holds the mapping.
+> 3. **Build-state authority.** Architecture §16 is a point-in-time snapshot (`main @ 9378c8b`, 2026-05-17) — **v9.1 did NOT refresh it**. The deployed reality is **ahead** of it. **`docs/STATE_OF_WORK.md` + `docs/specs/sire-delivery-validation.md` are the live build-state authority** — never treat §16 as current HEAD. Per Hard Rule 3 + ADR 0001, deployed migrations are immutable & authoritative — the spec reconciles to the codebase, never the reverse.
 >
-> **Working branch:** `safecommand_v7` (Phase A scaffold work). `main` is paused-pilot-ready. ADR 0002 captures branching rationale. Merge-back target: before June 2 unfreeze.
+> **What v9 adds (vs v8):** (1) **Evacuation Map Studio** (BP §9 / Arch §21) — 10 new BRs (BR-Q…BR-Z): Konva.js canvas authoring per ISO 23601, ISO 7010 + NFPA 170 symbol library, 7-jurisdiction compliance-validation engine (NBC 2016 / NFPA 101+OSHA / DCD UAE / BS 9999 / EU / SCDF / AS 3745), IMDF-compatible canonical GeoJSON, per-posting personalised PDFs (Puppeteer), Live Mode rendering `incident_zone_states` during incidents. (2) **Global Standards Closure** (BP §3/§22 / Arch §22) — 10 standards-closure BRs (BR-AA…BR-AJ): annual EAP, safety-committee log, hospital horizontal evac, refuge-area accountability, PA hardware bridge, AMC registry, MSDS repository, **LMS integration (BR-AH)**, tabletop exercises (BR-AI), NABH 15 QIs. New NFR-38 (map render perf), EC-24 (IMDF canonical), EC-25 (floor-plan currency 9mo warn / 12mo publish-block). New **Phase 5.23** (8-week block, **Q4 2027**) + Phase B specialisation. Commercial: Map Studio tier-gated + Premium Map Pack ₹5K/mo; competitive moat 11→12 layers. **NOTHING in v9 is immediate-build or pull-forward-eligible like SIRE was — earliest Map Studio work = Phase 5.23 / Q4 2027, gated behind June unfreeze + pilots.** SIRE (BR-G…BR-P) is unchanged from v8 and is the dependency root for BR-W (Live Mode).
 >
-> **Build state:** Architecture v8 preserves Sprint 1 + Phase A + Phase 5 series (5.0 → 5.18). **Phase 5.21 Day 1 SHIPPED 2026-05-08 (ahead of post-pilot gate)**: `014_sire_engine.sql` (8 SIRE tables + 1 view + 5 incidents columns + global threshold seed) + `015_sire_seed_fire_sh_global_template.sql` (EC-23 mandatory tier-6 fallback) deployed to Supabase production; `packages/types/src/incident-zone-states.ts` (10-state × 5-role transition matrix) shipped. Schema is dormant (no Phase 5.21 endpoints deployed yet — Hard Rule 24 satisfied). Workers paused (`WORKERS_PAUSED=true`); master-tick = 4 hr (hibernation). **Workers go always-on from 2026-06-01 per ADR 0005 — `WORKERS_PAUSED` becomes emergency kill switch only.** AWS Activate credits required pre-June (founder action). Phase 5.21 Days 2-N follow founder direction.
+> **What v8 added (vs v7) — retained, unchanged by v9:** Structured Incident Response Engine (SIRE) — 10 BRs (BR-G…BR-P), 32 incident sub-types, 10-state zone state machine, 3-button staff action, selective evacuation, per-role action templates. EC-23 (template fallback always resolves), Hard Rules 23–24 (no auto-evacuation; mig 014 before Phase 5.21 code). ADRs 0005 (workers always-on June) + 0006 (Apollo brand live demo). SIRE is **LIVE in production** (non-hospital scope) — see `docs/specs/sire-delivery-validation.md`.
+>
+> **Engineering analysis backing alignment:** v8 → `docs/specs/v8-alignment-analysis.md` (2026-05-08). v9 → this block + ADR 0001 forward entry + `docs/STATE_OF_WORK.md` §v9-delta + memory `v9-supersedes-v8-reconciliation-flags`.
+>
+> **Working branch:** `main` (SIRE merged, LIVE). ADR 0002 captures historical branching rationale.
+>
+> **Build state (live authority = `docs/STATE_OF_WORK.md`):** Phase 1 + Phase A + Phase 5 series + SIRE Phase 5.21 all COMPLETE & LIVE; post-SIRE feature batch (BR-29 report / BR-31 analytics / BR-12 handover / BR-23 festival / unified Incidents) merged. migs 009–019 deployed & verified. Workers `WORKERS_PAUSED=true` (emergency kill switch per ADR 0005; notification dispatch resumes 2026-06-01). **v9 Phase 5.23 (Evacuation Map Studio) is future scope, NOT started** (mig 020 pending; Hard Rule 24 extended = schema-before-code applies).
 
 ---
 
@@ -23,7 +32,8 @@
 | **Supabase opaque-token keys** | ADR 0003 (`docs/adr/0003-supabase-publishable-secret-keys.md`) | 2026-05-05 migrated from legacy `anon`/`service_role` JWTs to `sb_publishable_*`/`sb_secret_*` opaque tokens. Env var names unchanged (`SUPABASE_SERVICE_ROLE_KEY` holds `sb_secret_*`; `SUPABASE_ANON_KEY` holds `sb_publishable_*`). **Do NOT click "Reset JWT secret"** (would mass-logout all users). Phase B June: shard to per-service keys. |
 | **Workers always-on from June 2026 (v8 NEW)** | ADR 0005 (`docs/adr/0005-workers-always-on-from-june.md`) + `docs/operations/workers-unfreeze-runbook.md` | `WORKERS_PAUSED` repurposed: cost-discipline (May) → emergency kill switch only (June onward). Pre-June 1 founder must apply AWS Activate credits + verify cost alerts. Workers-unfreeze runbook documents 45-min transition window with rollback at every step. |
 | **Apollo brand live demo (v8 NEW)** | ADR 0006 (`docs/adr/0006-apollo-brand-live-demo.md`) + `docs/sales/demo-runbook.md` §11 (DEMO-APOLLO-LIVE) | v7 static mockup → v8 production-like replica. Apollo `#C8102E` confirms NFR-35 (8.0:1 contrast). Mandatory fair-use disclaimer; direct sales conversations only; never publicly published. |
-| **Structured Incident Response Engine (v8 NEW; Phase 5.21–5.22)** | `docs/specs/incident-response-activity-templates.md` (v8-aligned spec) + Architecture v8 §SIRE + `packages/types/src/incident-zone-states.ts` (transition matrix) | 10 new BRs (BR-G through BR-P), 32 incident sub-types, 10-state zone state machine, 3-button staff action, selective evacuation, per-role action templates. **Phase 5.21 Day 1 SHIPPED 2026-05-08** (mig 014 + mig 015 deployed; transition matrix exported from `@safecommand/types`). Days 2-N (api endpoints + mobile UI + remaining templates) follow founder direction; the original "post-pilot validation gate" in v8 §16 has been overtaken by early-build election. Hard Rule 24 satisfied. |
+| **Structured Incident Response Engine (v8 NEW; Phase 5.21–5.22)** | `docs/specs/incident-response-activity-templates.md` (v8-aligned spec) + Architecture v8 §SIRE + `packages/types/src/incident-zone-states.ts` (transition matrix) | 10 new BRs (BR-G through BR-P), 32 incident sub-types, 10-state zone state machine, 3-button staff action, selective evacuation, per-role action templates. **Phase 5.21 LIVE in production** (migs 014–019 deployed; SIRE complete for non-hospital scope per `docs/specs/sire-delivery-validation.md`). Hard Rule 24 satisfied. |
+| **Evacuation Map Studio + Standards-Closure (v9/v9.1 NEW; Phase 5.23 / Q4 2027 — NOT NOW)** | BP v9 §9/§22 + Architecture **v9.1** §21+§22+§23 + `nexus/specs/SafeCommand_Architecture_v91_Complete.md` | 10 Map Studio BRs (BR-Q…BR-Z) + 10 standards-closure BRs (BR-AA…BR-AJ). Konva.js editor, IMDF-compatible GeoJSON canonical (EC-24, never proprietary), 7-jurisdiction validation, per-posting PDFs (Puppeteer), Live Mode on `incident_zone_states` (BR-W; SIRE is its dependency root). **Future scope — earliest Q4 2027, gated behind June unfreeze + pilots.** Migs **`020`** (Map Studio, 5 tables) + **`021`** (standards-closure P1: EAP/committee/refuge/AMC/MSDS) + **`022`** (LMS, BR-AH) + **`023`** (drill TABLETOP + NABH-QI view) **MUST each precede their code** (Hard Rule 24). Floor-plan currency amber @ 9mo / hard-block @ 12mo (EC-25). No code/migration now. |
 | **GitHub history rewrite (2026-05-05)** | Backup tag `backup/pre-history-rewrite-2026-05-04` on origin | Pre-rewrite SHA `772fd85` preserved for ≥30-day recovery window (suggested deletion 2026-06-04). Post-rewrite `main` HEAD = `96594ad`. 4 secrets scrubbed: Firebase RSA key, Supabase service_role/anon JWTs, Upstash TLS password. |
 | **Deferred work in May 2026** | `UX-DESIGN-DECISIONS.md` Phases 1-5 | Mobile responsive dashboard redesign — fully analyzed. Phase 1 of responsive redesign **bundled with ThemeProvider scaffold** as Phase A work on `safecommand_v7` (per Q3 decision). |
 
@@ -35,7 +45,9 @@
 - `JUNE-2026-REVIEW-REQUIRED.md` — time-sensitive review marker (delete after 2026-06-02 review)
 - `docs/STATE_OF_WORK.md` — comprehensive state snapshot (build status, BR matrix, NFR/EC/Hard Rule adherence, recent session log)
 - `docs/security/POSTURE_AND_ROADMAP.md` — security + compliance posture, audit trail, 16-category gap analysis, prioritised roadmap (DPDP / NABH / Fire NOC / TRAI-DLT)
-- `docs/adr/` — Architecture Decision Records (0001 migrations, 0002 branch, 0003 Supabase keys)
+- `docs/adr/` — Architecture Decision Records (0001 migrations [+v9 forward entry], 0002 branch, 0003 Supabase keys, 0004 drill reason codes, 0005 workers always-on, 0006 Apollo live demo)
+- `docs/specs/sire-delivery-validation.md` — authoritative SIRE delivery status (LIVE, non-hospital scope)
+- `docs/specs/navigation-ia-review.md` — PARKED nav-consistency review (revisit w/ UX-DESIGN-DECISIONS)
 
 ---
 
@@ -87,7 +99,7 @@ Apollo India example: 65 venues × Professional + Corp Enterprise + Brand Layer 
 
 ## Business requirements
 
-### Functional Requirements — 101 BRs total (v8 — see Business Plan v8 §18)
+### Functional Requirements — 116 BRs total (v9 — see Business Plan v9 §21)
 
 > **v8 added 10 new BRs (BR-G through BR-P) — all Phase 2 (Phase 5.21–5.22).** They live in §7 of v8 Business Plan (Structured Incident Response Engine). Below shows the v7 baseline 91 BRs; v8 BRs G-P are summarised at the end of this section.
 
@@ -250,9 +262,43 @@ Phase tagging: **P1** = Phase 1 (Weeks 1–16, May→Oct 2026); **P2** = Phase 2
 
 > **Per founder direction:** Phase 5.21 ships 16 priority sub-types (FIRE: 4, MEDICAL: 2, SECURITY: 2, EVACUATION: 5, STRUCTURAL: 2, OTHER: 1); Phase 5.22 fills remaining 16. See `docs/specs/incident-response-activity-templates.md` §5 for the priority list.
 
+#### Evacuation Map Studio (BR-Q to BR-Z) — v9 NEW; Phase 5.23 (Q4 2027) + Phase B — NOT NOW, NOT pull-forward
+
+> Visual wayfinding & authoring. Earliest build = Phase 5.23 / Q4 2027, after June unfreeze + pilots. Migration `020_evacuation_map_studio.sql` (5 tables) must precede any code (Hard Rule 24 extended). Konva.js editor + IMDF-compatible GeoJSON canonical (EC-24) + Puppeteer per-posting PDFs. See BP v9 §9 / Arch v9 §21.
+
+| ID | Title | Phase | Refs |
+|---|---|---|---|
+| BR-Q | Floor-plan import (PDF/DWG/PNG) → IMDF-compatible canonical GeoJSON | 5.23 | EC-24; mig 020 |
+| BR-R | ISO 7010 + NFPA 170 symbol library — drag-drop canvas placement; semantic typing | 5.23 | Konva.js |
+| BR-S | Per-jurisdiction compliance validation (NBC 2016 / NFPA 101+OSHA / DCD UAE / BS 9999 / EU / SCDF / AS 3745) | 5.23 + B | 7 codes |
+| BR-T | Posting-location management — posted/pending/requires-update tracking | 5.23 | EC-25 |
+| BR-U | Per-posting personalisation — auto-rotate + "You Are Here" + print-ready PDF per location | 5.23 | Puppeteer |
+| BR-V | Multi-language labels — English+Telugu (5.23); Hindi/Tamil/Kannada (B); Arabic (P4) | 5.23 + B | EC-15 i18n |
+| BR-W | Live Mode — map renders `incident_zone_states` overlay during incidents | 5.23 | **SIRE dependency root**; NFR-10 |
+| BR-X | Compliance currency tracking — alert >9mo (amber) / >12mo (hard block) or building modified | 5.23 | EC-25 |
+| BR-Y | Audit export — authority-acceptable PDF (Fire NOC / NABH §EM / DCD / **FF-3 / JC EM** — 5 templates per Arch v9.1 §21) | B | Hard Rule 4 snapshot |
+| BR-Z | Visitor map display at VMS check-in + visitor mobile pass | B | VMS integration |
+
+#### Standards-Closure BRs (BR-AA to BR-AJ) — v9 NEW; Phase 5.23 / B / P4 — NOT NOW
+
+> Close the gaps surfaced by the v9 31-standard / 11-domain coverage matrix (BP v9 §22 / Arch v9 §22). All future-phase. **Schema fully specified in Architecture v9.1 §23** across **migs 021/022/023** (file-numbers authoritative per §1.3b). Hard Rule 24 schema-before-code discipline applies to all three (parallel to mig 014/020). `Mig` column added below.
+
+| ID | Title | Phase | Mig (v9.1 §23) | Standards source |
+|---|---|---|---|---|
+| BR-AA | Annual EAP review workflow — scheduling + sign-off + audit trail | 5.23 | 021 (`annual_plan_reviews`) | OSHA 1910.38(f), NFPA 101, NBC 2016 P4 |
+| BR-AB | Safety-committee quarterly meeting log + minutes attachment | 5.23 | 021 (`safety_committee_meetings`) | NABH 6th FMS |
+| BR-AC | Hospital horizontal-evacuation pathway tracking | B | 020 (`evacuation_annotations` ROUTE_HORIZONTAL + BR-S rule; no new table) | NFPA 101, NABH 6th, NDMA |
+| BR-AD | Refuge-area accountability — capacity vs occupancy (high-rise) | 5.23 | 021 (`refuge_area_occupancy_snapshots`) | NBC 2016 P4, NDMA, NFPA 101 |
+| BR-AE | PA-system hardware bridge — open API for PA controllers | 4 | (Phase 4 — no mig in §23) | NFPA 101, DCD UAE, NBC 2016 P4 |
+| BR-AF | AMC contract registry + renewal alerts | 5.23 | 021 (`amc_contracts`) | DCD UAE, NFPA 25 |
+| BR-AG | MSDS document repository with incident-type linkage | 5.23 | 021 (`msds_documents`) | OSHA 1910.1200, NDMA |
+| BR-AH | E-learning / **LMS integration** — course catalog, cert linkage, multi-language | 5.23 | 022 (`lms_courses`/`_enrolments`/`_completions` + cert-linkage trigger) | NABH 6th HRM.4.a, OSHA 1910.38(e), NFPA 1561 |
+| BR-AI | Tabletop-exercises mode — drill-engine extension | 5.23 | 023 (`drill_sessions.drill_type` enum +`TABLETOP`) | HICS, JC EM, NDMA |
+| BR-AJ | NABH 6th 15 Quality Indicators dashboard (hospital-specific) | B | 023 (`nabh_quality_indicators_view`; Rule 25 REVOKE verified) | NABH 6th Edition |
+
 ---
 
-## Non-Functional Requirements — 37 NFRs
+## Non-Functional Requirements — 38 NFRs
 
 | NFR | Requirement | Target |
 |-----|-------------|--------|
@@ -293,10 +339,11 @@ Phase tagging: **P1** = Phase 1 (Weeks 1–16, May→Oct 2026); **P2** = Phase 2
 | NFR-35 | Safety-critical screen readability | ALL safety-critical screens pass WCAG 2.1 AA (4.5:1 contrast) regardless of brand |
 | NFR-36 | Brand config isolation | Account A's brand never served to Account B users |
 | NFR-37 | Roaming venue isolation | `active_venue_id` set as RLS session var on every request; validated against `venue_roles` (Rule 21) |
+| **NFR-38 (v9 NEW)** | **Evacuation Map Studio render performance** (Phase 5.23) | Editor load ≤3s typical floor; save ≤500ms; per-jurisdiction validation ≤5s/floor; per-posting PDF ≤10s; mobile map view during incident ≤2s (NFR-10-aligned); floor-plan upload ≤50MB; storage ≤5MB/floor |
 
 ---
 
-## Engineering Constraints — 23 ECs (v8; non-negotiable; violation in code review = blocker)
+## Engineering Constraints — 25 ECs (v9; non-negotiable; violation in code review = blocker)
 
 | ID | Constraint |
 |----|-----------|
@@ -321,11 +368,14 @@ Phase tagging: **P1** = Phase 1 (Weeks 1–16, May→Oct 2026); **P2** = Phase 2
 | **EC-19** | **Roaming `active_venue_id` validated against `venue_roles` on EVERY request** (middleware enforces; 403 on mismatch) |
 | **EC-20** | **CORP-* roles NEVER access individual PII** (aggregation queries return scores/counts only; code review hard blocker) |
 | **EC-21** | **Raw PII never crosses country boundaries** (India venue data stays in GCP asia-south1; only anonymised scores aggregate globally) |
+| **EC-22** | **SIRE zone-state changes are NEW ROWS, never UPDATE of existing rows** — `incident_zone_states` UPSERTs the live state row AND writes an immutable `incident_zone_state_log` audit row per transition; state-transition graph enforced at API middleware (was omitted from the v8 condensed list; restored here for truth-alignment — it is LIVE via mig 014). |
 | **EC-23 (v8 NEW)** | **Per-role action templates always resolve to SOMETHING** — graceful 5-step fallback chain: venue+sub-type → venue+parent → venue-type+sub-type → venue-type+parent → global+sub-type → global+parent (mandatory). A guard declaring FIRE must always receive an action list. Seed gate enforces every parent type has a global default per role. |
+| **EC-24 (v9 NEW)** | **Evacuation Map Studio canonical format is IMDF-compatible GeoJSON — never proprietary** (Phase 5.23). Every floor plan stored as OGC Indoor Mapping Data Format-compatible GeoJSON in `floor_plans.geojson`. Konva.js is the *editing tool*; the canonical data is open standard. No PNG/PDF/DWG `floor_plan_url` ever becomes source of truth — those are imports/exports only. Mirrors Hard Rule 26. |
+| **EC-25 (v9 NEW)** | **Floor-plan currency: amber warning at 9 months; hard publish-block at 12 months** (Phase 5.23). `floor_plans.last_validated_at` tracks last successful compliance run. >9mo → dashboard amber; >12mo → publishing a new posting-location PDF is hard-blocked until SC Ops re-validates. Enforced by API middleware on the publish endpoint. |
 
 ---
 
-## Engineering Hard Rules — 25 Rules (v8 24 + Rule 25 codebase amendment 2026-05-08; violation in PR = blocker)
+## Engineering Hard Rules — 26 Rules (v9; Rule 25 = views-REVOKE now spec-codified [was v8 codebase amendment]; violation in PR = blocker)
 
 | Rule | Statement |
 |------|-----------|
@@ -352,8 +402,9 @@ Phase tagging: **P1** = Phase 1 (Weeks 1–16, May→Oct 2026); **P2** = Phase 2
 | 21 | **Roaming validation is double-enforced** — JWT `venue_roles` + middleware validates `active_venue_id ∈ venue_roles` on EVERY request (EC-19) |
 | 22 | **CORP-* roles never return individual PII** — aggregation only; code review hard blocker (EC-20) |
 | **23 (v8 NEW)** | **SIRE auto-evacuation suggestion (BR-L) is NEVER an auto-trigger — ALWAYS a suggestion.** Soft prompt to SH dashboard if ≥2 zones NEEDS_ATTENTION in 3 min during FIRE; SH must explicitly tap "Trigger Evacuation" to execute. **No code path may bypass the human command loop.** Test gate: ≥2 NEEDS_ATTENTION zones → verify prompt appears, NO fan-out fires until SH explicitly triggers. |
-| **24 (v8 NEW)** | **Migration 014 (`014_sire_engine.sql`) MUST be applied before any Phase 5.21 code deploys.** The `incident_zone_states`, `incident_evacuation_triggers`, and `incident_subtype` column must exist in DB before API routes using them are deployed. Apply migration → verify row counts → deploy code. **Never the reverse.** A 500 error on incident declaration during active incident because tables don't exist is unacceptable. |
-| **25 (2026-05-08 NEW)** | **Every `CREATE VIEW` in the `public` schema MUST include inline `REVOKE ALL PRIVILEGES ON TABLE [view] FROM anon, authenticated` within the same migration that creates the view, plus a verification DO block confirming the grant state before COMMIT.** Rationale: Supabase auto-grants ALL privileges to `anon` + `authenticated` on every public-schema object at creation time. Views do not support RLS policies. Any view accessible to anon via PostgREST is accessible to anyone with the anon key (which is embedded in every mobile + dashboard build). The api middleware isolation model is bypassed by the direct PostgREST path. **Scope:** applies to ALL views without exception — analytics, aggregate, internal, governance. **Verification:** the migration must include a DO block that confirms `anon` + `authenticated` grant count = 0 on the new view before COMMIT. **Rule supersedes** the §4.1 clarification statement that "isolation is in the application middleware" — that statement was incomplete (it covered only the Railway api path). **Refs:** `docs/specs/SafeCommand_Phase521_SecurityGap_Analysis.md` · `supabase/migrations/016_sire_revoke_corp_view_public_grants.sql` (the fix that introduced this rule) · mig 014 line 580 carries an inline ⚠ HARD RULE 25 warning comment for template-copy defence-in-depth. |
+| **24 (v8; EXTENDED v9 / v9.1)** | **Migration 014 (`014_sire_engine.sql`) MUST be applied before any Phase 5.21 code deploys** — and **migs `020_evacuation_map_studio.sql` + `021_standards_closure_p1.sql` + `022_lms_integration.sql` + `023_drill_tabletop_nabh_qis.sql` MUST each be applied before their respective Phase 5.23 code deploys** (same rule, all schemas; Arch v9.1 §23). The `incident_zone_states`/`incident_evacuation_triggers`/`incident_subtype` (and, for Phase 5.23, `floor_plans`/`evacuation_annotations`/`annual_plan_reviews`/`lms_*`/`drill_sessions.drill_type`) must exist in DB before API routes using them deploy. Apply migration → verify row counts → deploy code. **Never the reverse.** A 500 because tables don't exist is unacceptable. |
+| **25 (2026-05-08 NEW)** | **Every `CREATE VIEW` in the `public` schema MUST include inline `REVOKE ALL PRIVILEGES ON TABLE [view] FROM anon, authenticated` within the same migration that creates the view, plus a verification DO block confirming the grant state before COMMIT.** Rationale: Supabase auto-grants ALL privileges to `anon` + `authenticated` on every public-schema object at creation time. Views do not support RLS policies. Any view accessible to anon via PostgREST is accessible to anyone with the anon key (which is embedded in every mobile + dashboard build). The api middleware isolation model is bypassed by the direct PostgREST path. **Scope:** applies to ALL views without exception — analytics, aggregate, internal, governance. **Verification:** the migration must include a DO block that confirms `anon` + `authenticated` grant count = 0 on the new view before COMMIT. **Rule supersedes** the §4.1 clarification statement that "isolation is in the application middleware" — that statement was incomplete (it covered only the Railway api path). **Refs:** `docs/specs/SafeCommand_Phase521_SecurityGap_Analysis.md` · `supabase/migrations/016_sire_revoke_corp_view_public_grants.sql` (the fix that introduced this rule) · mig 014 line 580 carries an inline ⚠ HARD RULE 25 warning comment for template-copy defence-in-depth. **v9 status:** Architecture v9 §13 formally codifies this rule — it is now BOTH spec-backed AND codebase-enforced (no longer a codebase-only amendment; the two agree). |
+| **26 (v9 NEW)** | **Evacuation Map Studio canonical format is IMDF-compatible GeoJSON — never proprietary lock-in** (Phase 5.23). Floor plans persist as OGC Indoor Mapping Data Format-compatible GeoJSON; Konva.js is only the editor. No PNG/PDF/DWG path ever becomes source of truth. PR introducing a proprietary canonical floor-plan store = blocker. Mirrors EC-24. (Not yet active — Phase 5.23 / Q4 2027; recorded now so the rule exists before the code does, per Rule 24 discipline.) |
 
 ---
 
@@ -892,10 +943,14 @@ Per Business Plan §15.1 — all 25 must pass before first pilot venue live.
 
 ---
 
-## Reference files (v7 — supersedes prior)
+## Reference files (v9 — supersedes prior)
 
-- **Business Plan v2:** `../../nexus/specs/2026-05-10_prime_business-plan-report-gen.md` (1127 lines, 91 BRs, 22 sections)
-- **Architecture v7:** `../../nexus/specs/2026-05-10_SafeCommand_Architecture_v7_Complete.md` (6089 lines, 22 ECs, 22 Hard Rules)
+- **Business Plan v9.0 (SPEC AUTHORITY — procurement-facing):** `../../nexus/specs/2026-05-18_prime_business-plan-v9.md` (1770 lines, 116 BRs, 38 NFRs, 28 sections)
+- **Architecture v9.1 (SPEC AUTHORITY — supersedes v9.0):** `../../nexus/specs/SafeCommand_Architecture_v91_Complete.md` (10372 lines, 25 ECs, 26 Hard Rules, 6 ADRs + 4 placeholders; §23 standards-closure schemas, §1.3b ADR register)
+- **Architecture v9.0 (archival — superseded by v9.1):** `../../nexus/specs/2026-05-18_SafeCommand_Architecture_v9_Complete.md` (9254 lines)
+- **v9 reconciliation memory:** `~/.claude/projects/.../memory/v9-supersedes-v8-reconciliation-flags.md` (3 reconciliation decisions; #1/#2 now spec-codified by v9.1; do not trust Arch §16 build-state blindly)
+- **Business Plan v2 (v7-era; archival):** `../../nexus/specs/2026-05-10_prime_business-plan-report-gen.md` (1127 lines, 91 BRs, 22 sections)
+- **Architecture v7 (archival):** `../../nexus/specs/2026-05-10_SafeCommand_Architecture_v7_Complete.md` (6089 lines, 22 ECs, 22 Hard Rules)
 - **Build state log:** `report-gen/SESSION_LOG.md` (gitignored — local only)
 - **Phase A plan + security triage:** `report-gen/2026-05-04-22:30_plan.md`
 - **ADR 0001 — Migration renumbering:** `docs/adr/0001-migration-renumbering.md`
@@ -916,13 +971,21 @@ Per Business Plan §15.1 — all 25 must pass before first pilot venue live.
 - **Demo runbook (with DEMO-APOLLO-LIVE entry §11):** `docs/sales/demo-runbook.md`
 
 ### Prior versions (kept for archaeology only — DO NOT cite for new work)
+- `../../nexus/specs/2026-05-10_prime_business-plan-report-gen_v8.md` (Business Plan v8.0 — **superseded by v9**)
+- `../../nexus/specs/2026-05-10_SafeCommand_Architecture_v8_Complete.md` (Architecture v8 — **superseded by v9**)
 - `../../nexus/specs/2026-05-07_prime_business-plan-report-gen.md` (superseded by v2)
 - `../../nexus/specs/2026-05-07_forge_architecture-report-gen.md` (v5/v6, superseded by v7)
 - `../../nexus/decisions/2026-05-05_prime_business-proposal-report-gen.md` (initial proposal)
 
 ---
 
-## Current sprint focus (as of 2026-05-10 — Phase 5.21 Days 1-5 SHIPPED + MERGED, Day 6 partial, Day 7 pending)
+## Current sprint focus
+
+> **⚠ The narrative below is a 2026-05-10 snapshot and is STALE.** SIRE Phase 5.21 has since completed and gone LIVE, and the post-SIRE feature batch (BR-29/31/12/23 + unified Incidents) merged. **Live build-state authority = `docs/STATE_OF_WORK.md` (incl. §v9-delta) + `docs/specs/sire-delivery-validation.md`.** A full rewrite of the snapshot below is deferred to the post-v9-requirements increment (out of the safe-subset alignment scope).
+>
+> **v9 received 2026-05-18 (spec authority — see top of this file + STATE_OF_WORK §v9-delta).** Nothing in v9 is immediate-build: Evacuation Map Studio (BR-Q…BR-Z) + standards-closure BRs (BR-AA…BR-AJ) are **Phase 5.23 / Q4 2027 + Phase B**, gated behind the June unfreeze + pilots. No code/migration now. SIRE (BR-G…BR-P) unchanged. Founder is preparing updated technical requirements; the CLAUDE.md authority block + counts + new BR/NFR/EC/Rule rows above are aligned; ADR-0007 + full sprint-focus rewrite layer on when those reqs land.
+>
+> --- *historical snapshot (2026-05-10) below — read STATE_OF_WORK for current truth* ---
 
 **Branch:** `main` HEAD `652bc0b` — Days 1-5 merged via fast-forward 2026-05-09 (5 commits: `251f4ab` `d95f792` `a924161` `151bbee` `652bc0b`). `feat/sire-day2-day7` and `main` are now in sync; the feature branch can be deleted on next session.
 **Production schema:** post mig 009 + 010 + 011 + 012 + 013 + 014 + 015 + 016 + 017 — all SIRE-related migrations applied. Verification blocks all RAISE NOTICE'd "All checks PASSED" at deploy. **Hotfix `4fd7964`** (drop 3-arg `set_tenant_context` overload to fix PostgREST PGRST203) was applied 2026-05-06 to live schema and patched into mig 009 source.

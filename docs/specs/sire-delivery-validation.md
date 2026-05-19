@@ -9,6 +9,21 @@
 > dashboard live (confirmed) · mobile via Metro dev-client (standalone EAS
 > build optional/pending) · workers `WORKERS_PAUSED=true` (notification
 > dispatch → June 1, ADR 0005; SIRE itself fully live via API/UI/3s-poll).
+>
+> **v9 note (BP v9.0 2026-05-18; Arch v9.1 2026-05-19):** Business Plan
+> v9.0 + Architecture **v9.1** (supersedes Arch v9.0) are now the spec
+> authority and **supersede v8**. SIRE (BR-G…BR-P, EC-23, Hard Rules
+> 23/24/25) is **unchanged by v9/v9.1** — every verdict in this doc stands.
+> Hard Rule 25 (CREATE VIEW REVOKE) is now *spec-codified* by Arch §13
+> (was a v8-era codebase amendment; spec & codebase agree — no change;
+> v9.1 mig 023's NABH-QI view even carries the Rule 25 REVOKE + verify).
+> Hard Rule 24 is *extended* (also covers Phase 5.23 migs 020/021/022/023).
+> **Forward link:** v9 BR-W (Evacuation Map Studio "Live Mode", Phase
+> 5.23 / Q4 2027) renders `incident_zone_states` as a map overlay —
+> **this completed SIRE engine is BR-W's dependency root.** No SIRE
+> change required for BR-W; it consumes the existing zone-state schema.
+> Live build-state authority remains this doc + `docs/STATE_OF_WORK.md`
+> §v9-delta — *not* Architecture v9 §16 (a stale snapshot we are ahead of).
 
 ## 1. Functional BRs (v8 §7 — Structured Incident Response Engine)
 

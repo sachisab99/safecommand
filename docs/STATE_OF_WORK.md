@@ -7,8 +7,9 @@
 > **BR-14 Health Score:** **100% surface LIVE** — all 5 components compute live (Tasks 40 / Incidents 25 / Equipment 10 / Drills 10 / Certs 15)
 > **Two-tier admin parity:** **COMPLETE** — SH-tier write surfaces live for Equipment / Drills / Certifications / Shifts & Roster / Staff across mobile + dashboard, parallel to SC Ops Console.
 > **BR-A drill management:** **COMPLETE** — Schedule / Run / Time / Document / Per-staff acknowledgement / Reason taxonomy. Audit-grade per-drill detail (timeline + participation + reasons) on mobile + dashboard. PDF rendering = Phase B (data substrate ready).
-> **Spec authority:** Business Plan v8.0 (101 BRs / 37 NFRs / 6 ADRs / 23 sections / 1378 lines, 2026-05-10) + Architecture v8 (23 ECs / 24 Hard Rules / 7221 lines, 2026-05-10)
-> **v8 additions vs v7:** SIRE (Structured Incident Response Engine) — 10 new BRs (BR-G through BR-P) all Phase 2 (5.21–5.22); EC-23 + Hard Rules 23–24; ADR 0005 (workers always-on June+) + ADR 0006 (Apollo live demo). All Phase 5.13–5.18 work preserved verbatim. See `docs/specs/v8-alignment-analysis.md` for engineering analysis.
+> **Spec authority (BP since 2026-05-18; Arch v9.1 since 2026-05-19):** Business Plan v9.0 (`nexus/specs/2026-05-18_prime_business-plan-v9.md` — 116 BRs / 38 NFRs / 6 ADRs / 28 sections / 1770 lines) + Architecture **v9.1** (`nexus/specs/SafeCommand_Architecture_v91_Complete.md` — 25 ECs / 26 Hard Rules / 10372 lines; **supersedes Arch v9.0**). **Supersedes v8.** See **§v9-delta** at the foot of this doc for the scope delta + the three reconciliation decisions (v9.1 spec-ratifies #1 + #2). v8 + Arch v9.0 retained for archaeology only.
+> **v8 additions vs v7 (retained, unchanged by v9):** SIRE (Structured Incident Response Engine) — 10 BRs (BR-G…BR-P) Phase 5.21–5.22; EC-23 + Hard Rules 23–24; ADR 0005 + 0006. All Phase 5.13–5.18 work preserved verbatim. `docs/specs/v8-alignment-analysis.md`.
+> **v9/v9.1 additions vs v8:** Evacuation Map Studio (BR-Q…BR-Z) + standards-closure BRs (BR-AA…BR-AJ) — **all Phase 5.23 (Q4 2027) / Phase B, NOT immediate-build**; NFR-38, EC-24, EC-25, Hard Rule 26; Rule 24 extended (migs 020/021/022/023 before their code; v9.1 §23). **⚠ Architecture §16 is a stale 2026-05-17 snapshot (v9.1 did NOT refresh it) — THIS doc is the live build-state authority, we are AHEAD of §16.**
 >
 > This document is a comprehensive snapshot of what's built, what's deployed, what's deferred, and where things sit operationally. Companion: `docs/security/POSTURE_AND_ROADMAP.md` for security/compliance posture.
 
@@ -911,3 +912,60 @@ regression — the independence analysis held (only nav-config touched by
 redeploy in flight at reconciliation time (handovers route 404→401 once
 live). All four are additive, no migration, no worker; runtime gaps
 (notification dispatch / handover fan-out) remain June-gated (ADR 0005).
+
+---
+
+## §v9-delta — Business Plan v9 + Architecture v9 adoption (2026-05-18; aligned 2026-05-19)
+
+> **Why this section exists:** v9 is the new spec authority. This section is the durable, in-repo record of *what v9 changed*, *what it did NOT change*, and *the three reconciliation decisions* — so a future session never has to re-derive them or get misled by the v9 Architecture's stale §16 snapshot.
+
+### What v9 added (vs v8)
+
+| Area | Delta | Phase | Build-now? |
+|---|---|---|---|
+| **Evacuation Map Studio** (BP §9 / Arch §21) | 10 BRs **BR-Q…BR-Z** — Konva.js canvas authoring (ISO 23601), ISO 7010+NFPA 170 symbol library, 7-jurisdiction validation engine, IMDF-compatible GeoJSON canonical, per-posting personalised PDFs (Puppeteer), **Live Mode** rendering `incident_zone_states` | **5.23 (Q4 2027)** + Phase B | **NO** |
+| **Standards-Closure** (BP §3/§22 / Arch §22) | 10 BRs **BR-AA…BR-AJ** — annual EAP, safety-committee log, hospital horizontal evac, refuge accountability, PA hardware bridge, AMC registry, MSDS repo, **LMS (BR-AH)**, tabletop (BR-AI), NABH 15 QIs | 5.23 / B / P4 | **NO** |
+| Constraints | **NFR-38** (map render perf), **EC-24** (IMDF canonical, never proprietary), **EC-25** (floor-plan currency 9mo/12mo), **Hard Rule 26** (IMDF never proprietary), **Hard Rule 24 extended** (mig 020 before Map Studio code) | 5.23 | n/a (recorded now) |
+| Counts | 101→**116 BR**, 37→**38 NFR**, 23→**25 EC**, 24+R25→**26 Rules**, 20→**28 BP sections** | — | — |
+| Commercial | Map Studio tier-gated + Premium Map Pack ₹5K/mo; competitive moat 11→12 layers; new **Phase 5.23** (8-week block) | — | — |
+
+### What v9 did NOT change (continuity)
+
+- **Phase 1 + SIRE (BR-G…BR-P) are unchanged.** Every LIVE feature (SIRE, BR-29 report, BR-31 analytics, BR-12 handover, BR-23 festival, unified Incidents) remains valid and correctly aligned.
+- **Nothing in v9 is pull-forward-eligible like SIRE was.** Earliest Map Studio work = Phase 5.23 / Q4 2027, gated behind the June 2026 unfreeze + pilots. The June-unfreeze / Phase B sequence is unchanged.
+- **No migration to apply now. No code to write now.** mig `020` is Phase 5.23.
+- **SIRE is the dependency root for BR-W** (Live Mode renders `incident_zone_states` on the map) — the completed SIRE work is what makes the v9 moat feature buildable later.
+
+### The three reconciliation decisions (validated 2026-05-19)
+
+1. **Hard Rule 25 — NOT a collision.** v9 Architecture §13 Rule 25 ("every `CREATE VIEW` REVOKEs anon/authenticated") is *semantically identical* to our codebase Rule 25 (mig 016, 2026-05-08). **v9 formally codifies what was our codebase amendment** — spec & codebase now agree; Rule 25 is unchanged and now spec-backed. Hard Rule 24 is *extended* (mig 014 *and* mig 020 before respective code). v9's only genuinely-new rule is **Rule 26 = IMDF canonical, never proprietary** (mirrors EC-24).
+2. **Migration numbering.** BP v9's "Migration 012_evacuation_map_studio.sql" is a *logical label only*. Real file = **`020_evacuation_map_studio.sql`** (012–019 consumed). Arch v9 §16.2 self-reconciles to 020 and is authoritative; BP is not. ADR 0001 holds the forward entry (amended 2026-05-19).
+3. **Build-state authority.** v9 Architecture §16 is a point-in-time snapshot (`main @ 9378c8b`, 2026-05-17, "PR #7–10"). **Deployed reality is AHEAD of it.** THIS doc + `docs/specs/sire-delivery-validation.md` are the live build-state authority; never treat v9 §16 as current HEAD. Per Hard Rule 3 + ADR 0001, deployed migrations are immutable & authoritative — the spec reconciles to the codebase, never the reverse.
+
+### Documents aligned in the safe-subset (2026-05-19)
+
+- ✅ `products/Safecommand/CLAUDE.md` — title v9; spec-authority block (incl. 3 reconciliation decisions); controls table (Map Studio row); 116 BR header + BR-Q…Z + BR-AA…AJ tables; NFR-38; EC-24/EC-25; Hard Rule 24 extended + Rule 26; reference files; sprint-focus v9 callout
+- ✅ `docs/adr/0001-migration-renumbering.md` — 2026-05-19 amendment (mig 012-logical → 020-file; next-free-integer rule)
+- ✅ `docs/STATE_OF_WORK.md` — header authority lines + this §v9-delta
+- ✅ `docs/specs/sire-delivery-validation.md` — v9 supersession note + BR-W dependency cross-ref
+- ✅ `docs/specs/navigation-ia-review.md` — parked nav review (Map Studio future nav surfaces noted)
+- ✅ memory `v9-supersedes-v8-reconciliation-flags.md`
+
+### Deferred (the post-requirements increment — NOT in safe-subset)
+
+- ADR 0007 ("Adopt v9 — Evacuation Map Studio + Global Standards") — full adoption ADR; layers on when founder's updated technical requirements land.
+- `docs/specs/evacuation-map-studio-spec.md` — internal Phase 5.23 engineering spec; authored when Phase 5.23 nears / reqs land.
+- Full rewrite of CLAUDE.md "Current sprint focus" stale 2026-05-10 snapshot — folds into the same increment.
+
+### v9.1 update (2026-05-19) — architecture point-release
+
+Founder supplied **Architecture v9.1** (`SafeCommand_Architecture_v91_Complete.md`, supersedes Arch v9.0; BP stays v9.0 — it is the procurement-facing doc the architecture was aligned *to*). Incorporates the Nexus Prime Architecture Validation Report (8.5/10, approve-with-corrections); all P0+P1 fixes applied.
+
+- **No count change** — 116 BR / 38 NFR / 25 EC / 26 Rule / 6 ADR (+4 ADR placeholders). CLAUDE.md counts unchanged.
+- **Reconciliation #2 now SPEC-RATIFIED.** v9.1 §1.3b adopts the repo file-number as authoritative and declares the `009`…`019` → `020`/`021`/`022`/`023` sequence. The spec↔repo offset is **eliminated for 020+** (architecture & repo numbering coincide; only legacy BP "012" is a logical label). Parallels how #1/Rule 25 became spec-codified. ADR 0001 amended 2026-05-19 (2nd amendment).
+- **New: migs 021/022/023** (Arch v9.1 §23, ~890 lines) for standards-closure BRs — `021_standards_closure_p1` (BR-AA/AB/AD/AF/AG), `022_lms_integration` (BR-AH), `023_drill_tabletop_nabh_qis` (BR-AI / BR-AJ-view). All Phase 5.23 / Phase B; Hard Rule 24 (schema-before-code) applies to each. **Still NOT immediate-build.**
+- **Reconciliation #1 (Rule 25) + #3 (build-state §16 stale) unchanged.** v9.1 did *not* refresh §16 — it remains the 2026-05-17 snapshot; THIS doc + sire-delivery-validation remain the live authority (we are ahead).
+- Other v9.1 fixes (informational, no repo-doc impact): Section 12 BR/NFR map completed to 116/NFR-38; BR-Y export templates (5 formats); Premium Map Pack flag enforcement; Live-Mode 3-building/360-zone SEV1 budget; §1.3b ADR detail.
+- **Docs re-aligned 2026-05-19 (v9.1):** CLAUDE.md (authority block → Arch v9.1; reconciliation #1/#2 → spec-codified; Standards-Closure table → mig 021/022/023 column; Rule 24 extended to 020-023; controls row; reference files), ADR 0001 (2nd amendment), this §v9.1 note, sire-delivery-validation (Arch v9.1), memory.
+
+**Bottom line:** v9 / v9.1 is a forward-looking superset. The safe-subset alignment is complete and v9.1-current; **no code, no migration, no Phase 5.23 work** is due now. Await founder's updated technical requirements for the ADR-0007 / spec-doc increment.

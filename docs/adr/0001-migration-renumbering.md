@@ -247,4 +247,57 @@ The next available migration number is now 016 — for Phase 5.21 Day 5+ templat
 
 ---
 
-*ADR captured 2026-05-04 · Last amended 2026-05-08 (Phase 5.21 Day 1 deployment) · Status: Accepted*
+## 2026-05-19 Amendment — v9 Evacuation Map Studio Migration (Phase 5.23)
+
+Business Plan v9.0 + Architecture v9 (`nexus/specs/2026-05-18_*`) introduce the Evacuation Map Studio (Phase 5.23, Q4 2027). The **Business Plan v9 §9 refers to this migration as `012_evacuation_map_studio.sql`** — but that is a *logical label only*, authored against the spec's own internal numbering, not the repo's. The repo has long since consumed 012:
+
+| Repo file (deployed) | Content | Deployed |
+|---|---|---|
+| `012_rls_schedule_template_seeds.sql` | RLS security patch on `schedule_template_seeds` | 2026-05-06 |
+| `013_drill_participant_reason.sql` | Drill participant reason taxonomy (ADR 0004) | 2026-05-07 |
+| `014_sire_engine.sql` | SIRE schema (8 tables + 1 view + 5 cols) | 2026-05-08 |
+| `015` … `019` | SIRE template fallback / corp-view security / template seeds / declarer snapshot / SIRE-default-on | 2026-05-08 → 2026-05-17 |
+
+**The next available migration number is `020`.** (The 2026-05-08 amendment above said "016 next"; that has since advanced — 016/017/018/019 were consumed by SIRE Phase 5.21 work. Verified against `supabase/migrations/` directory state, 2026-05-19.)
+
+| Spec name (Business Plan v9 §9 / Architecture v9 §21) | Repo filename (this codebase) | Content scope |
+|---|---|---|
+| Migration 012 (Evacuation Map Studio — BP v9 logical label) | `020_evacuation_map_studio.sql` | 5 tables: `floor_plans`, `evacuation_annotations`, `evacuation_posting_locations`, `evacuation_compliance_runs`, `evacuation_map_renders` — all RLS-enabled, all `venue_id`-scoped, IMDF-compatible GeoJSON canonical (EC-24) |
+
+**Architecture v9 §16.2 already self-reconciles to `020`** and explicitly states it "treats `020` as authoritative; the business plan's `012` is a logical label, not a file number." This amendment ratifies that: **the Architecture v9 file number (`020`) is authoritative; the Business Plan's `012` is never to be used as a filename.**
+
+**Not yet written.** Phase 5.23 is Q4 2027, gated behind the June 2026 unfreeze + pilots. Per **Hard Rule 24 (extended in v9)**, `020_evacuation_map_studio.sql` MUST be applied and verified before any Evacuation Map Studio API/editor code deploys — exact parallel to the mig-014-before-SIRE-code discipline. When written, its file header must reference both the spec source (BP v9 §9 / Arch v9 §21) and this ADR, per the existing header convention.
+
+This is the fourth spec ↔ repo offset documented in this ADR (007/008 → 009/010; SIRE "011" → 014; Map Studio "012" → 020). The offset is no longer linear; **the rule going forward is simply: the next free integer in `supabase/migrations/`, never the spec's logical label.**
+
+### Architecture v9.1 (2026-05-19) — this decision is now SPEC-RATIFIED + standards-closure migrations 021/022/023
+
+Architecture **v9.1** (`nexus/specs/SafeCommand_Architecture_v91_Complete.md`, supersedes v9.0) **§1.3b "Confirmed ADRs — Complete Register"** formally adopts the rule above into the spec itself. It declares the authoritative deployed sequence verbatim:
+
+```
+009_mbv · 010_brand_roaming_drill · 011_staff_lifecycle ·
+012_rls_schedule_template_seeds · 013_drill_detail · 014_sire_engine ·
+015_sire_template_fallback · 016_corp_view_security ·
+017_sire_template_seeds · 018_incidents_declarer_snapshot ·
+019_sire_default_on · 020_evacuation_map_studio (Phase 5.23) ·
+021_standards_closure_p1 (Phase 5.23) · 022_lms_integration (Phase 5.23) ·
+023_drill_tabletop_nabh_qis (Phase 5.23 + Phase B view)
+```
+
+and states: *"Reference labels used in business documents (e.g. BP v9 'Migration 012 evacuation map studio') are logical labels predating the deployed sequence; the architecture document treats the **NNN file number as authoritative**."*
+
+**Consequence — the offset is eliminated for 020+.** Because v9.1 adopted the repo's file-numbering, the architecture and the repo now use the *same* integers (020/021/022/023). There is no longer a translation step for new migrations; the only residual "logical label" is the legacy BP v9 string "Migration 012", which §1.3b explicitly overrides. ADR 0001's mitigation #3 ("Spec Migration N (repo: 0NN)") is no longer needed for v9.x work — cite the file number directly.
+
+**Three new Phase 5.23 / Phase B migrations (Architecture v9.1 §23 — "Standards-Closure BRs Architecture", ~890 lines), all NOT YET WRITTEN:**
+
+| Repo filename | Scope | BRs | Phase |
+|---|---|---|---|
+| `021_standards_closure_p1.sql` | 5 tables: `annual_plan_reviews`, `safety_committee_meetings`, `refuge_area_occupancy_snapshots`, `amc_contracts`, `msds_documents` (all RLS + venue_id) | BR-AA, BR-AB, BR-AD, BR-AF, BR-AG (BR-AC reuses mig 020 `evacuation_annotations` ROUTE_HORIZONTAL — no new table) | 5.23 |
+| `022_lms_integration.sql` | 3 tables: `lms_courses`, `lms_enrolments`, `lms_completions` + cert-linkage trigger updating `staff_certifications` on completion | BR-AH | 5.23 |
+| `023_drill_tabletop_nabh_qis.sql` | `drill_sessions.drill_type` enum extension (`+TABLETOP`) + `nabh_quality_indicators_view` (includes mandatory **Hard Rule 25** anon/authenticated REVOKE + verification DO block) | BR-AI (5.23), BR-AJ (Phase B view) | 5.23 / B |
+
+Same discipline as mig 020: **Hard Rule 24 (schema-before-code) applies to 021/022/023 individually.** All gated behind the June 2026 unfreeze + pilots; earliest Q4 2027. When written, each file header references its spec source (Arch v9.1 §23.x) + this ADR.
+
+---
+
+*ADR captured 2026-05-04 · Last amended 2026-05-19 (v9.1: spec-ratified file-number authority + standards-closure migs 021/022/023) · Status: Accepted*
