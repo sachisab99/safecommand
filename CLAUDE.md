@@ -816,7 +816,7 @@ All 12 Phase A steps + Phase 5 series (5.0 through 5.18) shipped. **`main` and `
 - ✅ Schedule / Run / Time / Document — all live (Phase 5.11 + 5.14 + 5.18)
 - ✅ Per-building separate records — drill `building_id` nullable; UI scopes correctly
 - ✅ Missed-participant logging — Phase 5.18 with structured reason taxonomy
-- ⏳ Auto-generate timed Fire NOC report (PDF) — Phase B; detail page is the precursor data substrate
+- ✅ Timed Fire NOC report (PDF) — on-demand LIVE on `main` (BR-A `POST /drill-sessions/:id/report`); also BR-20 venue-wide compliance export + SIRE FF-3/NABH-§EM (Arch v9.1 §20.13). Auto-generate-on-completion trigger still Phase B (worker/June). Authoritative status: `docs/STATE_OF_WORK.md` §compliance-export-family
 
 **Sales artefacts (validation gate readiness):**
 - ✅ `docs/sales/validation-script.md` — print-friendly 5-question script + scoring rubrics + GO/NO-GO decision tree per Plan §22

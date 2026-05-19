@@ -277,7 +277,7 @@ Status as of 2026-05-05 (founder updates as items complete):
 | Trademark filing Classes 9 + 42 | 1–2 weeks processing | ⏳ in flight |
 | Apple Developer Account ($99/year) | 1–2 days | ⏳ |
 | Google Play Console ($25 one-time) | Same day | ⏳ |
-| Domain `safecommand.in` purchase + DNS | Same day | ⏳ |
+| Domains **`safecmd.in` + `safecmd.com`** — ✅ BOTH ACQUIRED (2026-05-19). Recommended canonical = **`safecmd.in`** (India-first procurement trust); **`safecmd.com` 301→`.in`** (apex+www+path). DNS cutover at go-live: CNAME `api`/`app`/`ops`.safecmd.in → Railway/Amplify; set `NEXT_PUBLIC_API_URL=https://api.safecmd.in/v1` + `CORS_ORIGIN=https://app.safecmd.in`; UptimeRobot → `api.safecmd.in/health`; ops-console cookies host-scoped (no `.safecmd.in` leading-dot — EC-14); revisit canonical at v9 Phase 4 (international). | Same day | 🟡 both acquired; canonical-confirm + DNS/env wiring pending June |
 | AWS Activate credits application | Same day | ⏳ |
 | Apollo logo upload to S3 (sales-only path) | Same day | ⏳ |
 | Apollo deck composed (3-slide per `docs/sales/apollo-deck-spec.md`) | 1–2 hours | ⏳ |

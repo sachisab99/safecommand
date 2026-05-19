@@ -91,3 +91,22 @@
 | 4 | June 1: workers always-on → notification dispatch live (per `JUNE-2026-REVIEW-REQUIRED.md`) | founder | NFR-02/32 latency gates only |
 
 **Verdict:** SIRE engineering is **complete and live in production** for non-hospital scope — every BR-G…BR-P delivered (BR-N English; regional Phase B), EC-23 proven gap-free in prod, Hard Rule 23/24 enforced, photo/upload path fixed and verified on device. Remaining work is **validation execution (Day 7 walkthrough)** and the **documented June notification-dispatch unfreeze** — not missing engineering.
+
+---
+
+## Addendum — SIRE Compliance Export (Arch v9.1 §20.13) shipped 2026-05-19
+
+`POST /v1/incidents/:id/compliance-export?format=TELANGANA_FF3|NABH_EM` —
+on-demand authority PDFs rendered **entirely from the already-LIVE SIRE
+schema** (`incident_zone_state_log` · `incident_action_assignments` ·
+`incident_evacuation_triggers` · `incident_timeline`, mig 014–019). No
+migration, no worker; sibling of BR-29. `services/sireComplianceExport.ts`
++ dashboard `IncidentReportCard` buttons. Merged `main @ a6b71e4`
+(commit `35f0cc1`), integrated tsc-clean (api+dashboard+mobile).
+
+Validated 2026-05-19: no hardcoding; venue-isolated (Rule 2 — every query
+`venue_id`-scoped from JWT; new venue → own isolated exports); MBV-safe
+(zero `building_id` refs; NFR-25/EC-16; new buildings/zones/staff flow in
+by `venue_id`). On-demand only — the spec's auto-on-resolution trigger
+remains the separate worker/June concern. Full record:
+`docs/STATE_OF_WORK.md` §compliance-export-family.

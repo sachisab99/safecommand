@@ -86,7 +86,7 @@
 | Drawer + sidebar (5 groups) | ✅ Live | UX-DESIGN-DECISIONS.md |
 | Theme tokens + brand provider | ✅ Live | EC-17 |
 | GM Health Score calculation | ✅ Live | BR-14 5/5 components live (Tasks/Incidents/Equipment/Drills/Certs) |
-| Compliance PDF exports | ⏳ Phase B | BR-20, BR-29 |
+| Compliance PDF exports | ✅ LIVE on main `a6b71e4` | BR-29 incident · BR-20 venue-wide · BR-A drill Fire-NOC · SIRE FF-3 + NABH §EM (Arch v9.1 §20.13) — all on-demand, no worker |
 | Broadcast / Custom Task | ⏳ Phase B | BR-15, BR-16 |
 | Briefings | ⏳ Phase B | BR-27 |
 | **Production deploy state** | ✅ Auto-deploy from `main` on push (Amplify CI pipeline) | Each Phase 5 commit triggers redeploy |
@@ -134,7 +134,7 @@
 | `GET /v1/shifts`, `GET/POST /v1/shift-instances`, `PUT /:id/{activate,close}`, `GET/PUT /:id/zone-assignments` | ✅ Live | BR-04/12/13/19/61 — Phase 5.16a; SH/DSH/SHIFT_COMMANDER gated; bulk-replace assignments with 2-person validation + venue scope check |
 | `/v1/handovers` POST/PUT | ⏳ Phase B | BR-12 |
 | `/v1/communications/*` (broadcast) | ⏳ Phase B | BR-15 |
-| `/v1/compliance/export` | ⏳ Phase B | BR-20 |
+| `/v1/compliance/export` · `/v1/incidents/:id/compliance-export` · `/v1/drill-sessions/:id/report` | ✅ LIVE on main `a6b71e4` | BR-20 / SIRE §20.13 / BR-A |
 | `/v1/vms/*` (visitor management) | ⏳ Phase B | BR-39–56 |
 | `/v1/buildings/*` (MBV) | ⏳ Phase B | BR-57–64 |
 
@@ -219,7 +219,7 @@ Tagging: P1 = Phase 1 (built or scheduled May/June); P2 = Phase 2 (Roaming + Bra
 | BR-17 | Auditor role | ⏳ Schema ready; UI Phase B |
 | BR-18 | Zone Status Board | ✅ Live (mobile + dashboard) |
 | BR-19 | **Zone Accountability Map (THE hero demo)** | ✅ Live (mobile + dashboard) — Roster loop closes end-to-end via Phase 5.16a/b: SH activates instance → assigns staff → accountability map auto-populates |
-| BR-20 | Compliance exports (PDF) | ⏳ Phase B |
+| BR-20 | Compliance exports (PDF) | ✅ LIVE (Fire NOC / NABH / Full-Audit, venue-wide, date-ranged) |
 | BR-21 | Equipment & Maintenance Tracker | ✅ Live read+write (Phase 5.10 + 5.13) — mobile FAB + dashboard buttons + Add/Edit/Deactivate; SH/DSH/FM gated |
 | BR-22 | Staff Certification Tracker | ✅ Live read+write (Phase 5.12 + 5.15) — dashboard /certifications full CRUD with staff selector + cert-name datalist; mobile MyCertificationsScreen kept read-only by design (self-attestation semantics); team-cert mobile surface optional follow-up |
 | BR-23 | Special Events / Festival Mode | ⏳ Phase B |
@@ -450,7 +450,7 @@ End-of-day 2026-05-07: 65 commits ahead of `96594ad` (original); `main` and `saf
 | Document (notes + audit_logs timeline) | ✅ Live | 5.11 + 5.18 (timeline surfaced on detail page) |
 | Per-building separate records | ✅ Live | building_id nullable; UI scopes correctly |
 | Missed-participant logging (per-staff acknowledgement + reason classification) | ✅ Live | 5.18 (mig 013 + ADR 0004) |
-| Auto-generate timed Fire NOC report (PDF) | ⏳ Phase B | Detail page is the precursor data substrate; PDFKit renders the same data structure |
+| Timed Fire NOC report (PDF) — on-demand | ✅ LIVE (BR-A `POST /drill-sessions/:id/report`) | Auto-generate-on-completion trigger remains Phase B (worker/June) — on-demand artifact shipped |
 
 **Phase 5.18 specific E2E flow tested-ready:**
 1. SH starts SCHEDULED drill → participants enqueued via hybrid (shift-roster first, all-staff fallback per ADR 0004) → audit_logs entry STARTED_FROM_SHIFT_ROSTER or STARTED_FROM_VENUE_ALL
@@ -628,7 +628,7 @@ Hand-validation in api PATCH handler (mirrors DB CHECK for clearer error)
 ### Known gaps + Phase B candidates
 
 - **Historical drills have no participant rows.** Pre-Phase-5.18 drills (3 demo drills + any real ones from Phase 5.11) show "Per-staff acknowledgement tracking begins…" message in detail view. Aggregate counts from `drill_sessions.total_*` columns still display via `legacy_*` aggregate fields.
-- **Auto-generate timed Fire NOC report (PDF)** — Phase B; the detail page is the precursor data substrate.
+- **Timed Fire NOC report (PDF)** — ✅ on-demand LIVE (BR-A); auto-generate-on-completion trigger still Phase B (worker/June).
 - **Multi-channel drill ack delivery** — drawer-banner-only today; FCM + WhatsApp + SMS land when BR-09/BR-10 unblock.
 - **Cross-drill analytics view** ("comparison vs last 4 drills") — Phase 5.19 candidate post-validation; reason-code aggregation reveals systemic gaps (e.g. `DEVICE_OR_NETWORK_ISSUE` rate per zone → signal-survey action item).
 - **`staff.drill_exempt_until DATE`** — for permanent exemptions (wheelchair / late-pregnancy mobility); Phase B at staff-record level, not per-drill reason.
@@ -969,3 +969,36 @@ Founder supplied **Architecture v9.1** (`SafeCommand_Architecture_v91_Complete.m
 - **Docs re-aligned 2026-05-19 (v9.1):** CLAUDE.md (authority block → Arch v9.1; reconciliation #1/#2 → spec-codified; Standards-Closure table → mig 021/022/023 column; Rule 24 extended to 020-023; controls row; reference files), ADR 0001 (2nd amendment), this §v9.1 note, sire-delivery-validation (Arch v9.1), memory.
 
 **Bottom line:** v9 / v9.1 is a forward-looking superset. The safe-subset alignment is complete and v9.1-current; **no code, no migration, no Phase 5.23 work** is due now. Await founder's updated technical requirements for the ADR-0007 / spec-doc increment.
+
+---
+
+## §compliance-export-family — BR-20 + BR-A + SIRE FF-3/NABH-§EM (LIVE, 2026-05-19)
+
+> **Authoritative record of the compliance-export build wave + its validation.**
+> `main @ a6b71e4` (pushed). Three additive features merged; integrated-verified.
+
+### What shipped (all additive — zero migration, zero worker, on-demand)
+
+| Feature | Endpoint | Commit |
+|---|---|---|
+| **BR-20** venue-wide compliance export — Fire NOC / NABH / Full-Audit, date-ranged | `GET /v1/compliance/export?type=&from=&to=` | `f397f0a` |
+| **BR-A** per-drill Fire NOC report | `POST /v1/drill-sessions/:id/report` | `772020f` |
+| **SIRE FF-3 + NABH §EM** (Arch v9.1 §20.13) — from live SIRE schema | `POST /v1/incidents/:id/compliance-export?format=TELANGANA_FF3\|NABH_EM` | `35f0cc1` |
+
+Report family is now complete: BR-29 (one incident) · BR-20 (venue-wide) · BR-A (per-drill) · SIRE §20.13 (FF-3 / NABH §EM authority forms). All reuse the proven PDFKit → S3 → presigned-GET pattern; `storage.ts` carries `putReportObject` / `putComplianceReportObject` / `putDrillReportObject` + shared `presignGetUrl`.
+
+### Validation results (2026-05-19) — PASS
+
+- **No hardcoding** — evidence-based scan across all changed app files: zero UUIDs / venue codes / phone numbers / non-AWS URLs / localhost / test-venue IDs in feature code. (Only pre-existing env-driven `storage.ts:getPublicUrl` `?? 'ap-south-1'` default — not a defect.)
+- **Tenant-correct (Rule 2 / EC-03 / NFR-01)** — every `db.from(...)` venue-derived from `req.auth.venue_id` (JWT): venue via `.eq('id', venueId)`, data via `.eq('venue_id', venueId)`, SIRE tables double-scoped `.eq('incident_id', …).eq('venue_id', …)`. Participants transitively scoped via venue-checked drill id (matches existing `drills.ts`/`analytics.ts`). **A newly-onboarded venue → its own `venue_id` → fully isolated reports.**
+- **MBV-safe (NFR-25 / EC-16)** — zero `building_id`/`building_visible` refs → no pre-mig-009 breakage, single-building unaffected, additively extensible when buildings land (Phase B). Reports aggregate live by `venue_id`, so **expanding a venue with new buildings / zones / equipment / drills / staff / incidents flows in automatically** — no hardcoded counts or lists.
+- **Spec-faithful note** — FF-3's "Telangana Fire Service" label is the Arch v9.1 §20.13 jurisdiction format (user-selected), not a tenant hardcode.
+- **Integrated "never-built-together" check** — on consolidated `main @ a6b71e4`: `apps/api` + `apps/dashboard` + `apps/mobile` `tsc --noEmit` **all clean**; all endpoints present + mounted; no cross-feature regression; 3-way `storage.ts` merge resolved as engineered (non-overlapping hunks).
+
+### Branch hygiene note (resolved)
+
+A mid-session branch-switch had left BR-A + SIRE comingled uncommitted in one working tree (only BR-20 was committed). Reconstructed into three clean single-commit branches off `main` by disjoint file sets, merged in dependency order (BR-20 ff → BR-A → SIRE), zero conflicts. Feature branches fully merged (deletable). Stale `feat/sire-day2-day7` from an earlier session also shows merged — left untouched pending cleanup decision.
+
+### Flagged, NOT taken (Prime decision pending)
+
+Pulling forward Architecture v9.1 §23 standards-closure registers (Safety Committee / AMC / MSDS) is feasible but requires a deliberate **spec-migration split** (v9.1 `021` bundles 5 tables, 2 of which FK into the unbuilt Map-Studio mig-020), a **founder-applied psql migration** (Hard Rule 24), and committing **Q4-2027-phased schema early**. Not taken unilaterally — awaits explicit go-ahead.
