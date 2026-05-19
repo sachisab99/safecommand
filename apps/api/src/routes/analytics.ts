@@ -188,7 +188,7 @@ analyticsRouter.get(
       db.from('incident_action_assignments').select('status').eq('venue_id', venueId),
       db.from('incident_evacuation_triggers').select('trigger_type').eq('venue_id', venueId),
       db.from('drill_sessions')
-        .select('id, status, scheduled_for, ended_at')
+        .select('id, status, scheduled_for, ended_at, drill_type')
         .eq('venue_id', venueId),
     ]);
 
@@ -201,6 +201,7 @@ analyticsRouter.get(
     const triggers = (evacRes.data ?? []) as Array<{ trigger_type: string }>;
     const drills = (drillRes.data ?? []) as Array<{
       id: string; status: string; scheduled_for: string | null; ended_at: string | null;
+      drill_type: string;
     }>;
 
     const tally = (arr: Array<Record<string, unknown>>, key: string): Record<string, number> => {
@@ -258,21 +259,69 @@ analyticsRouter.get(
 
     let pTotal = 0, pResponded = 0, pMissed = 0, ackLatencySum = 0, ackLatencyN = 0;
     const reasonBreakdown: Record<string, number> = {};
+    // Phase 5.19 — per-drill accumulation for the cross-drill comparison
+    // ("response vs last N drills"). Built from the SAME participant fetch
+    // (one extra selected column; no new query). Additive — every existing
+    // aggregate above is computed byte-identically.
+    type DrillAgg = {
+      total: number; responded: number; missed: number;
+      latSum: number; latN: number; deviceIssues: number;
+    };
+    const perDrill = new Map<string, DrillAgg>();
     if (drills.length > 0) {
       const { data: parts } = await db
         .from('drill_session_participants')
-        .select('status, reason_code, ack_latency_seconds')
+        .select('status, reason_code, ack_latency_seconds, drill_session_id')
         .in('drill_session_id', drills.map((d) => d.id));
       for (const p of (parts ?? []) as Array<{
         status: string; reason_code: string | null; ack_latency_seconds: number | null;
+        drill_session_id: string;
       }>) {
         pTotal++;
         if (p.status === 'ACKNOWLEDGED' || p.status === 'SAFE_CONFIRMED') pResponded++;
         if (p.status === 'MISSED') pMissed++;
         if (p.reason_code) reasonBreakdown[p.reason_code] = (reasonBreakdown[p.reason_code] ?? 0) + 1;
         if (typeof p.ack_latency_seconds === 'number') { ackLatencySum += p.ack_latency_seconds; ackLatencyN++; }
+
+        let agg = perDrill.get(p.drill_session_id);
+        if (!agg) {
+          agg = { total: 0, responded: 0, missed: 0, latSum: 0, latN: 0, deviceIssues: 0 };
+          perDrill.set(p.drill_session_id, agg);
+        }
+        agg.total++;
+        if (p.status === 'ACKNOWLEDGED' || p.status === 'SAFE_CONFIRMED') agg.responded++;
+        if (p.status === 'MISSED') agg.missed++;
+        if (p.reason_code === 'DEVICE_OR_NETWORK_ISSUE') agg.deviceIssues++;
+        if (typeof p.ack_latency_seconds === 'number') { agg.latSum += p.ack_latency_seconds; agg.latN++; }
       }
     }
+
+    // Cross-drill comparison: completed drills oldest→newest, last 8, each
+    // with its own response stats — lets the dashboard show whether drill
+    // responsiveness is improving or degrading over time (BR-31 / Phase
+    // 5.19; the device-issue count is the systemic dead-zone signal at
+    // venue level — per-zone attribution needs a schema dimension that
+    // drill_session_participants does not carry, deferred by design).
+    const drillComparison = drills
+      .filter((d) => d.status === 'COMPLETED' && d.ended_at)
+      .sort((a, b) => new Date(a.ended_at as string).getTime() - new Date(b.ended_at as string).getTime())
+      .slice(-8)
+      .map((d) => {
+        const a = perDrill.get(d.id);
+        const total = a?.total ?? 0;
+        const responded = a?.responded ?? 0;
+        return {
+          drill_id: d.id,
+          drill_type: d.drill_type,
+          ended_at: d.ended_at as string,
+          expected: total,
+          responded,
+          missed: a?.missed ?? 0,
+          ack_rate_pct: total > 0 ? Math.round((responded / total) * 100) : null,
+          avg_ack_latency_seconds: a && a.latN > 0 ? Math.round(a.latSum / a.latN) : null,
+          device_issue_count: a?.deviceIssues ?? 0,
+        };
+      });
 
     res.json({
       incidents: {
@@ -311,6 +360,8 @@ analyticsRouter.get(
         },
       },
       trend_8w: trend8w,
+      // Phase 5.19 — additive; existing consumers ignore unknown fields.
+      drill_comparison: drillComparison,
     });
   },
 );

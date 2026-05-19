@@ -41,6 +41,18 @@ export interface SafetyAnalytics {
     };
   };
   trend_8w: { week_ending: string; count: number }[];
+  // Phase 5.19 — optional (backward-compatible; absent on older api).
+  drill_comparison?: {
+    drill_id: string;
+    drill_type: string;
+    ended_at: string;
+    expected: number;
+    responded: number;
+    missed: number;
+    ack_rate_pct: number | null;
+    avg_ack_latency_seconds: number | null;
+    device_issue_count: number;
+  }[];
 }
 
 export async function fetchSafetyAnalytics() {

@@ -181,6 +181,59 @@ export default function AnalyticsPage() {
                 })}
               </div>
             </Card>
+
+            {data.drill_comparison && data.drill_comparison.length > 0 && (
+              <Card title={`Drill response — last ${data.drill_comparison.length} drill${data.drill_comparison.length === 1 ? '' : 's'} (oldest → newest)`}>
+                <p className="mb-3 text-xs text-slate-500">
+                  Per-drill acknowledgement rate over time — is responsiveness
+                  improving or degrading?
+                  {(() => {
+                    const dc = data.drill_comparison!;
+                    const first = dc[0]?.ack_rate_pct;
+                    const last = dc[dc.length - 1]?.ack_rate_pct;
+                    if (first == null || last == null) return null;
+                    const delta = last - first;
+                    return (
+                      <>
+                        {' '}First {first}% → latest {last}% (
+                        <strong className={delta >= 0 ? 'text-emerald-600' : 'text-red-600'}>
+                          {delta >= 0 ? '+' : ''}{delta} pts
+                        </strong>
+                        ).
+                      </>
+                    );
+                  })()}
+                  {(() => {
+                    const di = data.drill_comparison!.reduce((s, d) => s + d.device_issue_count, 0);
+                    return di > 0 ? (
+                      <> {di} device/network non-ack{di === 1 ? '' : 's'} across the series — possible dead-zone signal.</>
+                    ) : null;
+                  })()}
+                </p>
+                <div className="flex items-end gap-2" style={{ height: 96 }}>
+                  {data.drill_comparison.map((d) => {
+                    const pct = d.ack_rate_pct ?? 0;
+                    const bar =
+                      pct >= 80 ? 'bg-emerald-500' : pct >= 50 ? 'bg-amber-500' : 'bg-red-500';
+                    return (
+                      <div key={d.drill_id} className="flex flex-1 flex-col items-center gap-1">
+                        <div className="text-xs font-semibold text-slate-700">
+                          {d.ack_rate_pct == null ? '—' : `${d.ack_rate_pct}%`}
+                        </div>
+                        <div
+                          className={`w-full rounded-t ${bar}`}
+                          style={{ height: `${Math.max((pct / 100) * 70, 2)}px` }}
+                          title={`${d.drill_type} · ${d.responded}/${d.expected} responded · ${d.missed} missed${d.avg_ack_latency_seconds != null ? ` · avg ${d.avg_ack_latency_seconds}s` : ''}`}
+                        />
+                        <div className="text-[10px] text-slate-400">
+                          {d.ended_at.slice(5, 10)}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Card>
+            )}
           </div>
         )}
       </div>
