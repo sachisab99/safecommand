@@ -99,6 +99,30 @@ export async function resolveIncident(incidentId: string): Promise<boolean> {
   return !error;
 }
 
+// SIRE Compliance Export — Telangana FF-3 / NABH §EM (Arch v9.1 §20.13).
+// On-demand authority PDF from the LIVE SIRE schema; the api renders +
+// stores it and returns a short-lived presigned GET URL the device opens
+// via Linking. Reuses POST /v1/incidents/:id/compliance-export — no api
+// change. Role-gate MUST match the api requireRole exactly.
+export type SireExportFormat = 'TELANGANA_FF3' | 'NABH_EM';
+
+export function canExportIncidentCompliance(role: string | null | undefined): boolean {
+  return !!role && ['SH', 'DSH', 'SHIFT_COMMANDER', 'GM', 'AUDITOR'].includes(role);
+}
+
+export async function generateSireComplianceExport(
+  incidentId: string,
+  format: SireExportFormat,
+): Promise<{ url: string | null; error: string | null }> {
+  const session = await getStoredSession();
+  if (!session) return { url: null, error: 'Not authenticated' };
+  const { data, error } = await apiFetch<{ url: string; format: string; report_ref: string }>(
+    `/incidents/${incidentId}/compliance-export?format=${format}`,
+    { method: 'POST', token: session.access_token },
+  );
+  return { url: data?.url ?? null, error };
+}
+
 export async function fetchZones(): Promise<Zone[]> {
   const session = await getStoredSession();
   if (!session) return [];

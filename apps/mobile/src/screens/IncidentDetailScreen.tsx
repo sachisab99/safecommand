@@ -28,14 +28,19 @@ import {
   RefreshControl,
   StyleSheet,
   ActivityIndicator,
+  Alert,
+  Linking,
 } from 'react-native';
 import {
   fetchIncidentDetail,
   fetchStaffList,
   markSafe,
+  generateSireComplianceExport,
+  canExportIncidentCompliance,
   type IncidentDetail,
   type TimelineEvent,
   type StaffRef,
+  type SireExportFormat,
 } from '../services/incidents';
 import { SireSection } from '../components/sire/SireSection';
 import { ErrorBoundary } from '../components/ErrorBoundary';
@@ -175,6 +180,7 @@ export function IncidentDetailScreen({ incidentId, onBack }: Props): React.JSX.E
   // Session — used to identify caller for SIRE section (staff_id + role)
   const [callerStaffId, setCallerStaffId] = useState<string | null>(null);
   const [callerRole, setCallerRole] = useState<string | null>(null);
+  const [exportBusy, setExportBusy] = useState<SireExportFormat | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -230,6 +236,26 @@ export function IncidentDetailScreen({ incidentId, onBack }: Props): React.JSX.E
       setSafeFeedback('Could not record. Try again.');
     }
   }, [incident, load]);
+
+  // SIRE Compliance Export — FF-3 / NABH §EM (Arch v9.1 §20.13).
+  const handleExport = useCallback(
+    async (format: SireExportFormat): Promise<void> => {
+      if (!incident) return;
+      setExportBusy(format);
+      const { url, error: e } = await generateSireComplianceExport(incident.id, format);
+      setExportBusy(null);
+      if (e || !url) {
+        Alert.alert('Export failed', e ?? 'Could not generate the compliance export.');
+        return;
+      }
+      try {
+        await Linking.openURL(url);
+      } catch {
+        Alert.alert('Export ready', 'Generated, but the device could not open the PDF link.');
+      }
+    },
+    [incident],
+  );
 
   const isOpen =
     incident !== null && (incident.status === 'ACTIVE' || incident.status === 'CONTAINED');
@@ -331,6 +357,53 @@ export function IncidentDetailScreen({ incidentId, onBack }: Props): React.JSX.E
               {safeFeedback !== null && (
                 <Text style={[s.safeFeedback, { color: c.textMuted }]}>{safeFeedback}</Text>
               )}
+            </View>
+          )}
+
+          {/* SIRE Compliance Export — FF-3 / NABH §EM (Arch v9.1 §20.13).
+              In-field authority PDF for the Fire-NOC / NABH walkthrough.
+              Command + GM + Auditor only (mirrors api requireRole). */}
+          {canExportIncidentCompliance(callerRole) && (
+            <View style={s.exportBlock}>
+              <Text style={[s.exportHint, { color: c.textMuted }]}>
+                Compliance export (PDF)
+              </Text>
+              <View style={s.exportRow}>
+                <TouchableOpacity
+                  onPress={() => void handleExport('TELANGANA_FF3')}
+                  disabled={exportBusy !== null}
+                  style={[
+                    s.exportBtn,
+                    { borderColor: c.status.danger, opacity: exportBusy ? 0.6 : 1 },
+                  ]}
+                  hitSlop={touch.hitSlop}
+                >
+                  {exportBusy === 'TELANGANA_FF3' ? (
+                    <ActivityIndicator color={c.status.danger} size="small" />
+                  ) : (
+                    <Text style={[s.exportBtnText, { color: c.status.danger }]}>
+                      FF-3 export
+                    </Text>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => void handleExport('NABH_EM')}
+                  disabled={exportBusy !== null}
+                  style={[
+                    s.exportBtn,
+                    { borderColor: c.divider, opacity: exportBusy ? 0.6 : 1 },
+                  ]}
+                  hitSlop={touch.hitSlop}
+                >
+                  {exportBusy === 'NABH_EM' ? (
+                    <ActivityIndicator color={c.textSecondary} size="small" />
+                  ) : (
+                    <Text style={[s.exportBtnText, { color: c.textSecondary }]}>
+                      NABH §EM pack
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              </View>
             </View>
           )}
         </ScrollView>
@@ -782,4 +855,26 @@ const s = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   retryText: { fontSize: fontSize.body, fontWeight: fontWeight.semibold },
+  // SIRE compliance export (FF-3 / NABH §EM)
+  exportBlock: { gap: spacing.xs, marginTop: spacing.md },
+  exportHint: {
+    fontSize: fontSize.caption,
+    fontWeight: fontWeight.semibold,
+    letterSpacing: letterSpacing.wide,
+  },
+  exportRow: { flexDirection: 'row', gap: spacing.sm },
+  exportBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderRadius: radius.md,
+    paddingVertical: spacing.sm,
+    minHeight: touch.minTarget,
+  },
+  exportBtnText: {
+    fontSize: fontSize.body,
+    fontWeight: fontWeight.semibold,
+  },
 });
