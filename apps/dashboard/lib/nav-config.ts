@@ -49,7 +49,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { id: 'certifications',  label: 'Certifications',  icon: '📜', href: '/certifications',  enabled: true },
       { id: 'analytics',       label: 'Safety Analytics', icon: '📊', href: '/analytics',      enabled: true },
       { id: 'audit',           label: 'Audit Logs',      icon: '🔍', href: '/audit',           enabled: false },
-      { id: 'compliance-exports', label: 'Compliance Exports', icon: '📄', href: '/compliance/exports', enabled: false },
+      { id: 'compliance-exports', label: 'Compliance Exports', icon: '📄', href: '/compliance/exports', enabled: true },
     ],
   },
   {

@@ -83,6 +83,27 @@ export async function putReportObject(
   return fileKey;
 }
 
+// ─── BR-20 venue-wide compliance export (Fire NOC / NABH / Full Audit) ─────
+// Same store-then-presign-GET mechanism as BR-29, distinct key prefix so
+// compliance PDFs are lifecycle-separable from per-incident reports.
+export async function putComplianceReportObject(
+  venueId: string,
+  reportRef: string,
+  body: Buffer,
+): Promise<string> {
+  const safeRef = reportRef.replace(/[^A-Za-z0-9._-]/g, '_');
+  const fileKey = `compliance_reports/${venueId}/${safeRef}/${Date.now()}.pdf`;
+  await getS3Client().send(
+    new PutObjectCommand({
+      Bucket: BUCKET,
+      Key: fileKey,
+      Body: body,
+      ContentType: 'application/pdf',
+    }),
+  );
+  return fileKey;
+}
+
 export async function presignGetUrl(
   fileKey: string,
   ttlSeconds: number = REPORT_GET_TTL_SECONDS,

@@ -19,6 +19,7 @@ import { drillsRouter } from './routes/drills.js';
 import { certificationsRouter } from './routes/certifications.js';
 import { shiftsRouter, shiftInstancesRouter } from './routes/shifts.js';
 import { handoversRouter } from './routes/handovers.js';
+import { complianceRouter } from './routes/compliance.js';
 import { sireRouter } from './routes/sire.js';
 import { errorHandler } from './middleware/error-handler.js';
 
@@ -45,6 +46,7 @@ app.use('/v1/certifications', certificationsRouter);
 app.use('/v1/shifts', shiftsRouter);
 app.use('/v1/shift-instances', shiftInstancesRouter);
 app.use('/v1/handovers', handoversRouter);
+app.use('/v1/compliance', complianceRouter);
 app.use('/v1/sire', sireRouter);
 
 app.use(errorHandler);
