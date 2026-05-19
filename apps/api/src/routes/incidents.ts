@@ -9,6 +9,10 @@ import { CreateIncidentSchema, UpdateIncidentStatusSchema } from '@safecommand/s
 import { resolveTemplate, EC23ViolationError } from '../services/sire/templateResolver.js';
 import { bootstrapSireIncident } from '../services/sire/bootstrapIncident.js';
 import { buildIncidentReportPdf } from '../services/incidentReport.js';
+import {
+  buildSireComplianceExportPdf,
+  type SireExportFormat,
+} from '../services/sireComplianceExport.js';
 import { putReportObject, presignGetUrl } from '../services/storage.js';
 import { logger } from '../services/logger.js';
 
@@ -457,6 +461,59 @@ incidentsRouter.post(
       logger.error({ err, incidentId }, 'BR-29 report generation failed');
       res.status(500).json({
         error: { code: 'REPORT_FAILED', message: 'Could not generate the report' },
+      });
+    }
+  },
+);
+
+// ──────────────────────────────────────────────────────────────────────────
+// POST /v1/incidents/:id/compliance-export?format=TELANGANA_FF3|NABH_EM
+//
+// Architecture v9.1 §20.13 — SIRE Compliance Reports. Renders the
+// authority-shaped PDF (Telangana Fire Service FF-3 record, or the NABH
+// §EM 5-section evidence pack) from the already-LIVE SIRE schema. Stores
+// to S3 (incident-scoped, reuses putReportObject) and returns a
+// time-limited presigned GET URL. Sibling of BR-29 /:id/report. On-demand
+// only; the spec's auto-on-resolution trigger is the separate worker/June
+// concern. No migration, no worker. Role: command + GM + Auditor
+// (BR-17 auditor compliance generation).
+const SIRE_EXPORT_FORMATS: SireExportFormat[] = ['TELANGANA_FF3', 'NABH_EM'];
+incidentsRouter.post(
+  '/:id/compliance-export',
+  requireRole('SH', 'DSH', 'SHIFT_COMMANDER', 'GM', 'AUDITOR'),
+  auditLog('SIRE_COMPLIANCE_EXPORT'),
+  async (req: Request, res: Response): Promise<void> => {
+    const incidentId = req.params['id']!;
+    const venueId = req.auth.venue_id;
+    const fmtRaw = String(req.query['format'] ?? 'TELANGANA_FF3').toUpperCase();
+    if (!SIRE_EXPORT_FORMATS.includes(fmtRaw as SireExportFormat)) {
+      res.status(400).json({
+        error: {
+          code: 'INVALID_FORMAT',
+          message: `format must be one of ${SIRE_EXPORT_FORMATS.join(', ')}`,
+        },
+      });
+      return;
+    }
+    const format = fmtRaw as SireExportFormat;
+    try {
+      const built = await buildSireComplianceExportPdf(incidentId, venueId, format);
+      if (!built) {
+        res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Incident not found' } });
+        return;
+      }
+      const fileKey = await putReportObject(venueId, incidentId, built.buffer);
+      const url = await presignGetUrl(fileKey);
+      res.status(200).json({
+        url,
+        format,
+        report_ref: built.ref,
+        generated_at: new Date().toISOString(),
+      });
+    } catch (err) {
+      logger.error({ err, incidentId, format }, 'SIRE compliance export failed (v9.1 §20.13)');
+      res.status(500).json({
+        error: { code: 'EXPORT_FAILED', message: 'Could not generate the compliance export' },
       });
     }
   },

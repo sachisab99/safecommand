@@ -60,6 +60,28 @@ export async function generateIncidentReport(
   return { ok: true, url: data.url, generatedAt: data.generated_at, error: null };
 }
 
+// SIRE Compliance Export — Telangana FF-3 / NABH §EM (Architecture v9.1
+// §20.13). Same api role-gate as the post-incident report (reuse
+// canGenerateReport — REPORT_ROLES matches the api requireRole exactly).
+// Sibling endpoint; no migration, no worker.
+export type SireExportFormat = 'TELANGANA_FF3' | 'NABH_EM';
+export async function generateSireComplianceExport(
+  incidentId: string,
+  format: SireExportFormat,
+): Promise<{ ok: boolean; url?: string; error: string | null }> {
+  const { data, error } = await apiFetch<{
+    url: string;
+    format: string;
+    report_ref: string;
+    generated_at: string;
+  }>(`/incidents/${incidentId}/compliance-export?format=${format}`, {
+    method: 'POST',
+    body: '{}',
+  });
+  if (error || !data) return { ok: false, error: error ?? 'Could not generate export' };
+  return { ok: true, url: data.url, error: null };
+}
+
 // Roles permitted to generate the report — MUST match api requireRole on
 // POST /incidents/:id/report (command + GM + Auditor; BR-17 + BR-29).
 export const REPORT_ROLES = ['SH', 'DSH', 'SHIFT_COMMANDER', 'GM', 'AUDITOR'] as const;

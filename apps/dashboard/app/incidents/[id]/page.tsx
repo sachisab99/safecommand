@@ -27,7 +27,12 @@ import Link from 'next/link';
 import { AppShell } from '../../../components/AppShell';
 import { apiFetch } from '../../../lib/api';
 import { getSession } from '../../../lib/auth';
-import { generateIncidentReport, canGenerateReport } from '../../../lib/incidents';
+import {
+  generateIncidentReport,
+  canGenerateReport,
+  generateSireComplianceExport,
+  type SireExportFormat,
+} from '../../../lib/incidents';
 import { SireSection } from '../../../components/sire/SireSection';
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
@@ -531,16 +536,33 @@ function IncidentReportCard({ incidentId }: { incidentId: string }) {
     }
   };
 
+  // SIRE Compliance Export — Telangana FF-3 / NABH §EM (v9.1 §20.13)
+  const onExport = async (format: SireExportFormat) => {
+    setBusy(true);
+    setError(null);
+    const res = await generateSireComplianceExport(incidentId, format);
+    setBusy(false);
+    if (res.ok && res.url) {
+      setLastUrl(res.url);
+      setLastAt(new Date().toISOString());
+      window.open(res.url, '_blank', 'noopener,noreferrer');
+    } else {
+      setError(res.error ?? 'Could not generate the compliance export');
+    }
+  };
+
   return (
     <section className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6">
       <div className="flex items-start gap-3">
         <span className="text-2xl shrink-0" aria-hidden="true">📄</span>
         <div className="flex-1">
-          <h3 className="font-semibold text-slate-900 text-sm">Post-incident report (PDF)</h3>
+          <h3 className="font-semibold text-slate-900 text-sm">Post-incident report &amp; authority exports (PDF)</h3>
           <p className="text-slate-500 text-xs mt-1">
             Auditable record — summary, timeline, SIRE zone-state history, per-role
-            action completion, evacuation-trigger audit & photo-evidence ledger.
-            Fire-NOC / NABH / insurance-grade.
+            action completion, evacuation-trigger audit &amp; photo-evidence ledger.
+            Plus authority-shaped exports: <strong>Telangana FF-3</strong> (Fire Service
+            drill/incident record — removes the #1 paper-form burden) and
+            <strong> NABH §EM</strong> evidence pack (v9.1 §20.13).
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <button
@@ -550,6 +572,24 @@ function IncidentReportCard({ incidentId }: { incidentId: string }) {
               className="rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-50"
             >
               {busy ? 'Generating…' : 'Generate & download report'}
+            </button>
+            <button
+              type="button"
+              onClick={() => onExport('TELANGANA_FF3')}
+              disabled={busy}
+              className="rounded-md border border-red-600 px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:opacity-50"
+              title="Telangana Fire Service Form FF-3 compliant record (v9.1 §20.13)"
+            >
+              FF-3 export
+            </button>
+            <button
+              type="button"
+              onClick={() => onExport('NABH_EM')}
+              disabled={busy}
+              className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+              title="NABH §EM 6th Edition evidence pack (v9.1 §20.13)"
+            >
+              NABH §EM pack
             </button>
             {lastUrl && (
               <a
