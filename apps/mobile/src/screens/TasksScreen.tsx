@@ -127,6 +127,7 @@ interface Props {
   onEquipment: () => void;
   onDrills: () => void;
   onMyCerts: () => void;
+  onTeamCerts: () => void;
   onRoster: () => void;
   onHandover: () => void;
   onDrillDetail: (drillId: string) => void;
@@ -145,6 +146,7 @@ export function TasksScreen({
   onEquipment,
   onDrills,
   onMyCerts,
+  onTeamCerts,
   onRoster,
   onHandover,
   onDrillDetail,
@@ -424,6 +426,19 @@ export function TasksScreen({
           icon: '🎓',
           onPress: onMyCerts,
         },
+        // BR-22 Team Certifications — venue-wide cert management. SH/DSH/FM
+        // only (api requireRole: SH/DSH/FM add+edit, SH/DSH delete). Hidden
+        // for ineligible roles to reduce surface; api 403 + RLS enforce.
+        ...(['SH', 'DSH', 'FM'].includes(staff.role)
+          ? [
+              {
+                key: 'teamCerts',
+                label: 'Team Certifications',
+                icon: '🎖️',
+                onPress: onTeamCerts,
+              } as const,
+            ]
+          : []),
       ],
     },
     {

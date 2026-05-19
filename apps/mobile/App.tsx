@@ -13,6 +13,7 @@ import { IncidentsListScreen } from './src/screens/IncidentsListScreen';
 import { EquipmentScreen } from './src/screens/EquipmentScreen';
 import { DrillsScreen } from './src/screens/DrillsScreen';
 import { MyCertificationsScreen } from './src/screens/MyCertificationsScreen';
+import { TeamCertificationsScreen } from './src/screens/TeamCertificationsScreen';
 import { RosterScreen } from './src/screens/RosterScreen';
 import { HandoverScreen } from './src/screens/HandoverScreen';
 import { DrillDetailScreen } from './src/screens/DrillDetailScreen';
@@ -37,6 +38,7 @@ type ScreenName =
   | 'equipment'
   | 'drills'
   | 'myCerts'
+  | 'teamCerts'
   | 'roster'
   | 'handover'
   | 'drillDetail';
@@ -127,6 +129,7 @@ function AppRouter(): React.JSX.Element {
           onEquipment={() => setScreen('equipment')}
           onDrills={() => setScreen('drills')}
           onMyCerts={() => setScreen('myCerts')}
+          onTeamCerts={() => setScreen('teamCerts')}
           onRoster={() => setScreen('roster')}
           onHandover={() => setScreen('handover')}
           onDrillDetail={(id) => {
@@ -195,6 +198,12 @@ function AppRouter(): React.JSX.Element {
       {screen === 'myCerts' && session && (
         <MyCertificationsScreen
           staffName={session.staff.name}
+          onBack={() => setScreen('tasks')}
+        />
+      )}
+      {screen === 'teamCerts' && session && (
+        <TeamCertificationsScreen
+          staffRole={session.staff.role}
           onBack={() => setScreen('tasks')}
         />
       )}
