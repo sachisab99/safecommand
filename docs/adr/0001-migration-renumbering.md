@@ -300,4 +300,35 @@ Same discipline as mig 020: **Hard Rule 24 (schema-before-code) applies to 021/0
 
 ---
 
-*ADR captured 2026-05-04 · Last amended 2026-05-19 (v9.1: spec-ratified file-number authority + standards-closure migs 021/022/023) · Status: Accepted*
+## 2026-05-19 Amendment — §23 Standards-Closure pull-forward (founder-authorised)
+
+The founder authorised pulling forward the **3 independent** standards-closure registers — **BR-AB Safety Committee · BR-AF AMC registry · BR-AG MSDS repository** — ahead of their v9.1 Phase-5.23 timing (the SIRE-Day-1 early-build pattern). This amendment records the resulting numbering + adaptation decisions; the prior amendment's "021/022/023 spec-ratified sequence" was the *intended* order assuming Phase-5.23 build order — pulling a subset forward changes the build order, so the deployed numbers follow ACTUAL order per this ADR's core rule.
+
+**Decision 1 — file number = `020` (next free integer).** Highest deployed/written migration = `019`. Per this ADR's invariant ("the next free integer in `supabase/migrations/`, never the spec's logical label" — and v9.1 §1.3b: "the NNN file number is authoritative; reference labels … are logical labels"), the pulled-forward subset is **`020_standards_closure_p1.sql`**. v9.1 §1.3b's "020 = evacuation_map_studio / 021 = standards_closure_p1 / 022 = lms / 023 = drill_tabletop" is now a **logical label set, not file numbers**. Updated authoritative mapping:
+
+| Logical (v9.1 §1.3b) | Repo file | State |
+|---|---|---|
+| standards_closure_p1 (3 of 5 tables) | **`020_standards_closure_p1.sql`** | written 2026-05-19; ⏳ founder psql-apply |
+| evacuation_map_studio | next free integer when Phase 5.23 builds (≥021) | unwritten |
+| lms_integration | next free integer when built | unwritten |
+| drill_tabletop_nabh_qis | next free integer when built | unwritten |
+| standards_closure remainder (`annual_plan_reviews` BR-AA + `refuge_area_occupancy_snapshots` BR-AD) | next free integer **after** Map-Studio mig (hard FK dep on `floor_plans`/`evacuation_annotations`) | unwritten |
+
+No numeric gap (009 → 020 contiguous). The "next free integer, never the spec label" rule is reaffirmed as the single invariant; spec/BP migration numbers are always logical.
+
+**Decision 2 — subset, not the full 5-table v9.1 `021`.** Only the 3 tables with **no FK to the Map-Studio migration** are pulled forward. `annual_plan_reviews` (FK `floor_plans`) and `refuge_area_occupancy_snapshots` (FK `evacuation_annotations`) are **deferred** to a future migration created *after* the Map-Studio migration exists. They MUST NOT be retro-added into `020` (Hard Rule 3).
+
+**Decision 3 — pre-deploy adaptation (parallels the SIRE mig 014 fixes).** v9.1 §23.1 writes `amc_contracts` + `msds_documents` with `building_id UUID REFERENCES buildings(id)` and RLS `… AND building_visible(building_id)`. `buildings` + `building_visible()` are created by mig `009` (MBV), **PENDING Phase B (not deployed)** — referencing them would fail at apply. Per EC-16 (building_id always nullable; NULL = venue-wide) + NFR-25 (pre-MBV = single-building = building scoping is a no-op), `building_id` + `building_visible()` are **omitted** from `020`. The MBV-era migration (the `009` family that `ADD COLUMN building_id` across the schema) will additively add them + refresh these RLS policies — the established MBV pattern. `safety_committee_meetings` has no `building_id` in the spec → reproduced verbatim.
+
+**Decision 4 — Hard Rule 24 hand-off.** `020_standards_closure_p1.sql` is additive-only (3 `CREATE TABLE` + RLS + indexes; no views → Hard Rule 25 N/A). It MUST be applied + verified in production **before** any `/v1/safety-committee`, `/v1/amc-contracts`, or `/v1/msds` code deploys. Founder applies (same mechanism as SIRE Day-1):
+
+```
+psql "<supabase session-pooler url>" --single-transaction -v ON_ERROR_STOP=1 \
+     -f supabase/migrations/020_standards_closure_p1.sql
+```
+
+Expected: `NOTICE: Migration 020 PASSED: 3 standards-closure tables, all RLS enabled`. Schema is dormant until the API/UI code ships (next pass) — existing operations unaffected (Hard Rule 24 satisfied for the current deploy).
+
+---
+
+*ADR captured 2026-05-04 · Last amended 2026-05-19 (§23 pull-forward: `020_standards_closure_p1.sql` subset + pre-deploy adaptation + Hard Rule 24 hand-off) · Status: Accepted*
