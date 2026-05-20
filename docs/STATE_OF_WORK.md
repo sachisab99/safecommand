@@ -1001,4 +1001,57 @@ A mid-session branch-switch had left BR-A + SIRE comingled uncommitted in one wo
 
 ### Flagged, NOT taken (Prime decision pending)
 
-Pulling forward Architecture v9.1 §23 standards-closure registers (Safety Committee / AMC / MSDS) is feasible but requires a deliberate **spec-migration split** (v9.1 `021` bundles 5 tables, 2 of which FK into the unbuilt Map-Studio mig-020), a **founder-applied psql migration** (Hard Rule 24), and committing **Q4-2027-phased schema early**. Not taken unilaterally — awaits explicit go-ahead.
+~~Pulling forward Architecture v9.1 §23 standards-closure registers (Safety Committee / AMC / MSDS) is feasible but requires a deliberate **spec-migration split** (v9.1 `021` bundles 5 tables, 2 of which FK into the unbuilt Map-Studio mig-020), a **founder-applied psql migration** (Hard Rule 24), and committing **Q4-2027-phased schema early**. Not taken unilaterally — awaits explicit go-ahead.~~
+
+**RESOLVED 2026-05-19:** §23 pull-forward authorised. Mig `020_standards_closure_p1.sql` written, applied by founder via Supabase SQL Editor (3 tables, RLS true), API layer (`/v1/safety-committee` / `/v1/amc-contracts` / `/v1/msds`) shipped + merged + pushed to `main`. Dashboard/mobile passes pending. Full record: §compliance-export-family above.
+
+---
+
+## §shift-roster-architecture — Phase 5.24 wave (BR-AK…BR-AU + ADR-0007), 2026-05-20
+
+> Authoritative record of the shift-roster requirements + architecture intake + BR-AR pull-forward.
+
+### Inputs received
+- **Shift Roster Requirements v1.1** (Nexus Prime, 2026-05-20) — `nexus/specs/2026-05-20_shift-roster-requirements.md` (891 lines). 11 BRs (BR-AK…BR-AU), Factories-Act/PSARA/NABH-§HRM regulatory frame, 7-pattern rotation library, swap/leave workflows, multi-shift flexibility (BR-AR), MBV-aware scoping, compliance-export PDF, ADR-0011 proposed.
+- **Shift Roster Architecture v1.0** (Nexus Forge, 2026-05-20) — `nexus/specs/SafeCommand_ShiftRoster_Architecture_v1.md` (2674 lines). All 8 engineering refinements from the v1.1 review applied; all 3 reconciliation flags resolved correctly (ADR-0011→0007, mig 024+→021/022/023, ADR-0004 repo-authoritative). Mig 021 BR-AR DDL production-ready.
+
+### Decisions captured 2026-05-20
+
+| Item | Decision | Artefact |
+|---|---|---|
+| **ADR numbering** for handover-decoupling | Spec said "0011"; repo next-free = **0007** per ADR 0001 invariant | `docs/adr/0007-decouple-handover-from-daily-assignment.md` |
+| **Migration numbering** for shift-roster wave | Spec said "024+"; repo next-free post-§23 = **021 / 022 / 023** | ADR 0001 amendment 2026-05-20 |
+| **Spec ↔ Repo authority principle** elevated to durable rule | Reservation tables are documentation hints, not bindings; repo wins on conflict | ADR 0001 amendment 2026-05-20 |
+| **BR-AR pull-forward** — multi-shift flexibility (founder-specified) | Wave 1 of Phase 5.24 — ALTER `shifts` only, additive, ~30 SQL lines | `supabase/migrations/021_shifts_multi_shift_breaks.sql` (written 2026-05-20; ⏳ founder psql-apply) |
+| **BR-AK / AL / AM / AN / AO / AP / AQ / AS / AT / AU** | Phase 5.24 wave 2 — Q1 2028 per arch timing (migs 022 + 023) | Spec'd; not yet written |
+| **ADR-0007: BR-12 contract preserved verbatim** | Pattern engine is a new *producer* of `shift_instances` / `shift_assignments`; handover code path unchanged at API level; one internal refactor (read `shifts.min_handover_minutes` post mig 021) | ADR-0007 |
+
+### Build state (2026-05-20)
+
+| Component | State |
+|---|---|
+| **Migration 021** (`shifts_multi_shift_breaks.sql`) | ✅ Written. ⏳ Awaiting founder psql-apply (Hard Rule 24 gate). Additive ALTER shifts: `breaks JSONB`, `min_handover_minutes INT`, `description TEXT`, `is_overnight BOOLEAN GENERATED`, `venue_type_default BOOLEAN`. Verification block embedded. |
+| **ADR-0007** (`docs/adr/0007-...`) | ✅ Written. Accepted (implementation gated by mig 021). |
+| **ADR 0001 amendment 2026-05-20** | ✅ Written. Spec↔repo authority principle + shift-roster wave numbering + ADR-0011→0007 reconciliation + §23 mig 020 deploy confirmation. |
+| **CLAUDE.md** | ✅ BR-AK…BR-AU registered + Phase 5.24 controls row + reference entries for ADR-0007 / Shift Roster Architecture v1 / Shift Roster Requirements v1.1. |
+| **BR-AR API extension** (`/v1/shifts` accept new fields) | ⏳ Hard Rule 24 — code waits for mig 021 apply confirmation. |
+| **BR-12 handover-service internal refactor** (`services/handover-notification.ts` reads `shifts.min_handover_minutes`) | ⏳ Same Hard Rule 24 gate. |
+| **Ops Console / dashboard editor** for breaks + handover window + description | ⏳ Same gate. |
+| **BR-AK…BR-AU pattern engine** (migs 022 + 023 + worker + UI) | ⏳ Phase 5.24 Q1 2028 per arch doc; not written. |
+
+### Doc-hygiene follow-up (low priority)
+
+The BR-AA…BR-AJ table (CLAUDE.md ~line 286) still lists Mig as "021"/"022"/"023" per v9.1 §1.3b. Post-§23 pull-forward + the shift-roster wave's claim on 021–023, those Mig refs need updating to reflect: **BR-AB/AF/AG → mig 020 (DEPLOYED)**; **BR-AA/AD remain in a future deferred migration (post Map Studio mig — they FK floor_plans/evacuation_annotations)**; **BR-AH (LMS) / BR-AI (drill TABLETOP) / BR-AJ (NABH QIs view) renumber to 024+ per ADR 0001 next-free-integer**. Captured here as the canonical follow-up; not blocking.
+
+### Founder action when ready (Hard Rule 24 hand-off)
+
+Same mechanism as mig 020 (yesterday) — Supabase SQL Editor or psql session pooler:
+
+```
+psql "<supabase session-pooler url>" --single-transaction -v ON_ERROR_STOP=1 \
+     -f supabase/migrations/021_shifts_multi_shift_breaks.sql
+```
+
+Expected: `NOTICE: Migration 021 PASSED: shifts extended with 5 columns; is_overnight is GENERATED`. Additive-only; existing rows auto-receive backwards-compatible defaults (`breaks = []`, `min_handover_minutes = 15`, `is_overnight` auto-computed); bit-identical behaviour to today until BR-AR code deploys. Aug-2026 per the architecture's bandwidth plan; can be earlier per founder preference.
+
+**Once applied, paste the NOTICE (or say "applied")** → I build the BR-AR code wave: BR-12 internal refactor + `/v1/shifts` field surface + Ops Console editor + dashboard editor + tests. Same cadence as the §23 standards-closure API pass.

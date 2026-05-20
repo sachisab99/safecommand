@@ -331,4 +331,80 @@ Expected: `NOTICE: Migration 020 PASSED: 3 standards-closure tables, all RLS ena
 
 ---
 
-*ADR captured 2026-05-04 · Last amended 2026-05-19 (§23 pull-forward: `020_standards_closure_p1.sql` subset + pre-deploy adaptation + Hard Rule 24 hand-off) · Status: Accepted*
+## 2026-05-20 Amendment — Spec ↔ Repo authority principle (durable rule) + Shift-Roster wave numbering + §23 mig 020 deploy confirmation
+
+### §23 mig 020 — deploy confirmed
+
+`020_standards_closure_p1.sql` (Safety Committee + AMC + MSDS, 3 tables) was applied by the founder via Supabase SQL Editor on **2026-05-19** (verified: 3 rows, `rowsecurity=true`). The 2026-05-19 hand-off is now closed. **Migration 020 is LIVE in production.**
+
+### Spec ↔ Repo authority principle (promoted to durable rule)
+
+Architecture documents and business plans frequently include forward-looking *reservation tables* — e.g., Arch v9.1 §1.3b reserved ADR-0007 through ADR-0010 (IMDF / Konva / jurisdiction-profiles / AI-parsing) and named "021_standards_closure_p1" as the standards-closure migration; the Shift Roster Requirements v1.0 referenced "ADR-0011" and "Migration 024+". **Reservation tables are documentation hints, not bindings.** When in conflict with deployed reality:
+
+| Question | Authoritative source |
+|---|---|
+| What is the next-free migration number? | **Repo** (`supabase/migrations/` directory at write time) |
+| What is the next-free ADR number? | **Repo** (`docs/adr/` directory at write time) |
+| What does ADR-NNNN say? | **Repo** (`docs/adr/NNNN-slug.md`) |
+| What are the deployed migrations? | **Repo** (CI deployment log + Supabase tracker) |
+| Reserved / placeholder ADRs in spec §1.3b | **Spec — forward-looking only, no binding force** |
+| Reserved migration numbers in spec | **Spec — forward-looking only, no binding force** |
+| Active BRs | **Spec** (Arch v9.x §2.1) — verified against repo build state in §16 |
+| Active EC/NFR/Hard-Rule counts | **Spec** (Arch v9.x §1.3) |
+
+**Rule:** Spec documents propose; repo invariants dispose. When in conflict, write a reconciliation note in the next architecture revision; do not modify the repo to fit the spec. (This principle was implicit in the v9.1 amendment's mig-012→020 reconciliation and the §23 pull-forward's number choice; it is now an explicit, durable invariant.)
+
+### Shift-Roster wave migration numbering (Phase 5.24, planned)
+
+| Logical (Shift Roster spec) | Repo file | Wave / Phase | State (2026-05-20) |
+|---|---|---|---|
+| Migration 024 — BR-AR multi-shift breaks | **`021_shifts_multi_shift_breaks.sql`** | Wave 1 — pull-forward | **Written 2026-05-20**; ⏳ founder psql-apply (Aug 2026 per arch doc bandwidth plan; can be earlier) |
+| Migration 025 — BR-AK/AL/AM/AN/AO/AP/AS/AT (roster engine) | **`022_roster_engine.sql`** | Wave 2 — Phase 5.24 | unwritten — Q1 2028 |
+| Migration 026 — BR-AQ coverage rules | **`023_coverage_rules.sql`** | Wave 2 — Phase 5.24 | unwritten — Q1 2028 |
+
+### Authoritative deployed-migration map (post-shift-roster wave)
+
+```
+009  MBV                                  [DEPLOYED 2026-05-06]
+010  brand/roaming/drill                  [DEPLOYED 2026-05-06]
+011  staff lifecycle                      [DEPLOYED 2026-05-06]
+012  RLS reference                        [DEPLOYED 2026-05-06]
+013  drill detail                         [DEPLOYED 2026-05-07]
+014  SIRE                                 [DEPLOYED 2026-05-08]
+015  SIRE fallback                        [DEPLOYED 2026-05-08]
+016  corp view security                   [DEPLOYED 2026-05-08]
+017  SIRE seeds                           [DEPLOYED 2026-05-09]
+018  declarer snapshot / incident_evidence[DEPLOYED 2026-05-09 / -17]
+019  SIRE default-on / Phase 5.22         [DEPLOYED 2026-05-17]
+020  standards-closure P1 subset          [DEPLOYED 2026-05-19 — §23 pull-forward]
+021  shifts multi-shift breaks (BR-AR)    [WRITTEN 2026-05-20; ⏳ founder apply]
+022  roster engine                        [unwritten — Q1 2028 Phase 5.24]
+023  coverage rules                       [unwritten — Q1 2028 Phase 5.24]
+024+ Map Studio + LMS + drill-tabletop +
+     NABH-QIs + deferred std-closure 2    [unwritten — Phase 5.23 + Phase B]
+```
+
+### ADR numbering — handover-decoupling correction
+
+The Shift Roster spec referenced **"ADR-0011 — Decouple handover from daily assignment"** per the Arch v9.1 §1.3b reservation table. Per the spec↔repo authority principle above, the **next-free integer at write time** is 0007 (deployed: 0001–0006). Therefore:
+
+| Spec (Shift Roster v1.0/v1.1 + Arch Roster v1 §9) | Repo |
+|---|---|
+| "ADR-0011 — Decouple handover from daily assignment" | **`docs/adr/0007-decouple-handover-from-daily-assignment.md`** (written 2026-05-20) |
+
+The four v9.1 placeholders (0007/0008/0009/0010 for IMDF/Konva/jurisdiction-profiles/AI-parsing), if/when formalised, take slots 0008 through 0011 in order of formalisation. **Reservation tables do not pre-claim slots.**
+
+### Founder psql hand-off for mig 021 (when ready)
+
+Same mechanism as mig 020 (which the founder applied via the Supabase SQL Editor on 2026-05-19):
+
+```
+psql "<supabase session-pooler url>" --single-transaction -v ON_ERROR_STOP=1 \
+     -f supabase/migrations/021_shifts_multi_shift_breaks.sql
+```
+
+Or paste the file contents into the Supabase Dashboard SQL Editor (same project as mig 020). Expected: `NOTICE: Migration 021 PASSED: shifts extended with 5 columns; is_overnight is GENERATED`. Additive-only (5 new columns on `shifts`); existing rows auto-receive backwards-compatible defaults; bit-identical behaviour to today until BR-AR code deploys. Hard Rule 24 gates the code (handover-service refactor + `/v1/shifts` field surface + Ops Console editor) on this apply.
+
+---
+
+*ADR captured 2026-05-04 · Last amended 2026-05-20 (spec↔repo authority principle promoted to durable rule · shift-roster wave 021/022/023 · ADR-0011→0007 reconciliation · §23 mig 020 deploy confirmation) · Status: Accepted*
