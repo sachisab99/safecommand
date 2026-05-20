@@ -478,4 +478,54 @@ Or paste each file into the Supabase Dashboard SQL Editor sequentially (same flo
 
 ---
 
-*ADR captured 2026-05-04 · Last amended 2026-05-21 (mig 021 deploy confirmation + shift-roster wave 2 migs 022 + 023 written + pre-deploy adaptations + Reconciliation Flag #4 captured) · Status: Accepted*
+## 2026-05-21 Amendment (later same day) — Migs 022 + 023 deploy confirmation + mig 024 SQL-Editor-RLS fix
+
+### Migs 022 + 023 — deploy confirmed
+
+The founder applied both migrations via the Supabase Dashboard SQL Editor on 2026-05-21:
+- `022_roster_engine.sql` — 6 tables + 7 seeded rotations + `btree_gist` extension. Verified: 7 tables on public, all `rowsecurity=true`.
+- `023_coverage_rules.sql` — 1 table (`coverage_rules`). Verified: present, `rowsecurity=true`, `role_code` = `staff_role_enum`.
+
+### Behaviour-correcting follow-up: mig 024 — rotation_cycle_library auth-read policy
+
+The Supabase Dashboard SQL Editor prompts to enable RLS on every new `public.*` table when applied via the web UI (a security default). The founder accepted the prompt during mig 022 apply, which left `rotation_cycle_library` in an **RLS-on, no-policy** state. With RLS enabled and no permissive policy, the existing `GRANT SELECT TO authenticated` is shadowed — authenticated reads would return 0 rows, and the pattern-engine UI's rotation dropdown would silently render empty.
+
+**`024_rotation_cycle_library_read_policy.sql`** (written 2026-05-21; awaiting founder psql-apply) — purely additive: 1 `CREATE POLICY "auth_read_all" ON rotation_cycle_library FOR SELECT TO authenticated USING (true)` + verification block. **Adopts** the SQL-Editor's RLS-on posture (strictly better defence-in-depth than the original anon-REVOKE-only design — even if a future grant accidentally restored anon access at the privilege level, the policy still gates by role).
+
+Apply method:
+```
+psql "<supabase session-pooler url>" --single-transaction -v ON_ERROR_STOP=1 \
+     -f supabase/migrations/024_rotation_cycle_library_read_policy.sql
+```
+Expected: `NOTICE 'Migration 024 PASSED: rotation_cycle_library auth_read_all policy created (RLS on, 7 built-in rotations readable)'`. Or run the inline `CREATE POLICY` statement in the same SQL Editor session.
+
+### Engineering learning captured (for future architecture-spec migrations)
+
+When an architecture spec defines a "global, no-RLS" lookup table, **prefer ENABLE ROW LEVEL SECURITY + an explicit `USING(TRUE)` policy from the start**. It matches Supabase's default expectation (the SQL Editor prompt), is bit-equivalent to a grant-only design when the policy is `USING(TRUE)`, and prevents the prompt-accept-without-policy ergonomic gap. Added to the pre-deploy adaptation checklist for future spec author handoffs.
+
+### Updated authoritative deployed-migration map
+
+```
+009  MBV                                  [DEPLOYED 2026-05-06]
+010  brand/roaming/drill                  [DEPLOYED 2026-05-06]
+011  staff lifecycle                      [DEPLOYED 2026-05-06]
+012  RLS reference                        [DEPLOYED 2026-05-06]
+013  drill detail                         [DEPLOYED 2026-05-07]
+014  SIRE                                 [DEPLOYED 2026-05-08]
+015  SIRE fallback                        [DEPLOYED 2026-05-08]
+016  corp view security                   [DEPLOYED 2026-05-08]
+017  SIRE seeds                           [DEPLOYED 2026-05-09]
+018  declarer snapshot / incident_evidence[DEPLOYED 2026-05-09 / -17]
+019  SIRE default-on / Phase 5.22         [DEPLOYED 2026-05-17]
+020  standards-closure P1 subset          [DEPLOYED 2026-05-19]
+021  shifts multi-shift breaks (BR-AR)    [DEPLOYED 2026-05-20]
+022  roster engine                        [DEPLOYED 2026-05-21]
+023  coverage rules (BR-AQ)               [DEPLOYED 2026-05-21]
+024  rotation_cycle_library auth_read     [WRITTEN 2026-05-21; ⏳ founder apply]
+025+ Map Studio + LMS + drill-tabletop +
+     NABH-QIs + deferred std-closure 2    [unwritten — Phase 5.23 + Phase B]
+```
+
+---
+
+*ADR captured 2026-05-04 · Last amended 2026-05-21 (migs 022/023 deploy confirmation + mig 024 SQL-Editor-RLS fix + engineering learning captured) · Status: Accepted*
