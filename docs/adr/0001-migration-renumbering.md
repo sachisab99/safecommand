@@ -407,4 +407,75 @@ Or paste the file contents into the Supabase Dashboard SQL Editor (same project 
 
 ---
 
-*ADR captured 2026-05-04 · Last amended 2026-05-20 (spec↔repo authority principle promoted to durable rule · shift-roster wave 021/022/023 · ADR-0011→0007 reconciliation · §23 mig 020 deploy confirmation) · Status: Accepted*
+## 2026-05-21 Amendment — Mig 021 deploy confirmation + Shift-roster pattern-engine wave 2 (migs 022 + 023)
+
+### Mig 021 — deploy confirmed
+
+`021_shifts_multi_shift_breaks.sql` (BR-AR multi-shift flexibility: 5 ALTER columns + GENERATED `is_overnight` + JSONB `breaks` + `min_handover_minutes` + index + verification) was applied by the founder via Supabase SQL Editor on **2026-05-20** (verified: 5 cols on `shifts`, `is_overnight` has `is_generated = ALWAYS`, defaults all correct). The 2026-05-20 hand-off is now closed. **Migration 021 is LIVE in production.**
+
+### Shift-roster pattern-engine pull-forward authorised — migs 022 + 023 written
+
+The founder authorised the pattern-engine pull-forward on 2026-05-21 (the full Phase 5.24 wave 2 — BR-AK / AL / AM / AN / AO / AP / AQ / AS / AT / AU). Two migrations written, awaiting psql apply (same SIRE-Day-1 / §23 / mig 021 pattern).
+
+**`022_roster_engine.sql` — 6 tables + 7 seeded rotations** (BR-AK / AL / AM / AN / AP + Refinement #1 child table):
+- `rotation_cycle_library` — global, anon-REVOKE'd, seeded with 7 built-ins (`4_ON_2_OFF`, `2_2_3` Pitman, `WEEKLY_DAY_NIGHT`, `CONTINENTAL`, `4_DAY_NIGHT_4_OFF`, `STANDARD_OFFICE`, `STANDARD_6_DAY`)
+- `roster_patterns` — recurring publishable templates (DRAFT → PUBLISHED → SUSPENDED → ARCHIVED)
+- `roster_cycle_positions` — queryable child of roster_patterns (★ Refinement #1: replaces the original `shift_id_per_position` JSONB on the pattern row)
+- `staff_roster_assignments` — per-staff working-day + weekly-off + hour-limits config
+- `staff_unavailability` — leave/unavailability calendar with **`gist EXCLUDE`** preventing overlapping APPROVED rows for same staff (★ Refinement #6; requires `btree_gist` extension — created at top of mig)
+- `shift_swap_requests` — staff-initiated swap workflow with **in-row state + audit_logs precedent** (★ Refinement #4) + **partial UNIQUE** preventing concurrent swap races (★ Refinement #5)
+
+**`023_coverage_rules.sql` — 1 table** (BR-AQ):
+- `coverage_rules` — per-(venue / zone / role / shift) minimum-staffing rules with priority MANDATORY/WARNING + standards-basis array. `role_code` uses `staff_role_enum` from mig 001 (★ Refinement #3). UNIQUE NULLS NOT DISTINCT scope key (PG15+).
+
+### Pre-deploy adaptations (3 — same family as §23 mig 020 + BR-AR mig 021)
+
+| # | Adaptation | Rationale |
+|---|---|---|
+| 1 | `building_id` + `AND building_visible(building_id)` OMITTED from `roster_patterns`, `staff_roster_assignments`, `coverage_rules` | v9.1 §5 references `buildings(id)` / `building_visible()` which live in mig 009 (PENDING Phase B). Per EC-16 + NFR-25, deferred to the MBV-era migration; pre-MBV every venue is single-building → building scoping is a no-op. The MBV-era migration additively `ADD COLUMN building_id` + refreshes RLS — established pattern. |
+| 2 | `shift_swap_requests.original_assignment_id` + `counterpart_assignment_id` reference **`staff_zone_assignments(id)`** (the actual deployed table from mig 002) NOT the spec's logical `shift_assignments(id)` | Reconciliation Flag #4 (spec↔repo naming divergence). Semantic intent preserved: the swap operates on a staff-shift assignment row. If the pattern engine's code passes later introduce a separate `shift_assignments` abstraction, an additive migration can extend the swap-request FK then. |
+| 3 | `btree_gist` extension created at top of mig 022 | Required for the `staff_unavailability` `EXCLUDE USING gist (staff_id WITH =, daterange(...) WITH &&) WHERE status='APPROVED'` constraint. |
+
+### Updated authoritative deployed-migration map
+
+```
+009  MBV                                  [DEPLOYED 2026-05-06]
+010  brand/roaming/drill                  [DEPLOYED 2026-05-06]
+011  staff lifecycle                      [DEPLOYED 2026-05-06]
+012  RLS reference                        [DEPLOYED 2026-05-06]
+013  drill detail                         [DEPLOYED 2026-05-07]
+014  SIRE                                 [DEPLOYED 2026-05-08]
+015  SIRE fallback                        [DEPLOYED 2026-05-08]
+016  corp view security                   [DEPLOYED 2026-05-08]
+017  SIRE seeds                           [DEPLOYED 2026-05-09]
+018  declarer snapshot / incident_evidence[DEPLOYED 2026-05-09 / -17]
+019  SIRE default-on / Phase 5.22         [DEPLOYED 2026-05-17]
+020  standards-closure P1 subset          [DEPLOYED 2026-05-19 — §23 pull-forward]
+021  shifts multi-shift breaks (BR-AR)    [DEPLOYED 2026-05-20]
+022  roster engine (BR-AK/AL/AM/AN/AP)    [WRITTEN 2026-05-21; ⏳ founder apply]
+023  coverage rules (BR-AQ)               [WRITTEN 2026-05-21; ⏳ founder apply]
+024+ Map Studio + LMS + drill-tabletop +
+     NABH-QIs + deferred std-closure 2    [unwritten — Phase 5.23 + Phase B]
+```
+
+### Founder psql hand-off for migs 022 + 023 (when ready)
+
+Same mechanism as mig 020 + mig 021. **Apply 022 FIRST, then 023** (023 depends on `staff_role_enum` + `roster_patterns` semantic context):
+
+```
+psql "<supabase session-pooler url>" --single-transaction -v ON_ERROR_STOP=1 \
+     -f supabase/migrations/022_roster_engine.sql
+# Expected: NOTICE 'Migration 022 PASSED: 6 tables (5 tenant-RLS + 1 global),
+#                                          7 seeded rotations, btree_gist ready'
+
+psql "<supabase session-pooler url>" --single-transaction -v ON_ERROR_STOP=1 \
+     -f supabase/migrations/023_coverage_rules.sql
+# Expected: NOTICE 'Migration 023 PASSED: coverage_rules table with RLS +
+#                                          staff_role_enum + UNIQUE scope'
+```
+
+Or paste each file into the Supabase Dashboard SQL Editor sequentially (same flow you used for migs 020 + 021). Both are additive; existing operations unaffected; both dormant until pattern-engine code ships (Hard Rule 24).
+
+---
+
+*ADR captured 2026-05-04 · Last amended 2026-05-21 (mig 021 deploy confirmation + shift-roster wave 2 migs 022 + 023 written + pre-deploy adaptations + Reconciliation Flag #4 captured) · Status: Accepted*

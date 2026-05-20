@@ -1055,3 +1055,39 @@ psql "<supabase session-pooler url>" --single-transaction -v ON_ERROR_STOP=1 \
 Expected: `NOTICE: Migration 021 PASSED: shifts extended with 5 columns; is_overnight is GENERATED`. Additive-only; existing rows auto-receive backwards-compatible defaults (`breaks = []`, `min_handover_minutes = 15`, `is_overnight` auto-computed); bit-identical behaviour to today until BR-AR code deploys. Aug-2026 per the architecture's bandwidth plan; can be earlier per founder preference.
 
 **Once applied, paste the NOTICE (or say "applied")** → I build the BR-AR code wave: BR-12 internal refactor + `/v1/shifts` field surface + Ops Console editor + dashboard editor + tests. Same cadence as the §23 standards-closure API pass.
+
+### Wave 1 update (2026-05-20) — BR-AR LIVE end-to-end
+
+Mig 021 applied 2026-05-20 (5 cols on `shifts`, `is_overnight` GENERATED ALWAYS, RLS intact). Code waves shipped same day + 2026-05-21:
+- `4f93e87` API field surface + Ops Console server-action validation (parseBreaksJson + overnight-aware validateBreaks).
+- `2239306` Ops Console UI: BreaksEditor client component + edit-form extension + table-row badges.
+- `2c76224` Dashboard `/shifts` ShiftCard badges + description subtitle (read-only cosmetic).
+- `6ef5797` Fix regression: `parseBreaksJson` + `validateBreaks` made module-private (Next.js `'use server'` rule — every export must be async). `next build` verification gate added to my discipline post this learning.
+
+End-to-end BR-AR validated: DB CHECK → server-action validation → UI editor → dashboard display. Backward-compat by construction (all 5 fields optional; venues that never touch a shift see no change).
+
+### Wave 2 update (2026-05-21) — Pattern-engine pull-forward AUTHORISED
+
+Founder authorised the full Phase 5.24 wave 2 (pattern engine) on 2026-05-21 after validating BR-AR + observing the live dashboard's "Today's Roster" is still the legacy per-day bulk-assign workflow (which is what the pattern engine replaces).
+
+| Item | State |
+|---|---|
+| **Migration `022_roster_engine.sql`** | ✅ WRITTEN. 6 tables (rotation_cycle_library + 7 seeded rotations · roster_patterns · roster_cycle_positions · staff_roster_assignments · staff_unavailability with gist EXCLUDE · shift_swap_requests with partial UNIQUE + in-row state + audit_logs precedent) + `btree_gist` extension + verification. ⏳ Founder psql-apply. |
+| **Migration `023_coverage_rules.sql`** | ✅ WRITTEN. 1 table (`coverage_rules`) using `staff_role_enum` from mig 001 + UNIQUE NULLS NOT DISTINCT scope key + RLS + 2 indexes + verification. ⏳ Founder psql-apply. |
+| **Pre-deploy adaptations** | building_id/building_visible omitted pre-MBV (3 tables affected); swap-request FK → `staff_zone_assignments` (Reconciliation Flag #4); `btree_gist` extension auto-created. All documented in mig file headers + ADR 0001 amendment 2026-05-21. |
+| **ADR 0001 amended 2026-05-21** | ✅ mig 021 deploy confirmation + wave-2 migs 022/023 record + pre-deploy adaptations + Reconciliation Flag #4 |
+| **API + worker + UI for BR-AK/AL/AM/AN/AO/AP/AQ/AS/AT/AU** | ⏳ Hard Rule 24 — gated on migs 022 + 023 apply. Next pass after founder confirms applied: pattern CRUD api routes + materialisation worker (BR-AO; uses BullMQ + Upstash Redis; worker-paused until June 1 per ADR 0005 — can write the worker now, activation gates on the June unfreeze) + Ops Console pattern editor + dashboard pattern surface + mobile staff self-service (request swap/leave). Per arch §11 build sequence. |
+
+**Founder action — apply migs 022 + 023 (order matters: 022 first, then 023):**
+
+```
+psql "<supabase session-pooler url>" --single-transaction -v ON_ERROR_STOP=1 \
+     -f supabase/migrations/022_roster_engine.sql
+# Expected: NOTICE 'Migration 022 PASSED: 6 tables (5 tenant-RLS + 1 global), 7 seeded rotations, btree_gist ready'
+
+psql "<supabase session-pooler url>" --single-transaction -v ON_ERROR_STOP=1 \
+     -f supabase/migrations/023_coverage_rules.sql
+# Expected: NOTICE 'Migration 023 PASSED: coverage_rules table with RLS + staff_role_enum + UNIQUE scope'
+```
+
+Or paste each file sequentially into the Supabase Dashboard SQL Editor (same flow as migs 020 + 021). Both additive; existing operations unaffected; both dormant until pattern-engine code ships.
