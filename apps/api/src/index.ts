@@ -23,6 +23,9 @@ import { complianceRouter } from './routes/compliance.js';
 import { safetyCommitteeRouter } from './routes/safetyCommittee.js';
 import { amcContractsRouter } from './routes/amcContracts.js';
 import { msdsRouter } from './routes/msds.js';
+import { rotationLibraryRouter } from './routes/rotationLibrary.js';
+import { coverageRulesRouter } from './routes/coverageRules.js';
+import { rosterPatternsRouter } from './routes/rosterPatterns.js';
 import { sireRouter } from './routes/sire.js';
 import { errorHandler } from './middleware/error-handler.js';
 
@@ -53,6 +56,9 @@ app.use('/v1/compliance', complianceRouter);
 app.use('/v1/safety-committee', safetyCommitteeRouter);
 app.use('/v1/amc-contracts', amcContractsRouter);
 app.use('/v1/msds', msdsRouter);
+app.use('/v1/rotation-library', rotationLibraryRouter);
+app.use('/v1/coverage-rules', coverageRulesRouter);
+app.use('/v1/roster-patterns', rosterPatternsRouter);
 app.use('/v1/sire', sireRouter);
 
 app.use(errorHandler);
