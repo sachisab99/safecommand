@@ -96,7 +96,13 @@ interface ShiftBreakInput {
  * in SQL CHECKs and the existing `activity_templates.frequency_config`
  * pattern uses the same app-layer approach).
  */
-export function parseBreaksJson(value: FormDataEntryValue | null): ShiftBreakInput[] {
+// NOTE: NOT exported. Next.js's `'use server'` directive (line 1) requires
+// EVERY export from this file to be an async server action. parseBreaksJson
+// + validateBreaks are synchronous helpers used internally by
+// createShiftAction / updateShiftAction below; making them module-private
+// keeps the Next build green. (If they're ever needed outside this file —
+// e.g., for unit tests — move them to a non-'use server' utility module.)
+function parseBreaksJson(value: FormDataEntryValue | null): ShiftBreakInput[] {
   const raw = (value as string | null)?.trim() ?? '';
   if (raw.length === 0) return [];
   let parsed: unknown;
@@ -140,7 +146,8 @@ function timeToMin(t: string): number {
  * For overnight shifts (end_time < start_time), a break at e.g. 02:00 in a
  * 22:00–06:00 shift is at shift-relative offset (1440 - 22*60) + 2*60 = 240.
  */
-export function validateBreaks(
+// NOT exported (see parseBreaksJson note — `'use server'` rule).
+function validateBreaks(
   breaks: ShiftBreakInput[],
   shiftStart: string,
   shiftEnd: string,
