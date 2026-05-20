@@ -26,6 +26,8 @@ import { msdsRouter } from './routes/msds.js';
 import { rotationLibraryRouter } from './routes/rotationLibrary.js';
 import { coverageRulesRouter } from './routes/coverageRules.js';
 import { rosterPatternsRouter } from './routes/rosterPatterns.js';
+import { unavailabilityRouter } from './routes/unavailability.js';
+import { shiftSwapsRouter } from './routes/shiftSwaps.js';
 import { sireRouter } from './routes/sire.js';
 import { errorHandler } from './middleware/error-handler.js';
 
@@ -59,6 +61,8 @@ app.use('/v1/msds', msdsRouter);
 app.use('/v1/rotation-library', rotationLibraryRouter);
 app.use('/v1/coverage-rules', coverageRulesRouter);
 app.use('/v1/roster-patterns', rosterPatternsRouter);
+app.use('/v1/unavailability', unavailabilityRouter);
+app.use('/v1/shift-swaps', shiftSwapsRouter);
 app.use('/v1/sire', sireRouter);
 
 app.use(errorHandler);
