@@ -49,7 +49,9 @@ const ASSIGNMENT_TYPES = ['PRIMARY', 'SECONDARY', 'BACKUP'] as const;
 shiftsRouter.get('/', async (req: Request, res: Response): Promise<void> => {
   const { data, error } = await getServiceClient()
     .from('shifts')
-    .select('id, venue_id, name, start_time, end_time, is_active, building_id, created_at')
+    // BR-AR (mig 021) — surface the 5 new shift columns on read.
+    // Additive: legacy clients ignore unknown fields → backward-compatible.
+    .select('id, venue_id, name, start_time, end_time, is_active, building_id, created_at, breaks, min_handover_minutes, description, is_overnight, venue_type_default')
     .eq('venue_id', req.auth.venue_id)
     .eq('is_active', true)
     .order('start_time', { ascending: true });

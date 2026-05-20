@@ -63,6 +63,130 @@ function asDate(value: FormDataEntryValue | null, label: string): string {
 }
 
 // ──────────────────────────────────────────────────────────────────────────
+// BR-AR helpers (mig 021 — multi-shift flexibility)
+
+function asInt(
+  value: FormDataEntryValue | null,
+  label: string,
+  min: number,
+  max: number,
+  defaultIfEmpty?: number,
+): number {
+  const v = (value as string | null)?.trim() ?? '';
+  if (v.length === 0) {
+    if (defaultIfEmpty !== undefined) return defaultIfEmpty;
+    throw new Error(`${label} is required`);
+  }
+  const n = parseInt(v, 10);
+  if (Number.isNaN(n) || String(n) !== v) throw new Error(`${label} must be an integer`);
+  if (n < min || n > max) throw new Error(`${label} must be between ${min} and ${max}`);
+  return n;
+}
+
+interface ShiftBreakInput {
+  start_time: string;
+  end_time: string;
+  label: string;
+}
+
+/**
+ * Parse the `breaks_json` FormData field (JSON-encoded array). Empty / missing
+ * → []. Per arch §3.4 — structural validation is in the app layer (Postgres
+ * only CHECKs the value is a JSON array; element shape is brittle to express
+ * in SQL CHECKs and the existing `activity_templates.frequency_config`
+ * pattern uses the same app-layer approach).
+ */
+export function parseBreaksJson(value: FormDataEntryValue | null): ShiftBreakInput[] {
+  const raw = (value as string | null)?.trim() ?? '';
+  if (raw.length === 0) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error('Breaks must be a valid JSON array');
+  }
+  if (!Array.isArray(parsed)) throw new Error('Breaks must be a JSON array');
+  return parsed.map((b, idx) => {
+    if (!b || typeof b !== 'object') throw new Error(`Break ${idx + 1} must be an object`);
+    const o = b as Record<string, unknown>;
+    const start_time = typeof o['start_time'] === 'string' ? o['start_time'] : '';
+    const end_time = typeof o['end_time'] === 'string' ? o['end_time'] : '';
+    const label = typeof o['label'] === 'string' ? o['label'] : '';
+    if (!/^\d{2}:\d{2}(?::\d{2})?$/.test(start_time)) {
+      throw new Error(`Break ${idx + 1} start_time must be HH:MM`);
+    }
+    if (!/^\d{2}:\d{2}(?::\d{2})?$/.test(end_time)) {
+      throw new Error(`Break ${idx + 1} end_time must be HH:MM`);
+    }
+    if (label.length === 0 || label.length > 50) {
+      throw new Error(`Break ${idx + 1} label must be 1-50 characters`);
+    }
+    return { start_time, end_time, label };
+  });
+}
+
+function timeToMin(t: string): number {
+  const m = /^(\d{2}):(\d{2})(?::\d{2})?$/.exec(t);
+  if (!m) throw new Error(`Invalid time '${t}' — expected HH:MM`);
+  return parseInt(m[1]!, 10) * 60 + parseInt(m[2]!, 10);
+}
+
+/**
+ * Overnight-aware validation: each break must be wholly within the shift
+ * window; breaks must not overlap. Times are normalised to *shift-relative
+ * minutes* (0 = shift start, duration = shift end) so the same comparison
+ * works for both same-day and cross-midnight shifts.
+ *
+ * For overnight shifts (end_time < start_time), a break at e.g. 02:00 in a
+ * 22:00–06:00 shift is at shift-relative offset (1440 - 22*60) + 2*60 = 240.
+ */
+export function validateBreaks(
+  breaks: ShiftBreakInput[],
+  shiftStart: string,
+  shiftEnd: string,
+): void {
+  if (breaks.length === 0) return;
+  const sStart = timeToMin(shiftStart);
+  const sEnd = timeToMin(shiftEnd);
+  const isOvernight = sEnd < sStart;
+  const duration = isOvernight ? 1440 - sStart + sEnd : sEnd - sStart;
+  if (duration <= 0) throw new Error('Shift end time must differ from start time');
+
+  const relOf = (t: number): number =>
+    isOvernight && t < sStart ? 1440 - sStart + t : t - sStart;
+
+  const intervals: { start: number; end: number; idx: number }[] = breaks.map((b, idx) => {
+    const start = relOf(timeToMin(b.start_time));
+    const end = relOf(timeToMin(b.end_time));
+    if (start < 0 || start >= duration) {
+      throw new Error(
+        `Break ${idx + 1} start time ${b.start_time} is outside the shift window`,
+      );
+    }
+    if (end <= 0 || end > duration) {
+      throw new Error(
+        `Break ${idx + 1} end time ${b.end_time} is outside the shift window`,
+      );
+    }
+    if (end <= start) {
+      throw new Error(
+        `Break ${idx + 1} end time ${b.end_time} must be after start time ${b.start_time}`,
+      );
+    }
+    return { start, end, idx };
+  });
+
+  intervals.sort((a, b) => a.start - b.start);
+  for (let i = 1; i < intervals.length; i++) {
+    if (intervals[i]!.start < intervals[i - 1]!.end) {
+      throw new Error(
+        `Break ${intervals[i]!.idx + 1} overlaps with break ${intervals[i - 1]!.idx + 1}`,
+      );
+    }
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────
 // Shift template CRUD
 
 /**
@@ -79,6 +203,23 @@ export async function createShiftAction(formData: FormData): Promise<void> {
   const buildingRaw = formData.get('building_id') as string | null;
   const building_id = buildingRaw && buildingRaw.length > 0 ? buildingRaw : null;
 
+  // BR-AR (mig 021) — multi-shift flexibility. All optional; omitted →
+  // use DB defaults (breaks=[], min_handover_minutes=15, description=null,
+  // venue_type_default=false). `is_overnight` is GENERATED ALWAYS in the
+  // DB and is never accepted from form input.
+  const breaks = parseBreaksJson(formData.get('breaks_json'));
+  validateBreaks(breaks, start_time, end_time);
+  const min_handover_minutes = asInt(
+    formData.get('min_handover_minutes'),
+    'Handover window (minutes)',
+    0,
+    60,
+    15,
+  );
+  const descRaw = (formData.get('description') as string | null)?.trim() ?? '';
+  const description = descRaw.length === 0 ? null : descRaw;
+  const venue_type_default = formData.get('venue_type_default') === 'true';
+
   const { error } = await getAdminClient().from('shifts').insert({
     venue_id,
     name,
@@ -86,6 +227,10 @@ export async function createShiftAction(formData: FormData): Promise<void> {
     end_time,
     building_id,
     is_active: true,
+    breaks,
+    min_handover_minutes,
+    description,
+    venue_type_default,
   });
 
   if (error) throw new Error(error.message);
@@ -101,9 +246,32 @@ export async function updateShiftAction(formData: FormData): Promise<void> {
   const buildingRaw = formData.get('building_id') as string | null;
   const building_id = buildingRaw && buildingRaw.length > 0 ? buildingRaw : null;
 
+  // BR-AR (mig 021) — same field surface as create; same validation.
+  const breaks = parseBreaksJson(formData.get('breaks_json'));
+  validateBreaks(breaks, start_time, end_time);
+  const min_handover_minutes = asInt(
+    formData.get('min_handover_minutes'),
+    'Handover window (minutes)',
+    0,
+    60,
+    15,
+  );
+  const descRaw = (formData.get('description') as string | null)?.trim() ?? '';
+  const description = descRaw.length === 0 ? null : descRaw;
+  const venue_type_default = formData.get('venue_type_default') === 'true';
+
   const { error } = await getAdminClient()
     .from('shifts')
-    .update({ name, start_time, end_time, building_id })
+    .update({
+      name,
+      start_time,
+      end_time,
+      building_id,
+      breaks,
+      min_handover_minutes,
+      description,
+      venue_type_default,
+    })
     .eq('id', id)
     .eq('venue_id', venue_id);
 

@@ -153,6 +153,20 @@ export type ShiftInstanceStatus = 'PENDING' | 'ACTIVE' | 'CLOSED';
 export type ShiftAssignmentType = 'PRIMARY' | 'SECONDARY' | 'BACKUP';
 
 /** Recurring shift definition (the template — e.g. "Day Shift 09:00–18:00") */
+/**
+ * A single break window within a shift (BR-AR / mig 021).
+ * Stored as a JSONB array on `shifts.breaks`. Times are HH:MM 24-hour.
+ * For overnight shifts the convention is "absolute time of day" — e.g.
+ * a 22:00–06:00 shift with a 02:00–02:30 break is on the post-midnight
+ * portion (the materialisation/handover code converts via shift-relative
+ * minutes; see ops-console/actions/shifts.ts validateBreaks).
+ */
+export interface ShiftBreak {
+  start_time: string; // HH:MM
+  end_time: string;   // HH:MM
+  label: string;      // 1..50 chars (e.g. "Lunch", "Tea")
+}
+
 export interface Shift {
   id: string;
   venue_id: string;
@@ -162,6 +176,20 @@ export interface Shift {
   end_time: string;   // HH:MM:SS — wraps midnight if end_time < start_time
   is_active: boolean;
   created_at: string;
+  // ─── BR-AR (mig 021, applied 2026-05-20) — all optional for backward-compat
+  /** Optional break windows within the shift; default `[]`. */
+  breaks?: ShiftBreak[];
+  /** Required overlap between consecutive shifts for handover; default 15; range 0..60. */
+  min_handover_minutes?: number;
+  /** Free-form admin note (e.g. "ICU floor — 2 dedicated guards"). */
+  description?: string | null;
+  /**
+   * GENERATED ALWAYS AS (end_time < start_time) STORED — Postgres maintains this.
+   * Read-only on the client; never accept from form input.
+   */
+  is_overnight?: boolean;
+  /** TRUE for built-in venue-type defaults; FALSE for venue-customised. Default FALSE. */
+  venue_type_default?: boolean;
 }
 
 /** A single day's instance of a shift template */
