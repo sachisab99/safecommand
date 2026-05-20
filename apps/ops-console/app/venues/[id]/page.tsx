@@ -44,6 +44,7 @@ import {
   deleteCertificationAction,
 } from '@/actions/certifications';
 import { ZoneAssignmentGrid } from '@/components/ZoneAssignmentGrid';
+import { BreaksEditor } from '@/components/BreaksEditor';
 import type {
   Venue,
   Floor,
@@ -1266,6 +1267,68 @@ function ShiftsTab({
                 </div>
                 <button type="submit" className={saveBtnCls}>Save</button>
               </div>
+
+              {/* BR-AR advanced fields (mig 021, applied 2026-05-20) — optional;
+                  omitted → DB defaults. is_overnight is GENERATED, displayed
+                  as a read-only badge. */}
+              <div className="border-t border-gray-100 mt-5 pt-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                    Multi-shift flexibility (BR-AR)
+                  </h4>
+                  {editingShift.is_overnight && (
+                    <span className="text-xs px-2 py-0.5 bg-amber-50 text-amber-700 rounded border border-amber-200">
+                      ↺ Crosses midnight
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex gap-4 flex-wrap mb-3">
+                  <div className="w-40">
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Handover window (min)
+                    </label>
+                    <input
+                      name="min_handover_minutes"
+                      type="number"
+                      min={0}
+                      max={60}
+                      defaultValue={editingShift.min_handover_minutes ?? 15}
+                      className={inputCls}
+                    />
+                    <p className="text-xs text-gray-400 mt-1">0–60. Default 15.</p>
+                  </div>
+                  <div className="flex-1 min-w-48">
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Description (optional)
+                    </label>
+                    <input
+                      name="description"
+                      defaultValue={editingShift.description ?? ''}
+                      placeholder='e.g. "ICU floor — 2 dedicated guards"'
+                      maxLength={500}
+                      className={inputCls}
+                    />
+                  </div>
+                  <label className="flex items-center gap-2 self-end pb-2 select-none">
+                    <input
+                      type="checkbox"
+                      name="venue_type_default"
+                      value="true"
+                      defaultChecked={editingShift.venue_type_default ?? false}
+                      className="h-4 w-4"
+                    />
+                    <span className="text-xs text-gray-700">Built-in default</span>
+                  </label>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Breaks (optional)
+                  </label>
+                  <BreaksEditor defaultBreaks={editingShift.breaks ?? []} />
+                </div>
+              </div>
             </form>
           </div>
         )}
@@ -1325,6 +1388,16 @@ function ShiftsTab({
                       {shift.start_time.slice(0, 5)} → {shift.end_time.slice(0, 5)}
                       {shift.end_time < shift.start_time && (
                         <span className="ml-2 text-xs text-amber-600">↺ wraps</span>
+                      )}
+                      {shift.breaks && shift.breaks.length > 0 && (
+                        <span className="ml-2 text-xs text-blue-600" title={shift.breaks.map((b) => `${b.start_time}–${b.end_time} ${b.label}`).join(' · ')}>
+                          🍴 {shift.breaks.length}
+                        </span>
+                      )}
+                      {shift.min_handover_minutes !== undefined && shift.min_handover_minutes !== 15 && (
+                        <span className="ml-2 text-xs text-purple-600" title="Custom handover window">
+                          ⇄ {shift.min_handover_minutes}m
+                        </span>
                       )}
                     </td>
                     <td className="px-6 py-3 text-sm">
