@@ -60,12 +60,27 @@ async function putAssignments(
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
 
+// BR-AR mig 021 (applied 2026-05-20) — read-only cosmetic surface here.
+// All BR-AR fields optional for backward-compat with venues that haven't
+// edited the shift since mig 021. Field semantics match `@safecommand/types`
+// Shift; kept local to avoid the wider type-import churn.
+interface ShiftBreak {
+  start_time: string;
+  end_time: string;
+  label: string;
+}
+
 interface ShiftTemplate {
   id: string;
   name: string;
   start_time: string;
   end_time: string;
   building_id: string | null;
+  breaks?: ShiftBreak[];
+  min_handover_minutes?: number;
+  description?: string | null;
+  is_overnight?: boolean;
+  venue_type_default?: boolean;
 }
 
 interface ShiftInstance {
@@ -344,7 +359,40 @@ function ShiftCard({
                 {status}
               </span>
             )}
+            {/* BR-AR (mig 021) read-only badges — overnight / breaks / custom handover */}
+            {template.is_overnight && (
+              <span
+                className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200"
+                title="Shift crosses midnight"
+              >
+                ↺ overnight
+              </span>
+            )}
+            {template.breaks && template.breaks.length > 0 && (
+              <span
+                className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-50 text-blue-700 border border-blue-200"
+                title={template.breaks
+                  .map((b) => `${b.start_time}–${b.end_time} ${b.label}`)
+                  .join(' · ')}
+              >
+                🍴 {template.breaks.length} break{template.breaks.length === 1 ? '' : 's'}
+              </span>
+            )}
+            {template.min_handover_minutes !== undefined &&
+              template.min_handover_minutes !== 15 && (
+                <span
+                  className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-purple-50 text-purple-700 border border-purple-200"
+                  title="Custom handover window"
+                >
+                  ⇄ {template.min_handover_minutes}m handover
+                </span>
+              )}
           </div>
+          {template.description && (
+            <div className="text-xs text-slate-500 mt-1 italic" title={template.description}>
+              {template.description}
+            </div>
+          )}
           {instance?.commander && (
             <div className="text-xs text-slate-500 mt-1">
               Commander: <span className="font-medium text-slate-700">{instance.commander.name}</span>{' '}
