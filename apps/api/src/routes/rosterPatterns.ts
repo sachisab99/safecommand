@@ -11,19 +11,20 @@
  *   GET    /v1/roster-patterns/:id             detail + cycle_positions + staff_assignments
  *   POST   /v1/roster-patterns                 create DRAFT (SH/DSH/SHIFT_COMMANDER)
  *   PATCH  /v1/roster-patterns/:id             edit DRAFT (SH/DSH/SHIFT_COMMANDER)
+ *   POST   /v1/roster-patterns/:id/validate    dry-run validation (any auth)             [Pass 3a]
  *   POST   /v1/roster-patterns/:id/publish     DRAFT → PUBLISHED (SH/DSH/SHIFT_COMMANDER)
  *   POST   /v1/roster-patterns/:id/sign-off    second-signature (SH/DSH/GM)
  *   POST   /v1/roster-patterns/:id/suspend     PUBLISHED → SUSPENDED (SH/DSH)
  *   POST   /v1/roster-patterns/:id/archive     → ARCHIVED (SH/DSH)
  *
- * Scope discipline for Pass 1:
- *   - publish endpoint enforces status transition + audit log, but the
- *     full pre-flight (Factories Act §51/§54 hour validation; coverage
- *     rule scan; pattern overlap with other PUBLISHED for same staff)
- *     is DEFERRED to Pass 3 (validation engine). The DB `chk_publish_state`
- *     constraint still enforces published_at + published_by_staff_id.
- *   - materialisation worker enqueue + job-tracking endpoints DEFERRED to
- *     Pass 3 (worker-paused until June 1 per ADR 0005).
+ * Scope discipline:
+ *   - publish endpoint enforces the FULL validation gate as of Pass 3a:
+ *     Factories Act §51/§54 hours + coverage_rules (mig 023) scan +
+ *     pattern-overlap with other PUBLISHED patterns sharing staff.
+ *     MANDATORY violations → 422 VALIDATION_FAILED; WARNINGs publish
+ *     but are echoed in the response for SH visibility.
+ *   - materialisation worker enqueue ships in Pass 3b (BR-AO;
+ *     worker-paused until June 1 per ADR 0005).
  *
  * venue-scoped on every query (Rule 2 / EC-03); RLS `venue_isolation` is
  * the second layer. created_by stamping from req.auth.staff_id.
@@ -34,6 +35,7 @@ import { requireAuth, requireRole } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
 import { auditLog } from '../middleware/audit.js';
 import { getServiceClient } from '@safecommand/db';
+import { validateRosterPattern } from '../services/rosterValidation.js';
 
 export const rosterPatternsRouter = Router();
 rosterPatternsRouter.use(requireAuth, setTenantContext);
@@ -397,11 +399,29 @@ rosterPatternsRouter.patch(
 );
 
 // ──────────────────────────────────────────────────────────────────────────
-// POST /:id/publish — DRAFT → PUBLISHED
-// Pass 1 ships the status transition + audit log only. Pre-flight Factories
-// Act §51/§54 / coverage-rule / pattern-overlap validation is Pass 3 work
-// (the validation engine + materialisation worker). Until then, the publish
-// endpoint is the lightweight DB-CHECK-enforced gate (chk_publish_state).
+// POST /:id/validate — dry-run validation (any authenticated user)
+// Returns the full ValidationResult without mutating state. UI uses this to
+// surface violations before the user clicks Publish.
+
+rosterPatternsRouter.post(
+  '/:id/validate',
+  async (req: Request, res: Response): Promise<void> => {
+    const id = req.params['id'];
+    if (!id) {
+      res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'pattern id required' } });
+      return;
+    }
+    const result = await validateRosterPattern(id, req.auth.venue_id);
+    res.json(result);
+  },
+);
+
+// ──────────────────────────────────────────────────────────────────────────
+// POST /:id/publish — DRAFT → PUBLISHED (validation-gated as of Pass 3a)
+// Runs the full validation engine: Factories Act §51/§54 hours + coverage
+// rule scan (mig 023 coverage_rules) + pattern overlap with other PUBLISHED
+// patterns sharing staff. Blocks on any MANDATORY violation; WARNINGs
+// publish but are echoed back to the client for SH visibility.
 
 rosterPatternsRouter.post(
   '/:id/publish',
@@ -409,6 +429,10 @@ rosterPatternsRouter.post(
   auditLog('PATTERN_PUBLISH'),
   async (req: Request, res: Response): Promise<void> => {
     const id = req.params['id'];
+    if (!id) {
+      res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'pattern id required' } });
+      return;
+    }
     const venueId = req.auth.venue_id;
     const db = getServiceClient();
 
@@ -429,8 +453,7 @@ rosterPatternsRouter.post(
       return;
     }
 
-    // Require at least one staff + one cycle position (sanity gate for Pass 1;
-    // full validation in Pass 3)
+    // Sanity gate — at least one staff + one cycle position before validation runs.
     const [{ count: saCount }, { count: cpCount }] = await Promise.all([
       db.from('staff_roster_assignments').select('id', { count: 'exact', head: true })
         .eq('pattern_id', id).eq('venue_id', venueId),
@@ -443,6 +466,19 @@ rosterPatternsRouter.post(
           code: 'EMPTY_PATTERN',
           message: 'Pattern must have at least one staff assignment and one cycle position before publish',
         },
+      });
+      return;
+    }
+
+    // ── Full validation gate (Pass 3a)
+    const validation = await validateRosterPattern(id, venueId);
+    if (!validation.ok) {
+      res.status(422).json({
+        error: {
+          code: 'VALIDATION_FAILED',
+          message: `Cannot publish: ${validation.mandatory_violations.length} mandatory violation${validation.mandatory_violations.length === 1 ? '' : 's'} detected (Factories Act / coverage / overlap)`,
+        },
+        validation,
       });
       return;
     }
@@ -464,11 +500,13 @@ rosterPatternsRouter.post(
       res.status(500).json({ error: { code: 'PUBLISH_FAILED', message: error?.message ?? 'Failed' } });
       return;
     }
-    // Pre-flight Factories Act / coverage / overlap validation = Pass 3.
-    // Materialisation worker enqueue = Pass 3 (worker-paused per ADR 0005).
+
+    // Materialisation worker enqueue ships in Pass 3b (BR-AO; worker-paused
+    // per ADR 0005 until June 1 — enqueue API present but processor idle).
     res.status(200).json({
       ...(data as Record<string, unknown>),
-      validation_deferred: 'Pre-flight Factories Act §51/§54 + coverage-rule + pattern-overlap checks ship in Pass 3.',
+      validation,  // echoes warnings (mandatory_violations is empty by gate)
+      materialisation_deferred: 'BR-AO materialisation worker enqueue ships in Pass 3b (WORKERS_PAUSED until 2026-06-01).',
     });
   },
 );
