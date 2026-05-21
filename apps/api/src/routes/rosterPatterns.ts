@@ -10,7 +10,11 @@
  *   GET    /v1/roster-patterns                 list (any auth; filterable)
  *   GET    /v1/roster-patterns/:id             detail + cycle_positions + staff_assignments
  *   POST   /v1/roster-patterns                 create DRAFT (SH/DSH/SHIFT_COMMANDER)
- *   PATCH  /v1/roster-patterns/:id             edit DRAFT (SH/DSH/SHIFT_COMMANDER)
+ *   PATCH  /v1/roster-patterns/:id             edit DRAFT header fields (SH/DSH/SHIFT_COMMANDER)
+ *   PUT    /v1/roster-patterns/:id/staff-assignments
+ *                                              bulk-replace staff (DRAFT only)           [Pass 4a-0]
+ *   PUT    /v1/roster-patterns/:id/cycle-positions
+ *                                              bulk-replace cycle positions (DRAFT only) [Pass 4a-0]
  *   POST   /v1/roster-patterns/:id/validate    dry-run validation (any auth)             [Pass 3a]
  *   POST   /v1/roster-patterns/:id/publish     DRAFT → PUBLISHED (SH/DSH/SHIFT_COMMANDER)
  *                                              auto-enqueues 30-day materialisation     [Pass 3b]
@@ -404,6 +408,212 @@ rosterPatternsRouter.patch(
       return;
     }
     res.json(data);
+  },
+);
+
+// ──────────────────────────────────────────────────────────────────────────
+// PUT /:id/staff-assignments — bulk-replace staff assignments (DRAFT only)
+// Pass 4a-0 (Phase 5.24). Mirrors the bulk-replace contract used by
+// /v1/shift-instances/:id/zone-assignments (Phase 5.16a). Body:
+//   { staff_assignments: [{ staff_id, weekly_off_pattern?, weekly_off_day?,
+//                           weekly_max_hours?, daily_max_hours?,
+//                           default_zone_assignments? }] }
+// Idempotent: DELETE-then-INSERT inside the DRAFT-only gate. Concurrent
+// SH-editing is not a contemplated risk (DRAFT patterns are owned by their
+// creator until published).
+
+rosterPatternsRouter.put(
+  '/:id/staff-assignments',
+  requireRole(...COMMAND_ROLES),
+  auditLog('PATTERN_STAFF_ASSIGNMENTS_REPLACE'),
+  async (req: Request, res: Response): Promise<void> => {
+    const id = req.params['id'];
+    if (!id) {
+      res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'pattern id required' } });
+      return;
+    }
+    const venueId = req.auth.venue_id;
+    const body = req.body as { staff_assignments?: StaffAssignmentInput[] };
+    const rows = body.staff_assignments;
+    if (!Array.isArray(rows)) {
+      res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'staff_assignments array required' } });
+      return;
+    }
+
+    const db = getServiceClient();
+    const { data: existing, error: gErr } = await db
+      .from('roster_patterns')
+      .select('status')
+      .eq('id', id).eq('venue_id', venueId).single();
+    if (gErr || !existing) {
+      res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Pattern not found' } });
+      return;
+    }
+    if (existing.status !== 'DRAFT') {
+      res.status(409).json({
+        error: { code: 'NOT_DRAFT', message: `Cannot edit staff assignments on a ${existing.status} pattern` },
+      });
+      return;
+    }
+
+    // Validate each row
+    for (const r of rows) {
+      if (typeof r.staff_id !== 'string' || !r.staff_id) {
+        res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'staff_id required on every assignment' } });
+        return;
+      }
+      if (r.weekly_off_pattern !== undefined &&
+          !['FIXED', 'ROTATING_WEEKLY', 'ROTATING_WITH_CYCLE'].includes(r.weekly_off_pattern)) {
+        res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: `invalid weekly_off_pattern: ${r.weekly_off_pattern}` } });
+        return;
+      }
+      if (r.weekly_max_hours !== undefined && (r.weekly_max_hours < 1 || r.weekly_max_hours > 84)) {
+        res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'weekly_max_hours must be 1-84' } });
+        return;
+      }
+      if (r.daily_max_hours !== undefined && (r.daily_max_hours < 1 || r.daily_max_hours > 16)) {
+        res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'daily_max_hours must be 1-16' } });
+        return;
+      }
+    }
+
+    // Dedup: UNIQUE(pattern_id, staff_id) enforces this at DB; pre-check for friendlier 400.
+    const ids = new Set<string>();
+    for (const r of rows) {
+      if (ids.has(r.staff_id!)) {
+        res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: `duplicate staff_id ${r.staff_id} in payload` } });
+        return;
+      }
+      ids.add(r.staff_id!);
+    }
+
+    // DELETE existing
+    const { error: delErr } = await db
+      .from('staff_roster_assignments')
+      .delete()
+      .eq('pattern_id', id)
+      .eq('venue_id', venueId);
+    if (delErr) {
+      res.status(500).json({ error: { code: 'DELETE_FAILED', message: delErr.message } });
+      return;
+    }
+
+    // INSERT new (skip if empty)
+    if (rows.length === 0) {
+      res.json({ pattern_id: id, count: 0 });
+      return;
+    }
+    const inserts = rows.map((r) => ({
+      venue_id: venueId,
+      pattern_id: id,
+      staff_id: r.staff_id,
+      weekly_off_pattern: r.weekly_off_pattern ?? 'FIXED',
+      weekly_off_day: r.weekly_off_day ?? null,
+      weekly_max_hours: r.weekly_max_hours ?? 48,
+      daily_max_hours: r.daily_max_hours ?? 9,
+      default_zone_assignments: r.default_zone_assignments ?? null,
+    }));
+    const { error: insErr } = await db.from('staff_roster_assignments').insert(inserts);
+    if (insErr) {
+      res.status(500).json({ error: { code: 'INSERT_FAILED', message: insErr.message } });
+      return;
+    }
+    res.json({ pattern_id: id, count: rows.length });
+  },
+);
+
+// ──────────────────────────────────────────────────────────────────────────
+// PUT /:id/cycle-positions — bulk-replace cycle positions (DRAFT only)
+// Body: { cycle_positions: [{ staff_id, cycle_position, shift_id? }] }
+// shift_id NULL = staff is OFF on this position (rather than omitting the row;
+// keeping the row preserves the SH's intent — "explicit OFF" vs "not entered").
+
+rosterPatternsRouter.put(
+  '/:id/cycle-positions',
+  requireRole(...COMMAND_ROLES),
+  auditLog('PATTERN_CYCLE_POSITIONS_REPLACE'),
+  async (req: Request, res: Response): Promise<void> => {
+    const id = req.params['id'];
+    if (!id) {
+      res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'pattern id required' } });
+      return;
+    }
+    const venueId = req.auth.venue_id;
+    const body = req.body as { cycle_positions?: CyclePositionInput[] };
+    const rows = body.cycle_positions;
+    if (!Array.isArray(rows)) {
+      res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'cycle_positions array required' } });
+      return;
+    }
+
+    const db = getServiceClient();
+    const { data: existing, error: gErr } = await db
+      .from('roster_patterns')
+      .select('status, cycle_length_days')
+      .eq('id', id).eq('venue_id', venueId).single();
+    if (gErr || !existing) {
+      res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Pattern not found' } });
+      return;
+    }
+    if (existing.status !== 'DRAFT') {
+      res.status(409).json({
+        error: { code: 'NOT_DRAFT', message: `Cannot edit cycle positions on a ${existing.status} pattern` },
+      });
+      return;
+    }
+    const cycleLen = (existing as { cycle_length_days: number }).cycle_length_days;
+
+    // Validate each row + dedupe (UNIQUE(pattern_id, staff_id, cycle_position))
+    const seen = new Set<string>();
+    for (const r of rows) {
+      if (typeof r.staff_id !== 'string' || !r.staff_id) {
+        res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'staff_id required on every position' } });
+        return;
+      }
+      if (typeof r.cycle_position !== 'number' || r.cycle_position < 0 || r.cycle_position >= cycleLen) {
+        res.status(400).json({
+          error: { code: 'VALIDATION_ERROR', message: `cycle_position must be 0..${cycleLen - 1} (got ${r.cycle_position})` },
+        });
+        return;
+      }
+      const key = `${r.staff_id}::${r.cycle_position}`;
+      if (seen.has(key)) {
+        res.status(400).json({
+          error: { code: 'VALIDATION_ERROR', message: `duplicate (staff_id, cycle_position): ${r.staff_id} @ ${r.cycle_position}` },
+        });
+        return;
+      }
+      seen.add(key);
+    }
+
+    // DELETE existing
+    const { error: delErr } = await db
+      .from('roster_cycle_positions')
+      .delete()
+      .eq('pattern_id', id)
+      .eq('venue_id', venueId);
+    if (delErr) {
+      res.status(500).json({ error: { code: 'DELETE_FAILED', message: delErr.message } });
+      return;
+    }
+
+    if (rows.length === 0) {
+      res.json({ pattern_id: id, count: 0 });
+      return;
+    }
+    const inserts = rows.map((r) => ({
+      venue_id: venueId,
+      pattern_id: id,
+      staff_id: r.staff_id,
+      cycle_position: r.cycle_position,
+      shift_id: r.shift_id ?? null,
+    }));
+    const { error: insErr } = await db.from('roster_cycle_positions').insert(inserts);
+    if (insErr) {
+      res.status(500).json({ error: { code: 'INSERT_FAILED', message: insErr.message } });
+      return;
+    }
+    res.json({ pattern_id: id, count: rows.length });
   },
 );
 
