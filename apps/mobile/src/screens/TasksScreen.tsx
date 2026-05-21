@@ -130,6 +130,7 @@ interface Props {
   onTeamCerts: () => void;
   onRoster: () => void;
   onHandover: () => void;
+  onMyLeave: () => void;
   onDrillDetail: (drillId: string) => void;
 }
 
@@ -149,6 +150,7 @@ export function TasksScreen({
   onTeamCerts,
   onRoster,
   onHandover,
+  onMyLeave,
   onDrillDetail,
 }: Props): React.JSX.Element {
   const c = useColours();
@@ -445,6 +447,15 @@ export function TasksScreen({
       key: 'PEOPLE',
       title: 'People',
       items: [
+        // BR-AN — staff self-service for leave / unavailability requests.
+        // All roles — every staff member can submit their own leave.
+        // Server enforces self-only access (req.auth.staff_id default).
+        {
+          key: 'myLeave',
+          label: 'My Leave',
+          icon: '🌴',
+          onPress: onMyLeave,
+        } as const,
         // SH/DSH only — gated server-side too (api 403 if non-SH/DSH attempts).
         // Per Plan §11 Role × Permission Matrix: "Add / remove staff" = FULL
         // for SH and DSH only; LTD or none for everyone else. UI mirrors that
