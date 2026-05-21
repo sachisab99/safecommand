@@ -99,6 +99,27 @@ export interface MaterialisationResponse {
   worker_paused_note: string;
 }
 
+// BR-AU compliance PDF — Pass 6
+export type RosterComplianceFormat =
+  | 'NABH_HRM'
+  | 'FIRE_NOC_DUTY_ROSTER'
+  | 'INSURANCE_PACK'
+  | 'GENERIC';
+
+export const COMPLIANCE_FORMAT_LABEL: Record<RosterComplianceFormat, string> = {
+  NABH_HRM:             'NABH 6th HRM.4.a',
+  FIRE_NOC_DUTY_ROSTER: 'Fire NOC duty roster',
+  INSURANCE_PACK:       'Insurance pack (§51 / §54)',
+  GENERIC:              'Generic printable',
+};
+
+export interface CompliancePdfResponse {
+  url: string;
+  format: RosterComplianceFormat;
+  report_ref: string;
+  generated_at: string;
+}
+
 // ─── API calls ──────────────────────────────────────────────────────────
 
 export async function listPatterns(filter?: { status?: RosterPatternStatus }) {
@@ -151,6 +172,13 @@ export async function materialisePattern(
   return apiFetch<MaterialisationResponse>(`/roster-patterns/${id}/materialise`, {
     method: 'POST',
     body: JSON.stringify(body),
+  });
+}
+
+export async function generateCompliancePdf(id: string, format: RosterComplianceFormat) {
+  return apiFetch<CompliancePdfResponse>(`/roster-patterns/${id}/compliance-pdf`, {
+    method: 'POST',
+    body: JSON.stringify({ format }),
   });
 }
 

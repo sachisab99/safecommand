@@ -23,6 +23,11 @@
  *   POST   /v1/roster-patterns/:id/sign-off    second-signature (SH/DSH/GM)
  *   POST   /v1/roster-patterns/:id/suspend     PUBLISHED → SUSPENDED (SH/DSH)
  *   POST   /v1/roster-patterns/:id/archive     → ARCHIVED (SH/DSH)
+ *   POST   /v1/roster-patterns/:id/compliance-pdf
+ *                                              BR-AU compliance PDF (Pass 6)
+ *                                              body: { format: NABH_HRM | FIRE_NOC_DUTY_ROSTER
+ *                                                            | INSURANCE_PACK | GENERIC }
+ *                                              SH/DSH/SHIFT_COMMANDER/GM/AUDITOR
  *
  * Scope discipline:
  *   - publish endpoint enforces the FULL validation gate (Pass 3a):
@@ -48,6 +53,12 @@ import { getServiceClient } from '@safecommand/db';
 import { rosterMaterialisationQueue } from '@safecommand/queue';
 import type { RosterMaterialisationJob } from '@safecommand/types';
 import { validateRosterPattern } from '../services/rosterValidation.js';
+import {
+  buildRosterCompliancePdf,
+  ROSTER_COMPLIANCE_FORMATS,
+  type RosterComplianceFormat,
+} from '../services/rosterCompliancePdf.js';
+import { putComplianceReportObject, presignGetUrl } from '../services/storage.js';
 import { logger } from '../services/logger.js';
 
 export const rosterPatternsRouter = Router();
@@ -1022,5 +1033,63 @@ rosterPatternsRouter.post(
       return;
     }
     res.json(data);
+  },
+);
+
+// ──────────────────────────────────────────────────────────────────────────
+// POST /:id/compliance-pdf — BR-AU compliance PDF (Pass 6)
+// Body: { format: 'NABH_HRM' | 'FIRE_NOC_DUTY_ROSTER' | 'INSURANCE_PACK' | 'GENERIC' }
+// (also accepts ?format=... in query for hyperlinking convenience.)
+//
+// SH/DSH/SHIFT_COMMANDER + GM + AUDITOR — all command + auditor roles can
+// generate the compliance artifact. Returns { url, format, report_ref,
+// generated_at } — caller follows the presigned URL to download the PDF
+// (parallels SIRE compliance-export response contract).
+
+rosterPatternsRouter.post(
+  '/:id/compliance-pdf',
+  requireRole('SH', 'DSH', 'SHIFT_COMMANDER', 'GM', 'AUDITOR'),
+  auditLog('PATTERN_COMPLIANCE_PDF'),
+  async (req: Request, res: Response): Promise<void> => {
+    const id = req.params['id'];
+    if (!id) {
+      res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'pattern id required' } });
+      return;
+    }
+    const venueId = req.auth.venue_id;
+    const fmtRaw =
+      (req.body as { format?: string } | undefined)?.format ??
+      (typeof req.query['format'] === 'string' ? (req.query['format'] as string) : undefined);
+    if (!fmtRaw || !ROSTER_COMPLIANCE_FORMATS.includes(fmtRaw as RosterComplianceFormat)) {
+      res.status(400).json({
+        error: {
+          code: 'INVALID_FORMAT',
+          message: `format must be one of ${ROSTER_COMPLIANCE_FORMATS.join(', ')}`,
+        },
+      });
+      return;
+    }
+    const format = fmtRaw as RosterComplianceFormat;
+
+    try {
+      const built = await buildRosterCompliancePdf(id, venueId, format);
+      if (!built) {
+        res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Pattern not found' } });
+        return;
+      }
+      const fileKey = await putComplianceReportObject(venueId, built.ref, built.buffer);
+      const url = await presignGetUrl(fileKey);
+      res.status(200).json({
+        url,
+        format,
+        report_ref: built.ref,
+        generated_at: new Date().toISOString(),
+      });
+    } catch (err) {
+      logger.error({ err, patternId: id, format }, 'BR-AU roster compliance PDF failed');
+      res.status(500).json({
+        error: { code: 'EXPORT_FAILED', message: 'Could not generate the compliance PDF' },
+      });
+    }
   },
 );

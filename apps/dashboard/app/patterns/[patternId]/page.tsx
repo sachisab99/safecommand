@@ -34,14 +34,18 @@ import {
   suspendPattern,
   archivePattern,
   materialisePattern,
+  generateCompliancePdf,
   canManagePatternsRole,
   STATUS_TONE,
   VIOLATION_TONE,
   VIOLATION_CODE_LABEL,
+  COMPLIANCE_FORMAT_LABEL,
   type RosterPatternDetail,
   type ValidationResult,
   type MaterialisationResponse,
   type Violation,
+  type RosterComplianceFormat,
+  type CompliancePdfResponse,
 } from '../../../lib/rosterPatterns';
 
 export default function PatternDetailPage() {
@@ -60,6 +64,9 @@ export default function PatternDetailPage() {
 
   const [materialiseOpen, setMaterialiseOpen] = useState(false);
   const [materialisation, setMaterialisation] = useState<MaterialisationResponse | null>(null);
+
+  const [pdfFormat, setPdfFormat] = useState<RosterComplianceFormat>('NABH_HRM');
+  const [pdfResult, setPdfResult] = useState<CompliancePdfResponse | null>(null);
 
   useEffect(() => { setSession(getSession()); }, []);
 
@@ -143,6 +150,19 @@ export default function PatternDetailPage() {
     setBusy(null);
     if (error) { setErr(error); return; }
     await load();
+  }
+
+  async function handleGeneratePdf() {
+    setBusy('pdf');
+    setPdfResult(null);
+    const { data, error } = await generateCompliancePdf(patternId, pdfFormat);
+    setBusy(null);
+    if (error) { setErr(error); return; }
+    if (data) {
+      setPdfResult(data);
+      // Open the presigned URL in a new tab so the SH gets a direct download.
+      if (typeof window !== 'undefined') window.open(data.url, '_blank', 'noopener');
+    }
   }
 
   async function handleMaterialiseSubmit(fromDate: string, toDate: string) {
@@ -276,6 +296,47 @@ export default function PatternDetailPage() {
                   Materialisation enqueued. job_id <code className="bg-white px-1 rounded">{materialisation.job_id}</code>{' '}
                   for {materialisation.from_date} → {materialisation.to_date}.
                   <div className="text-xs mt-1 opacity-80">{materialisation.worker_paused_note}</div>
+                </div>
+              )}
+            </section>
+
+            {/* Compliance PDF (BR-AU, Pass 6) */}
+            <section className="mb-8 p-5 border border-gray-200 rounded-lg bg-white">
+              <h2 className="font-medium text-gray-900 mb-1">📄 Compliance PDF</h2>
+              <p className="text-xs text-gray-500 mb-3">
+                Generate an authority-formatted PDF of this published duty roster.
+                Audit trail (publish + sign-off + this generation) recorded in audit_logs.
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="text-sm text-gray-700">Format:</label>
+                <select
+                  value={pdfFormat}
+                  onChange={(e) => setPdfFormat(e.target.value as RosterComplianceFormat)}
+                  className="px-3 py-1.5 rounded text-sm border border-gray-300 bg-white"
+                >
+                  {(Object.keys(COMPLIANCE_FORMAT_LABEL) as RosterComplianceFormat[]).map((f) => (
+                    <option key={f} value={f}>{COMPLIANCE_FORMAT_LABEL[f]}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  disabled={busy !== null}
+                  onClick={handleGeneratePdf}
+                  className="px-3 py-1.5 rounded text-sm font-medium bg-slate-600 text-white hover:bg-slate-700 disabled:opacity-50"
+                >
+                  {busy === 'pdf' ? 'Generating…' : '⬇ Generate & download'}
+                </button>
+              </div>
+
+              {pdfResult && (
+                <div className="mt-3 p-3 bg-slate-50 border border-slate-200 rounded text-sm text-slate-800">
+                  PDF generated. Ref <code className="bg-white px-1 rounded">{pdfResult.report_ref}</code>.{' '}
+                  <a href={pdfResult.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                    Open again →
+                  </a>
+                  <div className="text-xs mt-1 opacity-80">
+                    Link expires after a short window. Re-generate for a fresh URL.
+                  </div>
                 </div>
               )}
             </section>
