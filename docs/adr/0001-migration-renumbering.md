@@ -521,11 +521,35 @@ When an architecture spec defines a "global, no-RLS" lookup table, **prefer ENAB
 021  shifts multi-shift breaks (BR-AR)    [DEPLOYED 2026-05-20]
 022  roster engine                        [DEPLOYED 2026-05-21]
 023  coverage rules (BR-AQ)               [DEPLOYED 2026-05-21]
-024  rotation_cycle_library auth_read     [WRITTEN 2026-05-21; ⏳ founder apply]
-025+ Map Studio + LMS + drill-tabletop +
+024  rotation_cycle_library auth_read     [DEPLOYED 2026-05-21]
+025  approve_shift_swap() RPC             [DEPLOYED 2026-05-21]
+026+ Map Studio + LMS + drill-tabletop +
      NABH-QIs + deferred std-closure 2    [unwritten — Phase 5.23 + Phase B]
 ```
 
+### 2026-05-21 amendment (later) — mig 025 deploy + function-grant defence
+
+Mig 025 (`025_approve_shift_swap_rpc.sql`) shipped the `approve_shift_swap(p_swap_id UUID, p_supervisor_id UUID)` Postgres function for Pattern Engine Pass 3c-iii (atomic SWAP approve replacing the prior two-step pattern). First apply attempt FAILED at the verification block:
+
+```
+ERROR: P0001: Migration 025 FAILED: anon has execute on approve_shift_swap
+```
+
+**Engineering learning #2:** Supabase auto-grants `EXECUTE` on new public-schema FUNCTIONS to BOTH the `public` pseudo-role AND the `anon` role explicitly — same auto-grant pattern Hard Rule 25 catches for views/tables. `REVOKE ALL ... FROM PUBLIC` only removes the PUBLIC grant; the explicit `anon` grant survives.
+
+**Codified template for new public-schema FUNCTIONs going forward:**
+```sql
+REVOKE ALL ON FUNCTION foo(...) FROM PUBLIC;
+REVOKE ALL ON FUNCTION foo(...) FROM anon;       -- ★ explicit; not redundant
+GRANT EXECUTE ON FUNCTION foo(...) TO authenticated;  -- if needed via PostgREST RPC
+GRANT EXECUTE ON FUNCTION foo(...) TO service_role;
+-- Then: DO $$ … verify anon grant count = 0 BEFORE COMMIT … END $$
+```
+
+The original transaction rolled back cleanly (RAISE inside BEGIN/COMMIT aborts everything), so no DB state persisted. Amendment to mig 025 added the explicit `FROM anon` line; re-apply PASSED 2026-05-21 with the expected NOTICE.
+
+API switch shipped in commit `33a0afd`: `/v1/shift-swaps/:id/approve` now calls `db.rpc('approve_shift_swap', { p_swap_id, p_supervisor_id })` instead of the two-step UPDATE pattern. RPC error codes mapped: `P0002` → 404 NOT_FOUND, `BAD_STATE` → 409, `ASSIGNMENT_OWNER_MISMATCH` → 409. The PARTIAL_FAILURE response code retired (no longer reachable with true server-side transaction). Net −93 / +52 LOC on `shiftSwaps.ts`.
+
 ---
 
-*ADR captured 2026-05-04 · Last amended 2026-05-21 (migs 022/023 deploy confirmation + mig 024 SQL-Editor-RLS fix + engineering learning captured) · Status: Accepted*
+*ADR captured 2026-05-04 · Last amended 2026-05-21 (mig 025 deploy confirmation + function-grant defence engineering learning #2) · Status: Accepted*

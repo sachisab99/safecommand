@@ -464,6 +464,90 @@ End-of-day 2026-05-07: 65 commits ahead of `96594ad` (original); `main` and `saf
 
 ---
 
+### 2026-05-21 — Phase 5.24 wave 2 Pattern Engine — COMPLETE END-TO-END (+ polish queue 3 of 4)
+
+Single multi-pass session. Closes BR-AK / BR-AL / BR-AM / BR-AN / BR-AO / BR-AP / BR-AQ / BR-AR (pre-existing) / BR-AS / BR-AT / BR-AU. All 11 wave-2 BRs now operational across api + scheduler + workers + ops-console + dashboard + mobile.
+
+**Commit ladder (this session, end of day HEAD = `6085c6a`):**
+
+| Pass | Commit | Surface |
+|---|---|---|
+| 1 — API foundation | `d268de7` | `/v1/rotation-library` + `/v1/coverage-rules` (full CRUD) + `/v1/roster-patterns` (list / get / create-with-nested / patch / publish / sign-off / suspend / archive) |
+| 2 — Workflow surfaces | `392388f` | `/v1/unavailability` (REQUESTED→APPROVED/REJECTED/WITHDRAWN) + `/v1/shift-swaps` (REQUESTED→COUNTERPART_ACCEPTED→APPROVED state machine) |
+| 3a — Validation engine | `4af696a` | `apps/api/src/services/rosterValidation.ts` (~510 LOC) — Factories Act §51/§54 + coverage scan + pattern overlap. Wired into `POST /publish` as gate. New `POST /:id/validate` dry-run endpoint |
+| 3b — BR-AO materialisation worker | `a5790e2` | `apps/scheduler/src/roster-materialisation.ts` (~340 LOC) idempotent worker. New `rosterMaterialisationQueue` in `packages/queue`. New `RosterMaterialisationJob` type. publish auto-enqueues 30-day horizon. New `POST /:id/materialise` manual endpoint. Worker-paused until June 1 (ADR 0005) |
+| 4a-0 — API bulk-replace | `8cb751a` | `PUT /:id/staff-assignments` + `PUT /:id/cycle-positions` (DRAFT-only) — enables incremental editing |
+| 4a — Ops Console DRAFT editor | `03918af` | `/venues/[id]/patterns` (list + create-DRAFT) + `/venues/[id]/patterns/[patternId]` (header form + staff table + cycle grid). Service-role direct writes (matches existing ops-console pattern; EC-14) |
+| 4b — Dashboard governance surface | `d219af4` | `/patterns` + `/patterns/[patternId]` — validate dry-run modal + publish (gated on validation) + sign-off + suspend + archive + materialise. Nav entry under Operations |
+| 5a — Mobile leave self-service (BR-AN) | `fff9a49` | `MyLeaveScreen` + `services/unavailability.ts`. 🌴 drawer entry. FAB + bottom-sheet submit modal. Withdraw on REQUESTED. 4 submittable types (LEAVE_ANNUAL/SICK/TRAINING/PERSONAL) |
+| 5b — Mobile swap response surface (BR-AP) | `6a21f9d` | `MyShiftSwapsScreen` + `services/shiftSwaps.ts`. ⇄ drawer entry. Three buckets (awaiting / mine / closed). Accept / Decline / Withdraw |
+| 6 — BR-AU compliance PDF | `e6a9bea` | `apps/api/src/services/rosterCompliancePdf.ts` (~510 LOC). `POST /:id/compliance-pdf` → presigned S3 URL. 4 formats: NABH_HRM / FIRE_NOC_DUTY_ROSTER / INSURANCE_PACK / GENERIC. Auto-landscape for cycles ≥10d. Dashboard 📄 Compliance PDF section with format dropdown |
+| 3c-i + 3c-ii — Rolling-horizon + zone coverage | `46fe880` | Daily 00:30 IST cron extends 30-day horizon for every PUBLISHED pattern. Zone-level coverage enforcement (parses `default_zone_assignments` JSONB; staff must have rule's zone in their set to be counted) |
+| 3c-iii — Migration 025 | `0afccac` → `6a21eac` | `approve_shift_swap()` Postgres RPC. First apply caught Supabase auto-grant on `anon` for new public-schema functions; fix added explicit `REVOKE ALL ... FROM anon` line |
+| 3c-iii — API switch to RPC | `33a0afd` | `/v1/shift-swaps/:id/approve` now calls `db.rpc('approve_shift_swap', ...)`. Single-transaction atomicity. PARTIAL_FAILURE response code retired. -93 / +52 LOC net |
+| 5b-ii — Mobile propose-swap | `6085c6a` | New `GET /v1/staff/me/assignments?from=&to=` (joined shift_instance + shift + zone). Mobile + Propose Swap FAB → ProposeSwapModal with type chip + assignment picker + counterpart picker. DROP + COVER full-flow; SWAP gated pending counterpart-assignment picker (Pass 5b-iii) |
+
+**Migrations deployed this session:**
+- `022_roster_engine.sql` — 6 tables (rotation_cycle_library + roster_patterns + roster_cycle_positions + staff_roster_assignments + staff_unavailability with gist EXCLUDE + shift_swap_requests with in-row state)
+- `023_coverage_rules.sql` — 1 table (coverage_rules; UNIQUE NULLS NOT DISTINCT on PG15)
+- `024_rotation_cycle_library_read_policy.sql` — `auth_read_all` policy after SQL Editor auto-enabled RLS
+- `025_approve_shift_swap_rpc.sql` — Postgres function for atomic swap approve
+
+**WAVE 2 + POLISH MATRIX:**
+
+| Pass | Scope | Status |
+|---|---|---|
+| 1 | API foundation | ✅ |
+| 2 | Workflow surfaces (unavailability + shift-swap state machines) | ✅ |
+| 3a | Validation engine (Factories Act + coverage + overlap, publish gate) | ✅ |
+| 3b | BR-AO materialisation worker (BullMQ; paused until June 1) | ✅ |
+| 3c-i | Nightly rolling-horizon cron (00:30 IST) | ✅ |
+| 3c-ii | Zone-level coverage enforcement | ✅ |
+| 3c-iii | mig 025 + SWAP approve RPC switch | ✅ |
+| 4a-0 | API bulk-replace endpoints | ✅ |
+| 4a | Ops Console DRAFT editor | ✅ |
+| 4b | Dashboard governance surface | ✅ |
+| 5a | Mobile leave self-service (BR-AN) | ✅ |
+| 5b | Mobile swap response surface (BR-AP) | ✅ |
+| 5b-ii | Mobile propose-swap modal + `/me/assignments` backend | ✅ |
+| 6 | BR-AU compliance PDF (4 formats) | ✅ |
+| **4a-ii** | **Ops Console "Add staff row" beyond 20-row hardcap** | ⏳ |
+| **4b-ii** | **Dashboard cycle-grid violation overlay** | ⏳ |
+| **5b-iii** | **Mobile SWAP counterpart-assignment picker** | ⏳ |
+
+**Defence-in-depth chain (full stack):**
+- UI gate (role + state) → `requireRole` 403 → `setTenantContext` middleware → RLS `venue_isolation` → DB CHECKs (`chk_publish_state`, `chk_swap_counterpart`, EXCLUDE-gist on unavailability) → audit_logs immutable append per state transition
+
+**Engineering learnings captured this session:**
+1. Supabase auto-grants `EXECUTE` on new public-schema FUNCTIONS to BOTH `public` AND `anon` explicitly — same auto-grant pattern as Hard Rule 25 catches for views. `REVOKE ... FROM PUBLIC` alone is insufficient; explicit `REVOKE ... FROM anon` required. Codified in ADR 0001 Engineering Learning section.
+2. Postgres RPCs called via PostgREST wrap in their own transaction — gives true atomicity over multi-step writes (replacement for Supabase JS's lack of client-side transactions).
+3. Validation engine is the natural shared primitive for "what does this pattern do over its first cycle" — Pass 3b worker reuses the same `materialiseFirstCycle` logic against a 30-day horizon (not yet refactored to share; deferred until a third consumer emerges).
+
+**Build state at end of session:**
+- `main` HEAD = `6085c6a`
+- Railway api auto-deployed on push (all routes registered: rotation-library / coverage-rules / roster-patterns lifecycle + validate + materialise + compliance-pdf / unavailability / shift-swaps state machine including RPC-backed approve / staff/me/assignments)
+- AWS Amplify dashboard auto-deployed (all 18 routes including `/patterns` static + `/patterns/[patternId]` dynamic)
+- Ops Console auto-deployed (Roster patterns surface live at `/venues/[id]/patterns`)
+- Mobile **EAS Build pending** — MyLeave / MyShiftSwaps / ProposeSwapModal not on devices until `eas build --profile development --platform android` runs
+- Workers PAUSED (`WORKERS_PAUSED=true`) — materialisation worker + rolling-horizon cron dormant until June 1 unfreeze per ADR 0005
+
+**Next-session resume points (priority order):**
+1. **Pass 4b-ii** — Dashboard cycle-grid violation overlay (medium; most visible SH payoff — highlight day-N columns in the pattern grid where mandatory_violations land, rather than just listing them in the modal)
+2. **Pass 5b-iii** — Mobile SWAP counterpart-assignment picker (medium-large; needs new `GET /v1/staff/:id/assignments` endpoint OR redesign of SWAP flow). Unlocks SWAP type from mobile
+3. **Pass 4a-ii** — Ops Console "Add staff row" client component beyond 20-row hardcap (small)
+4. **Mobile EAS Build** — required before any pilot demo touches the new self-service surfaces
+5. **June 1 unfreeze** (`JUNE-2026-REVIEW-REQUIRED.md`) — flip `WORKERS_PAUSED=false`, watch materialisation worker drain accumulated jobs (publish + manual + first rolling-horizon tick)
+
+**Live-test hit list (post-EAS-Build, with SH JWT):**
+- `POST /v1/roster-patterns/:id/validate` → returns `ValidationResult` with mandatory + warnings
+- `POST /v1/roster-patterns/:id/publish` on a clean pattern → enqueues materialisation, returns 200 with embedded validation echo
+- `POST /v1/roster-patterns/:id/compliance-pdf` body `{format:"NABH_HRM"}` → presigned S3 URL
+- `POST /v1/shift-swaps/:id/approve` (SH/DSH) → calls `approve_shift_swap` RPC → atomic state + assignment mutation
+- Mobile: open My Leave → tap + Request Leave → submit → row appears with ⏳ Pending review
+- Mobile: open My Shift Swaps → tap + Propose Swap → pick DROP + my assignment + submit → row appears in "My active requests"
+
+---
+
 ## 9. Operational tooling inventory
 
 `scripts/`
