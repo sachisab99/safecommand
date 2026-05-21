@@ -36,15 +36,14 @@
  *     same original_assignment_id appearing in two simultaneously-active
  *     swaps (★ Refinement #5). Surfaced as 409 DUPLICATE on create.
  *
- * Atomic mutation on approve:
- *   The approve action transitions the swap row AND mutates the
- *   underlying staff_zone_assignments row(s) in sequence. Without a
- *   client-side transaction (Supabase JS limitation), we order
- *   "assignment mutation → swap row mark approved" so that a failure
- *   anywhere leaves the swap in COUNTERPART_ACCEPTED (the SH can retry)
- *   rather than in APPROVED-but-not-executed (which would corrupt the
- *   roster). A future Pass 3 promotion to a Postgres RPC will close this
- *   gap with a true server-side transaction (see commit message NOTE).
+ * Atomic mutation on approve (★ Pass 3c-iii closure, mig 025):
+ *   The approve action calls the Postgres function `approve_shift_swap`
+ *   which runs (state validation + assignment mutation + swap-row
+ *   APPROVED stamp) inside a SINGLE TRANSACTION. PostgREST RPC wraps
+ *   the call in a transaction; any RAISE inside aborts the whole unit.
+ *   Closes the narrow PARTIAL_FAILURE window of the previous two-step
+ *   pattern. SECURITY INVOKER means venue_isolation RLS applies the
+ *   same as direct table access.
  *
  * Audit log: auditLog middleware writes one audit row per successful
  * mutation — one row per state transition (matching the Refinement #4
@@ -361,109 +360,69 @@ shiftSwapsRouter.post(
 // SWAP/COVER: COUNTERPART_ACCEPTED → APPROVED + atomic assignment mutation.
 // DROP:       REQUESTED            → APPROVED + assignment deletion.
 //
-// Mutation order: ASSIGNMENT MUTATION FIRST, then swap row UPDATE.
-// Rationale: a failure mid-mutation leaves the swap in its prior state
-// (COUNTERPART_ACCEPTED or REQUESTED for DROP) so the SH can retry;
-// the alternative (mark APPROVED first) could orphan the swap in an
-// "approved-but-not-executed" state, corrupting the roster.
+// ★ Pass 3c-iii (mig 025): single-RPC call to approve_shift_swap() —
+// the function body runs inside the caller's transaction, giving us
+// TRUE server-side atomicity over (state validation + assignment
+// mutation + swap-row APPROVED stamp). Replaces the prior two-step
+// pattern (which had a narrow PARTIAL_FAILURE window between the
+// assignment writes and the swap-row UPDATE).
 //
-// NOTE (Pass 3): promote the two writes into a Postgres RPC for a true
-// server-side transaction. Currently the two-step is acceptable because
-// the partial unique idx prevents concurrent swaps on the same row.
+// RPC error codes (raised inside approve_shift_swap):
+//   P0002  SWAP_NOT_FOUND            → 404
+//   P0001  BAD_STATE                 → 409 (state ≠ COUNTERPART_ACCEPTED / REQUESTED)
+//   P0001  ASSIGNMENT_OWNER_MISMATCH → 409 (staff_id changed since swap created)
+//   other  → 500
+//
+// Audit middleware fires on 2xx responses, same as before. Venue scope
+// is enforced via the RPC's RLS context (set_tenant_context middleware
+// sets app.current_venue_id; SECURITY INVOKER means the function reads/
+// writes through the same venue_isolation policies).
 // =================================================================
 shiftSwapsRouter.post(
   '/:id/approve',
   requireRole('SH', 'DSH'),
   auditLog('SWAP_APPROVE'),
   async (req: Request, res: Response): Promise<void> => {
-    const row = await loadSwap(req, res);
-    if (!row) return;
-
-    const validFromState = row.swap_type === 'DROP' ? 'REQUESTED' : 'COUNTERPART_ACCEPTED';
-    if (row.state !== validFromState) {
-      res.status(409).json({
-        error: {
-          code: 'BAD_STATE',
-          message: `Approve requires state=${validFromState} for ${row.swap_type} (current: ${row.state})`,
-        },
-      });
+    const swapId = req.params['id'];
+    if (!swapId) {
+      res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'swap id required' } });
       return;
     }
 
-    const db = getServiceClient();
+    // Defence-in-depth: confirm row is in caller's venue before RPC.
+    // Without this, a malicious caller could try to approve a swap in
+    // another venue — the RPC's SECURITY INVOKER + RLS would block it,
+    // but a fast 404 is friendlier than the RPC's RAISE.
+    const existing = await loadSwap(req, res);
+    if (!existing) return;
 
-    // 1) Mutate underlying assignments first.
-    if (row.swap_type === 'SWAP') {
-      // Two updates. If the second fails, the first is already committed — log loudly.
-      const { error: e1 } = await db
-        .from('staff_zone_assignments')
-        .update({ staff_id: row.counterpart_staff_id })
-        .eq('id', row.original_assignment_id)
-        .eq('staff_id', row.requester_staff_id);  // optimistic: row must still be requester's
-      if (e1) {
-        res.status(500).json({ error: { code: 'MUTATION_FAILED', message: 'Failed to reassign original — swap not approved' } });
-        return;
-      }
-      const { error: e2 } = await db
-        .from('staff_zone_assignments')
-        .update({ staff_id: row.requester_staff_id })
-        .eq('id', row.counterpart_assignment_id ?? '')
-        .eq('staff_id', row.counterpart_staff_id ?? '');
-      if (e2) {
-        // Best-effort rollback of step 1
-        await db
-          .from('staff_zone_assignments')
-          .update({ staff_id: row.requester_staff_id })
-          .eq('id', row.original_assignment_id);
-        res.status(500).json({ error: { code: 'MUTATION_FAILED', message: 'Failed to reassign counterpart — swap not approved (rollback attempted)' } });
-        return;
-      }
-    } else if (row.swap_type === 'COVER') {
-      const { error: eC } = await db
-        .from('staff_zone_assignments')
-        .update({ staff_id: row.counterpart_staff_id })
-        .eq('id', row.original_assignment_id)
-        .eq('staff_id', row.requester_staff_id);
-      if (eC) {
-        res.status(500).json({ error: { code: 'MUTATION_FAILED', message: 'Failed to reassign — swap not approved' } });
-        return;
-      }
-    } else {
-      // DROP
-      const { error: eD } = await db
-        .from('staff_zone_assignments')
-        .delete()
-        .eq('id', row.original_assignment_id)
-        .eq('staff_id', row.requester_staff_id);
-      if (eD) {
-        res.status(500).json({ error: { code: 'MUTATION_FAILED', message: 'Failed to remove assignment — swap not approved' } });
-        return;
-      }
-    }
+    const { data, error } = await getServiceClient().rpc('approve_shift_swap', {
+      p_swap_id: swapId,
+      p_supervisor_id: req.auth.staff_id,
+    });
 
-    // 2) Mark swap APPROVED.
-    const { data, error } = await db
-      .from('shift_swap_requests')
-      .update({
-        state: 'APPROVED',
-        supervisor_decided_at: new Date().toISOString(),
-        supervisor_staff_id: req.auth.staff_id,
-      })
-      .eq('id', row.id)
-      .eq('venue_id', req.auth.venue_id)
-      .eq('state', validFromState)
-      .select()
-      .single();
-    if (error || !data) {
-      // Swap-row update failed but assignment is already mutated — explicit warning to caller.
-      res.status(500).json({
-        error: {
-          code: 'PARTIAL_FAILURE',
-          message: 'Assignment was reassigned but the swap row could not be marked APPROVED. Resolve manually.',
-        },
-      });
+    if (error) {
+      const pgCode = (error as { code?: string }).code;
+      const pgMsg = (error as { message?: string }).message ?? '';
+      // RPC RAISE EXCEPTIONs come through with the message embedded.
+      // Match leading sentinels to map to friendly HTTP codes.
+      if (pgCode === 'P0002' || pgMsg.startsWith('SWAP_NOT_FOUND')) {
+        res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Swap request not found' } });
+        return;
+      }
+      if (pgMsg.startsWith('BAD_STATE')) {
+        res.status(409).json({ error: { code: 'BAD_STATE', message: pgMsg } });
+        return;
+      }
+      if (pgMsg.startsWith('ASSIGNMENT_OWNER_MISMATCH')) {
+        res.status(409).json({ error: { code: 'ASSIGNMENT_OWNER_MISMATCH', message: pgMsg } });
+        return;
+      }
+      res.status(500).json({ error: { code: 'APPROVE_FAILED', message: pgMsg || 'Could not approve swap' } });
       return;
     }
+
+    // RPC returns a single shift_swap_requests row (the updated APPROVED row).
     res.json(data);
   },
 );
