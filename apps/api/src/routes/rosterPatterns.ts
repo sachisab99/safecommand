@@ -13,18 +13,24 @@
  *   PATCH  /v1/roster-patterns/:id             edit DRAFT (SH/DSH/SHIFT_COMMANDER)
  *   POST   /v1/roster-patterns/:id/validate    dry-run validation (any auth)             [Pass 3a]
  *   POST   /v1/roster-patterns/:id/publish     DRAFT → PUBLISHED (SH/DSH/SHIFT_COMMANDER)
+ *                                              auto-enqueues 30-day materialisation     [Pass 3b]
+ *   POST   /v1/roster-patterns/:id/materialise manual materialisation (SH/DSH/SHIFT_COMMANDER)
+ *                                              body: { from_date?, to_date? }            [Pass 3b]
  *   POST   /v1/roster-patterns/:id/sign-off    second-signature (SH/DSH/GM)
  *   POST   /v1/roster-patterns/:id/suspend     PUBLISHED → SUSPENDED (SH/DSH)
  *   POST   /v1/roster-patterns/:id/archive     → ARCHIVED (SH/DSH)
  *
  * Scope discipline:
- *   - publish endpoint enforces the FULL validation gate as of Pass 3a:
+ *   - publish endpoint enforces the FULL validation gate (Pass 3a):
  *     Factories Act §51/§54 hours + coverage_rules (mig 023) scan +
  *     pattern-overlap with other PUBLISHED patterns sharing staff.
  *     MANDATORY violations → 422 VALIDATION_FAILED; WARNINGs publish
  *     but are echoed in the response for SH visibility.
- *   - materialisation worker enqueue ships in Pass 3b (BR-AO;
- *     worker-paused until June 1 per ADR 0005).
+ *   - materialisation worker (Pass 3b): BR-AO BullMQ worker in apps/scheduler
+ *     writes shift_instances + staff_zone_assignments idempotently across
+ *     the [from_date, to_date] horizon. Worker-paused until June 1 per
+ *     ADR 0005 — jobs accumulate in Redis and drain when WORKERS_PAUSED=false.
+ *     Enqueue failure NEVER fails publish (Rule 7).
  *
  * venue-scoped on every query (Rule 2 / EC-03); RLS `venue_isolation` is
  * the second layer. created_by stamping from req.auth.staff_id.
@@ -35,7 +41,10 @@ import { requireAuth, requireRole } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
 import { auditLog } from '../middleware/audit.js';
 import { getServiceClient } from '@safecommand/db';
+import { rosterMaterialisationQueue } from '@safecommand/queue';
+import type { RosterMaterialisationJob } from '@safecommand/types';
 import { validateRosterPattern } from '../services/rosterValidation.js';
+import { logger } from '../services/logger.js';
 
 export const rosterPatternsRouter = Router();
 rosterPatternsRouter.use(requireAuth, setTenantContext);
@@ -501,13 +510,133 @@ rosterPatternsRouter.post(
       return;
     }
 
-    // Materialisation worker enqueue ships in Pass 3b (BR-AO; worker-paused
-    // per ADR 0005 until June 1 — enqueue API present but processor idle).
+    // ── BR-AO materialisation: enqueue 30-day initial horizon
+    // Per ADR 0005 the worker processes when WORKERS_PAUSED=false (from June 1);
+    // until then the job sits in Redis safely. enqueue failure must NEVER fail
+    // the primary operation (Rule 7) — log + continue.
+    const today = new Date().toISOString().slice(0, 10);
+    const horizonEnd = (() => {
+      const d = new Date(today + 'T00:00:00Z');
+      d.setUTCDate(d.getUTCDate() + 30);
+      return d.toISOString().slice(0, 10);
+    })();
+    let materialisation_enqueued: { job_id: string | undefined; from_date: string; to_date: string } | undefined;
+    let materialisation_enqueue_error: string | undefined;
+    try {
+      const job = await rosterMaterialisationQueue.add(
+        'pattern-publish',
+        {
+          venue_id: venueId,
+          pattern_id: id,
+          from_date: today,
+          to_date: horizonEnd,
+          trigger: 'PUBLISH',
+        } satisfies RosterMaterialisationJob,
+        { jobId: `materialise__${id}__${today}__${horizonEnd}__publish` },
+      );
+      materialisation_enqueued = { job_id: job.id, from_date: today, to_date: horizonEnd };
+    } catch (err) {
+      materialisation_enqueue_error = err instanceof Error ? err.message : String(err);
+      logger.warn({ err, pattern_id: id }, 'Failed to enqueue materialisation — pattern still PUBLISHED');
+    }
+
     res.status(200).json({
       ...(data as Record<string, unknown>),
       validation,  // echoes warnings (mandatory_violations is empty by gate)
-      materialisation_deferred: 'BR-AO materialisation worker enqueue ships in Pass 3b (WORKERS_PAUSED until 2026-06-01).',
+      materialisation: materialisation_enqueued
+        ? { ...materialisation_enqueued, worker_paused_note: 'Job sits in queue until WORKERS_PAUSED=false (ADR 0005; June 1 unfreeze).' }
+        : { error: materialisation_enqueue_error ?? 'unknown', note: 'Publish succeeded; SH can manually re-enqueue via POST /:id/materialise.' },
     });
+  },
+);
+
+// ──────────────────────────────────────────────────────────────────────────
+// POST /:id/materialise — manual materialisation enqueue (Pass 3b)
+// Body: { from_date?: 'YYYY-MM-DD', to_date?: 'YYYY-MM-DD' } — defaults
+// to [today, today+30]. SH/DSH/SHIFT_COMMANDER. Pattern must be PUBLISHED.
+// Enqueues a BR-AO job; the worker writes shift_instances + zone
+// assignments idempotently. Use to extend the horizon beyond the
+// 30-day initial slice enqueued at publish.
+
+rosterPatternsRouter.post(
+  '/:id/materialise',
+  requireRole(...COMMAND_ROLES),
+  auditLog('PATTERN_MATERIALISE'),
+  async (req: Request, res: Response): Promise<void> => {
+    const id = req.params['id'];
+    if (!id) {
+      res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'pattern id required' } });
+      return;
+    }
+    const venueId = req.auth.venue_id;
+    const db = getServiceClient();
+
+    const { data: pattern, error: pErr } = await db
+      .from('roster_patterns')
+      .select('status')
+      .eq('id', id)
+      .eq('venue_id', venueId)
+      .single();
+    if (pErr || !pattern) {
+      res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Pattern not found' } });
+      return;
+    }
+    if (pattern.status !== 'PUBLISHED') {
+      res.status(409).json({
+        error: { code: 'NOT_PUBLISHED', message: `Only PUBLISHED patterns can be materialised (current: ${pattern.status})` },
+      });
+      return;
+    }
+
+    const body = (req.body as { from_date?: string; to_date?: string } | undefined) ?? {};
+    const today = new Date().toISOString().slice(0, 10);
+    const defaultEnd = (() => {
+      const d = new Date(today + 'T00:00:00Z');
+      d.setUTCDate(d.getUTCDate() + 30);
+      return d.toISOString().slice(0, 10);
+    })();
+    const fromDate = body.from_date ?? today;
+    const toDate = body.to_date ?? defaultEnd;
+
+    if (!DATE_RE.test(fromDate) || !DATE_RE.test(toDate)) {
+      res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'from_date / to_date must be YYYY-MM-DD' } });
+      return;
+    }
+    if (toDate < fromDate) {
+      res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'to_date must be on or after from_date' } });
+      return;
+    }
+    // Cap horizon at 90 days per worker contract.
+    const spanDays = Math.floor((Date.parse(toDate) - Date.parse(fromDate)) / 86_400_000) + 1;
+    if (spanDays > 90) {
+      res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Horizon capped at 90 days; enqueue multiple jobs to extend further.' } });
+      return;
+    }
+
+    try {
+      const job = await rosterMaterialisationQueue.add(
+        'pattern-manual',
+        {
+          venue_id: venueId,
+          pattern_id: id,
+          from_date: fromDate,
+          to_date: toDate,
+          trigger: 'MANUAL',
+        } satisfies RosterMaterialisationJob,
+        { jobId: `materialise__${id}__${fromDate}__${toDate}__manual` },
+      );
+      res.status(202).json({
+        job_id: job.id,
+        pattern_id: id,
+        from_date: fromDate,
+        to_date: toDate,
+        worker_paused_note: 'Job sits in queue until WORKERS_PAUSED=false (ADR 0005; June 1 unfreeze).',
+      });
+    } catch (err) {
+      res.status(500).json({
+        error: { code: 'ENQUEUE_FAILED', message: err instanceof Error ? err.message : 'Could not enqueue materialisation' },
+      });
+    }
   },
 );
 

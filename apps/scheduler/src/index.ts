@@ -9,8 +9,14 @@ import {
   notificationsQueue,
 } from '@safecommand/queue';
 import { getServiceClient } from '@safecommand/db';
-import type { ScheduleGenerationJob, EscalationJob, StaffRole } from '@safecommand/types';
+import type {
+  ScheduleGenerationJob,
+  EscalationJob,
+  StaffRole,
+  RosterMaterialisationJob,
+} from '@safecommand/types';
 import { computeCurrentSlot, FREQUENCY_WINDOW_MS } from './compute.js';
+import { processRosterMaterialisation } from './roster-materialisation.js';
 
 const logger = pino({ level: process.env['LOG_LEVEL'] ?? 'info' });
 
@@ -212,6 +218,29 @@ if (WORKERS_PAUSED) {
     if (job.name !== 'master-tick') {
       logger.debug({ job: job.id }, 'Schedule job completed');
     }
+  });
+
+  // ─── BR-AO Roster Materialisation worker ──────────────────────────────
+  // Second worker bound to the same scheduler service — keeps the
+  // ops footprint to one Railway replica. Concurrency 1 because
+  // shift_instance writes are per-(pattern, date-range) and don't
+  // benefit from parallelism (and shrink lock-contention risk on
+  // staff_zone_assignments).
+  const rosterMaterialisationWorker = new Worker<RosterMaterialisationJob>(
+    QUEUE_NAMES.ROSTER_MATERIALISATION,
+    async (job) => processRosterMaterialisation(job, logger),
+    {
+      connection,
+      concurrency: 1,
+      drainDelay: 300,
+      stalledInterval: 300_000,
+    },
+  );
+  rosterMaterialisationWorker.on('failed', (job, err) => {
+    logger.error({ job: job?.id, jobName: job?.name, err }, 'Roster materialisation job failed');
+  });
+  rosterMaterialisationWorker.on('completed', (job, result) => {
+    logger.info({ job: job.id, result }, 'Roster materialisation job completed');
   });
 
 /* ─── Repeatable master tick registration ────────────────────────────────── */

@@ -5,6 +5,7 @@ import type {
   EscalationJob,
   NotificationJob,
   IncidentEscalationJob,
+  RosterMaterialisationJob,
 } from '@safecommand/types';
 
 export const QUEUE_NAMES = {
@@ -12,6 +13,7 @@ export const QUEUE_NAMES = {
   ESCALATIONS: 'escalations',
   NOTIFICATIONS: 'notifications',
   INCIDENT_ESCALATIONS: 'incident-escalations',
+  ROSTER_MATERIALISATION: 'roster-materialisation',
 } as const;
 
 let _redis: Redis | null = null;
@@ -61,5 +63,22 @@ export const incidentEscalationsQueue = new Queue<IncidentEscalationJob>(
   makeQueueOptions(0),
 );
 
+// BR-AO Roster Materialisation queue — Pattern Engine Pass 3b.
+// Consumer: apps/scheduler/src/roster-materialisation.ts.
+// Lower priority (2) than escalations / incidents — these are not life-safety jobs.
+// Worker-paused per ADR 0005 until 2026-06-01 — jobs accumulate in Redis and
+// drain when WORKERS_PAUSED=false. removeOnComplete kept to limit Redis growth
+// during the paused window.
+export const rosterMaterialisationQueue = new Queue<RosterMaterialisationJob>(
+  QUEUE_NAMES.ROSTER_MATERIALISATION,
+  makeQueueOptions(2),
+);
+
 export { Queue, Redis };
-export type { ScheduleGenerationJob, EscalationJob, NotificationJob, IncidentEscalationJob };
+export type {
+  ScheduleGenerationJob,
+  EscalationJob,
+  NotificationJob,
+  IncidentEscalationJob,
+  RosterMaterialisationJob,
+};

@@ -406,6 +406,19 @@ export interface IncidentEscalationJob {
   priority: 0;
 }
 
+// BR-AO materialisation worker job — Pattern Engine Pass 3b (Phase 5.24 wave 2).
+// Worker reads a PUBLISHED roster_pattern and writes shift_instances +
+// staff_zone_assignments idempotently across the [from_date, to_date] horizon.
+// Worker-paused per ADR 0005 until 2026-06-01 — jobs accumulate in Redis
+// while WORKERS_PAUSED=true and drain when the unfreeze flips the flag.
+export interface RosterMaterialisationJob {
+  venue_id: string;
+  pattern_id: string;
+  from_date: string;          // YYYY-MM-DD, inclusive
+  to_date: string;            // YYYY-MM-DD, inclusive
+  trigger: 'PUBLISH' | 'ROLLING_HORIZON' | 'MANUAL';
+}
+
 // ─── Phase 5.21 SIRE — Incident Zone State Machine (BR-H) ──────────────────
 // State machine + transition matrix shared between api + mobile UI.
 // See `incident-zone-states.ts` for full implementation + helpers.
