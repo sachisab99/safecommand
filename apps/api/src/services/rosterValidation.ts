@@ -16,10 +16,12 @@
  *        staff working the rule's shift_id (filtered by role_code if set)
  *        on each day of the cycle. If < min_staff: violation. Priority
  *        MANDATORY → blocks publish; WARNING → publishes with warnings.
- *      • Zone-level coverage (rule.zone_id NOT NULL) is checked at the
- *        SHIFT level only for Pass 3a — proper zone-coverage requires
- *        the default_zone_assignments JSONB shape to be canonicalised
- *        (TODO Pass 3c).
+ *      • Zone-level coverage (rule.zone_id NOT NULL) — Pass 3c-ii: a staff
+ *        is counted toward a zone-specific rule iff their
+ *        staff_roster_assignments.default_zone_assignments JSONB array
+ *        contains an entry with matching zone_id. Canonical JSONB shape:
+ *        `[{zone_id: string, assignment_type?: 'PRIMARY'|'SECONDARY'|'BACKUP'}]`.
+ *        Parsed tolerantly — malformed entries are ignored.
  *
  *   3. Pattern overlap
  *      • No two PUBLISHED roster_patterns for the same venue may overlap
@@ -107,6 +109,7 @@ interface StaffRosterAssignment {
   weekly_off_day: number | null;
   weekly_max_hours: number;
   daily_max_hours: number;
+  default_zone_assignments?: unknown;  // JSONB: [{zone_id, assignment_type?}] — Pass 3c-ii
 }
 
 interface CyclePosition {
@@ -285,13 +288,36 @@ function checkFactoriesActHours(
 // Check 2 — Coverage rules
 // ─────────────────────────────────────────────────────────────────────────
 
+/**
+ * Parse default_zone_assignments JSONB (per-staff) into a zone-id Set.
+ * Canonical shape: `[{zone_id: string, assignment_type?: 'PRIMARY'|'SECONDARY'|'BACKUP'}]`.
+ * Tolerant of malformed entries — returns empty Set if shape is wrong.
+ */
+function parseZoneIds(raw: unknown): Set<string> {
+  if (!Array.isArray(raw)) return new Set();
+  const out = new Set<string>();
+  for (const item of raw) {
+    if (typeof item !== 'object' || item == null) continue;
+    const zid = (item as { zone_id?: unknown }).zone_id;
+    if (typeof zid === 'string' && zid.length > 0) out.add(zid);
+  }
+  return out;
+}
+
 function checkCoverageRules(
   pattern: RosterPattern,
   materialised: MaterialisedSlot[],
   coverageRules: CoverageRule[],
+  staffAssignments: StaffRosterAssignment[],
 ): Violation[] {
   const violations: Violation[] = [];
   if (coverageRules.length === 0) return violations;
+
+  // ★ Pass 3c-ii: build zone coverage index per staff from default_zone_assignments
+  const zonesByStaff = new Map<string, Set<string>>();
+  for (const sra of staffAssignments) {
+    zonesByStaff.set(sra.staff_id, parseZoneIds(sra.default_zone_assignments));
+  }
 
   for (const rule of coverageRules) {
     // Worst-day staffing count across the cycle for this rule
@@ -304,10 +330,14 @@ function checkCoverageRules(
         if (slot.day_index !== day) continue;
         if (rule.shift_id && slot.shift_id !== rule.shift_id) continue;
         if (rule.role_code && slot.staff_role !== rule.role_code) continue;
-        // Zone-level coverage check is Pass 3c (default_zone_assignments JSONB
-        // shape canonicalisation). For now, rule.zone_id NULL = check passes;
-        // rule.zone_id non-NULL = same shift-level count is used (over-counts
-        // multi-zone staff but won't falsely flag adequately-staffed days).
+        // ★ Pass 3c-ii: zone-level check. If rule.zone_id is set, the staff
+        // must have that zone in their default_zone_assignments to be counted.
+        // A staff with no default_zone_assignments (NULL/empty) is NOT counted
+        // for zone-specific rules — they need explicit zone coverage assignment.
+        if (rule.zone_id) {
+          const zones = zonesByStaff.get(slot.staff_id);
+          if (!zones || !zones.has(rule.zone_id)) continue;
+        }
         if (seenStaff.has(slot.staff_id)) continue;
         seenStaff.add(slot.staff_id);
         count++;
@@ -320,7 +350,7 @@ function checkCoverageRules(
       violations.push({
         code: 'COVERAGE_SHORTFALL',
         priority: rule.priority,
-        message: `Coverage shortfall on day ${worstDayIdx + 1}: only ${worstObserved} ${rule.role_code ?? 'staff'} scheduled, ${rule.min_staff} required${rule.shift_id ? ' for this shift' : ''}${rule.zone_id ? ' (zone-level not yet enforced)' : ''}`,
+        message: `Coverage shortfall on day ${worstDayIdx + 1}: only ${worstObserved} ${rule.role_code ?? 'staff'} scheduled, ${rule.min_staff} required${rule.shift_id ? ' for this shift' : ''}${rule.zone_id ? ` for zone ${rule.zone_id.slice(0, 8)}` : ''}`,
         zone_id: rule.zone_id,
         role_code: rule.role_code,
         shift_id: rule.shift_id,
@@ -439,7 +469,7 @@ export async function validateRosterPattern(
     { data: coverageRows },
   ] = await Promise.all([
     db.from('staff_roster_assignments')
-      .select('id, staff_id, weekly_off_pattern, weekly_off_day, weekly_max_hours, daily_max_hours')
+      .select('id, staff_id, weekly_off_pattern, weekly_off_day, weekly_max_hours, daily_max_hours, default_zone_assignments')
       .eq('pattern_id', patternId).eq('venue_id', venueId),
     db.from('roster_cycle_positions')
       .select('staff_id, cycle_position, shift_id')
@@ -484,7 +514,7 @@ export async function validateRosterPattern(
 
   // ── 5) Run the three checks
   const factoriesActViolations = checkFactoriesActHours(p, staffAssignments, materialised, staffById);
-  const coverageViolations = checkCoverageRules(p, materialised, coverageRules);
+  const coverageViolations = checkCoverageRules(p, materialised, coverageRules, staffAssignments);
   const overlapViolations = await checkPatternOverlap(db, p, staffAssignments);
 
   const all = [...factoriesActViolations, ...coverageViolations, ...overlapViolations];

@@ -7,6 +7,7 @@ import {
   scheduleGenerationQueue,
   escalationsQueue,
   notificationsQueue,
+  rosterMaterialisationQueue,
 } from '@safecommand/queue';
 import { getServiceClient } from '@safecommand/db';
 import type {
@@ -182,6 +183,80 @@ async function processTemplateTick(job: Job<ScheduleGenerationJob>): Promise<voi
   }
 }
 
+/* ─── Roster rolling-horizon tick (Pass 3c-i) ─────────────────────────────
+   Daily cron at 00:30 IST. Scans every PUBLISHED roster_pattern across all
+   venues and enqueues a 30-day materialisation job. Idempotent via the
+   worker's find-or-create writes; safe to re-run within the same day.
+
+   Worker-paused contract (ADR 0005): the cron registration happens inside
+   the WORKERS_PAUSED=false branch, alongside the workers themselves. While
+   paused, no cron, no enqueues. When June 1 flips the flag, the cron starts
+   firing nightly and the materialisation worker drains naturally.
+────────────────────────────────────────────────────────────────────────── */
+async function processRosterRollingHorizonTick(): Promise<void> {
+  const db = getServiceClient();
+  const today = new Date().toISOString().slice(0, 10);
+  const horizonEnd = (() => {
+    const d = new Date(today + 'T00:00:00Z');
+    d.setUTCDate(d.getUTCDate() + 30);
+    return d.toISOString().slice(0, 10);
+  })();
+
+  // Service-role read scans all venues (cross-tenant scan is legitimate here
+  // — the scheduler operates on behalf of the platform, not a tenant).
+  const { data: patterns, error } = await db
+    .from('roster_patterns')
+    .select('id, venue_id, effective_from, effective_to')
+    .eq('status', 'PUBLISHED');
+
+  if (error) {
+    logger.error({ error }, 'Rolling-horizon scan failed');
+    return;
+  }
+  if (!patterns || patterns.length === 0) {
+    logger.info('Rolling-horizon tick: no PUBLISHED patterns');
+    return;
+  }
+
+  let enqueued = 0;
+  let skipped = 0;
+  for (const p of patterns as Array<{
+    id: string;
+    venue_id: string;
+    effective_from: string;
+    effective_to: string | null;
+  }>) {
+    // Skip patterns whose effective_to is already in the past.
+    if (p.effective_to && p.effective_to < today) { skipped++; continue; }
+    // Clamp from_date if today is before effective_from (future pattern).
+    const fromDate = today >= p.effective_from ? today : p.effective_from;
+
+    // jobId scoped to (pattern, day) — BullMQ dedupes if a job with the same id
+    // already exists, so multiple cron firings on the same day are a no-op.
+    const jobId = `rolling-horizon__${p.id}__${today}`;
+    try {
+      await rosterMaterialisationQueue.add(
+        'pattern-rolling-horizon',
+        {
+          venue_id: p.venue_id,
+          pattern_id: p.id,
+          from_date: fromDate,
+          to_date: horizonEnd,
+          trigger: 'ROLLING_HORIZON',
+        },
+        { jobId, deduplication: { id: jobId } },
+      );
+      enqueued++;
+    } catch (err) {
+      logger.warn({ err, pattern_id: p.id }, 'Rolling-horizon enqueue failed (per-pattern)');
+    }
+  }
+  logger.info(
+    { patterns: patterns.length, enqueued, skipped, today, horizonEnd },
+    'Rolling-horizon tick complete',
+  );
+}
+
 /* ─── Pause control ──────────────────────────────────────────────────────── */
 // Set WORKERS_PAUSED=true in Railway env to idle this service without code changes.
 // Default = unset/false = normal operation. See AWS-process-doc-IMP.md §11.4.
@@ -200,6 +275,7 @@ if (WORKERS_PAUSED) {
     QUEUE_NAMES.SCHEDULE_GENERATION,
     async (job) => {
       if (job.name === 'master-tick') return processMasterTick();
+      if (job.name === 'roster-rolling-horizon-tick') return processRosterRollingHorizonTick();
       return processTemplateTick(job as Job<ScheduleGenerationJob>);
     },
     {
@@ -249,9 +325,9 @@ async function registerMasterTick(): Promise<void> {
   // Remove any stale repeatable tick definitions first (handles redeploys)
   const repeatables = await scheduleGenerationQueue.getRepeatableJobs();
   for (const r of repeatables) {
-    if (r.name === 'master-tick') {
+    if (r.name === 'master-tick' || r.name === 'roster-rolling-horizon-tick') {
       await scheduleGenerationQueue.removeRepeatableByKey(r.key);
-      logger.info({ key: r.key }, 'Removed stale repeatable tick');
+      logger.info({ key: r.key, name: r.name }, 'Removed stale repeatable tick');
     }
   }
 
@@ -284,6 +360,21 @@ async function registerMasterTick(): Promise<void> {
     },
   );
   logger.info({ tick_ms: TICK_MS }, 'Master tick registered');
+
+  // ─── Roster rolling-horizon nightly tick (Pass 3c-i) ────────────────
+  // 00:30 IST every day — extends the materialised horizon for every
+  // PUBLISHED roster_pattern. Cron uses BullMQ's repeat.pattern with
+  // tz='Asia/Kolkata'. Worker-paused until June 1; nothing fires until
+  // the unfreeze.
+  await (scheduleGenerationQueue as Queue).add(
+    'roster-rolling-horizon-tick',
+    {} as ScheduleGenerationJob,
+    {
+      repeat: { pattern: '30 0 * * *', tz: 'Asia/Kolkata' },
+      jobId: 'roster-rolling-horizon-singleton',
+    },
+  );
+  logger.info('Roster rolling-horizon tick registered (00:30 IST daily)');
 }
 
   registerMasterTick()
