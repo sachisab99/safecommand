@@ -37,6 +37,67 @@ staffRouter.get('/on-duty', async (req: Request, res: Response): Promise<void> =
   res.json(data);
 });
 
+// ──────────────────────────────────────────────────────────────────────────
+// GET /v1/staff/me/assignments — Pattern Engine Pass 5b-ii
+//
+// Returns the caller's own future staff_zone_assignments with shift_instance
+// + shift + zone metadata pre-joined, so the mobile propose-swap modal has
+// a single round-trip data source. Defaults to next 30 days; query params
+// `?from=YYYY-MM-DD&to=YYYY-MM-DD` allow custom window.
+//
+// Any authenticated role — staff sees own only (req.auth.staff_id pin).
+// Past assignments deliberately excluded (a swap on a closed shift is
+// nonsensical). Cap window at 90 days to prevent runaway scans.
+
+const DATE_RE_STAFF = /^\d{4}-\d{2}-\d{2}$/;
+
+staffRouter.get('/me/assignments', async (req: Request, res: Response): Promise<void> => {
+  const today = new Date().toISOString().slice(0, 10);
+  const defaultEnd = (() => {
+    const d = new Date(today + 'T00:00:00Z');
+    d.setUTCDate(d.getUTCDate() + 30);
+    return d.toISOString().slice(0, 10);
+  })();
+
+  const qFrom = typeof req.query['from'] === 'string' ? (req.query['from'] as string) : today;
+  const qTo = typeof req.query['to'] === 'string' ? (req.query['to'] as string) : defaultEnd;
+
+  if (!DATE_RE_STAFF.test(qFrom) || !DATE_RE_STAFF.test(qTo)) {
+    res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'from / to must be YYYY-MM-DD' } });
+    return;
+  }
+  if (qTo < qFrom) {
+    res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'to must be on or after from' } });
+    return;
+  }
+  const spanDays = Math.floor((Date.parse(qTo) - Date.parse(qFrom)) / 86_400_000) + 1;
+  if (spanDays > 90) {
+    res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'window capped at 90 days' } });
+    return;
+  }
+
+  // Join via nested select on shift_instance + shift + zone. PostgREST resolves
+  // the FK relationships; we filter by shift_date inside the embedded resource.
+  const { data, error } = await getServiceClient()
+    .from('staff_zone_assignments')
+    .select(
+      'id, shift_instance_id, zone_id, assignment_type, ' +
+      'shift_instances!inner(id, shift_date, shift_id, status, shifts(id, name, start_time, end_time)), ' +
+      'zones(id, name)',
+    )
+    .eq('venue_id', req.auth.venue_id)
+    .eq('staff_id', req.auth.staff_id)
+    .gte('shift_instances.shift_date', qFrom)
+    .lte('shift_instances.shift_date', qTo)
+    .order('shift_instances(shift_date)', { ascending: true });
+
+  if (error) {
+    res.status(500).json({ error: { code: 'QUERY_FAILED', message: 'Could not fetch assignments' } });
+    return;
+  }
+  res.json(data ?? []);
+});
+
 // Roles that an SH/DSH can add to their venue. Excludes peer/higher roles
 // (SH, GM, AUDITOR) to prevent privilege escalation. SC Ops Console retains
 // full role-creation authority via service-role key (which bypasses this

@@ -139,3 +139,126 @@ export async function withdrawSwap(id: string): Promise<{ error: string | null }
   });
   return { error };
 }
+
+// ─── Propose-swap helpers — Pass 5b-ii ───────────────────────────────────
+
+/**
+ * The /v1/staff/me/assignments response shape — joined shift_instance +
+ * shift + zone metadata for the propose-swap picker. Matches the PostgREST
+ * nested-select payload.
+ */
+export interface MyAssignmentRow {
+  id: string;
+  shift_instance_id: string;
+  zone_id: string;
+  assignment_type: 'PRIMARY' | 'SECONDARY' | 'BACKUP' | null;
+  shift_instances: {
+    id: string;
+    shift_date: string;
+    shift_id: string;
+    status: string;
+    shifts: {
+      id: string;
+      name: string | null;
+      start_time: string;
+      end_time: string;
+    } | null;
+  } | null;
+  zones: {
+    id: string;
+    name: string;
+  } | null;
+}
+
+/** Flatter UX-ready shape derived from MyAssignmentRow. */
+export interface AssignmentForPicker {
+  assignment_id: string;
+  shift_instance_id: string;
+  shift_date: string;
+  shift_label: string;
+  zone_name: string;
+  assignment_type: string;
+}
+
+function flattenAssignment(r: MyAssignmentRow): AssignmentForPicker | null {
+  const si = r.shift_instances;
+  const sh = si?.shifts;
+  const zn = r.zones;
+  if (!si || !sh || !zn) return null;
+  const label = sh.name ?? `${sh.start_time.slice(0, 5)}-${sh.end_time.slice(0, 5)}`;
+  return {
+    assignment_id: r.id,
+    shift_instance_id: r.shift_instance_id,
+    shift_date: si.shift_date,
+    shift_label: label,
+    zone_name: zn.name,
+    assignment_type: r.assignment_type ?? 'PRIMARY',
+  };
+}
+
+export async function fetchMyAssignments(): Promise<{
+  rows: AssignmentForPicker[];
+  error: string | null;
+}> {
+  const session = await getStoredSession();
+  if (!session) return { rows: [], error: 'Not authenticated' };
+  const { data, error } = await apiFetch<MyAssignmentRow[]>('/staff/me/assignments', {
+    token: session.access_token,
+  });
+  if (error) return { rows: [], error };
+  const flattened = (data ?? []).map(flattenAssignment).filter((x): x is AssignmentForPicker => x !== null);
+  return { rows: flattened, error: null };
+}
+
+/** Counterpart-picker source — already exists at /v1/staff but command-role-gated.
+ *  For non-command callers, the api returns 403. Caller surfaces this gracefully:
+ *  "You can propose DROPs without a counterpart. SWAP/COVER needs SH coordination
+ *   for now." */
+export interface StaffListRow {
+  id: string;
+  name: string;
+  role: string;
+  is_active: boolean;
+}
+
+export async function fetchVenueStaff(): Promise<{
+  rows: StaffListRow[];
+  error: string | null;
+}> {
+  const session = await getStoredSession();
+  if (!session) return { rows: [], error: 'Not authenticated' };
+  const { data, error } = await apiFetch<StaffListRow[]>('/staff', {
+    token: session.access_token,
+  });
+  if (error) return { rows: [], error };
+  return { rows: (data ?? []).filter((s) => s.is_active), error: null };
+}
+
+export interface ProposeSwapInput {
+  swap_type: SwapType;
+  original_assignment_id: string;
+  counterpart_staff_id?: string;       // SWAP + COVER only
+  counterpart_assignment_id?: string;  // SWAP only
+  reason_text?: string;
+}
+
+export async function proposeSwap(input: ProposeSwapInput): Promise<{
+  row: ShiftSwapRow | null;
+  error: string | null;
+}> {
+  const session = await getStoredSession();
+  if (!session) return { row: null, error: 'Not authenticated' };
+  const body: Record<string, unknown> = {
+    swap_type: input.swap_type,
+    original_assignment_id: input.original_assignment_id,
+  };
+  if (input.counterpart_staff_id) body['counterpart_staff_id'] = input.counterpart_staff_id;
+  if (input.counterpart_assignment_id) body['counterpart_assignment_id'] = input.counterpart_assignment_id;
+  if (input.reason_text) body['reason_text'] = input.reason_text;
+  const { data, error } = await apiFetch<ShiftSwapRow>('/shift-swaps', {
+    method: 'POST',
+    token: session.access_token,
+    body: JSON.stringify(body),
+  });
+  return { row: data, error };
+}

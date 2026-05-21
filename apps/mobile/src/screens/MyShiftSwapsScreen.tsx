@@ -1,6 +1,6 @@
 /**
  * MyShiftSwapsScreen — staff self-service for shift-swap workflow (BR-AP).
- * Pattern Engine Pass 5b — Phase 5.24.
+ * Pattern Engine Pass 5b + 5b-ii — Phase 5.24.
  *
  * Three sections (when populated):
  *   1) "Awaiting your response" — incoming swap requests where the staff
@@ -11,10 +11,13 @@
  *   3) "Closed history" — APPROVED / REJECTED / DECLINED / WITHDRAWN.
  *      View-only.
  *
- * PROPOSE-SWAP CREATION  is Pass 5b-ii — needs an assignment picker
- * pattern (likely backed by a new GET /v1/staff/me/assignments endpoint).
- * This pass covers the incoming-response surface fully; the propose-flow
- * adds a "+ Propose Swap" FAB once that's designed.
+ * PROPOSE-SWAP CREATION (Pass 5b-ii): + Propose Swap FAB → bottom-sheet
+ * modal. Picks: swap_type (DROP/COVER/SWAP) → my assignment (from
+ * /v1/staff/me/assignments — new Pass 5b-ii backend endpoint) →
+ * counterpart staff (COVER + SWAP only, from /v1/staff which is command-
+ * role-gated; SWAP additionally needs counterpart's assignment which
+ * is not yet exposed — SWAP picker shows the gated state and asks user
+ * to coordinate via SH).
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -22,9 +25,14 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -34,9 +42,15 @@ import {
   declineSwap,
   withdrawSwap,
   bucketSwaps,
+  fetchMyAssignments,
+  fetchVenueStaff,
+  proposeSwap,
   SWAP_TYPE_LABEL,
   STATE_LABEL,
   type ShiftSwapRow,
+  type AssignmentForPicker,
+  type StaffListRow,
+  type SwapType,
 } from '../services/shiftSwaps';
 import {
   Screen,
@@ -81,6 +95,7 @@ export function MyShiftSwapsScreen({ staffId, staffName, onBack }: Props): React
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [proposeOpen, setProposeOpen] = useState(false);
 
   const load = useCallback(async (isRefresh = false): Promise<void> => {
     if (isRefresh) setRefreshing(true);
@@ -266,7 +281,282 @@ export function MyShiftSwapsScreen({ staffId, staffName, onBack }: Props): React
           }
         />
       )}
+
+      {/* + Propose Swap FAB — Pass 5b-ii */}
+      <TouchableOpacity
+        style={[s.fab, { backgroundColor: brand.primary_colour }]}
+        onPress={() => setProposeOpen(true)}
+        hitSlop={touch.hitSlop}
+        accessibilityLabel="Propose swap"
+      >
+        <Text style={[s.fabText, { color: '#fff' }]}>+ Propose Swap</Text>
+      </TouchableOpacity>
+
+      {proposeOpen && (
+        <ProposeSwapModal
+          onClose={() => setProposeOpen(false)}
+          onSubmitted={() => { setProposeOpen(false); void load(true); }}
+        />
+      )}
     </Screen>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Propose-swap modal — Pass 5b-ii
+// Three swap types, two with counterpart picker:
+//   DROP  — pick my assignment + reason; SH approves directly
+//   COVER — pick my assignment + pick counterpart + reason
+//   SWAP  — pick my assignment + pick counterpart + counterpart assignment + reason
+//           (counterpart-assignment picker is Pass 5b-iii; for now SWAP is gated
+//            with a TODO that tells the user to coordinate via SH)
+
+function ProposeSwapModal({
+  onClose, onSubmitted,
+}: {
+  onClose: () => void;
+  onSubmitted: () => void;
+}) {
+  const c = useColours();
+  const brand = useBrand();
+
+  const [swapType, setSwapType] = useState<SwapType>('DROP');
+  const [assignments, setAssignments] = useState<AssignmentForPicker[]>([]);
+  const [staffList, setStaffList] = useState<StaffListRow[]>([]);
+  const [chosenAssignment, setChosenAssignment] = useState<string | null>(null);
+  const [chosenCounterpart, setChosenCounterpart] = useState<string | null>(null);
+  const [reason, setReason] = useState('');
+  const [loadingMeta, setLoadingMeta] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [formErr, setFormErr] = useState<string | null>(null);
+  const [staffListErr, setStaffListErr] = useState<string | null>(null);
+
+  // Load meta on mount
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      const [asgRes, stRes] = await Promise.all([fetchMyAssignments(), fetchVenueStaff()]);
+      if (cancelled) return;
+      if (asgRes.error) setFormErr(asgRes.error);
+      else setAssignments(asgRes.rows);
+      // Staff list endpoint is command-role-gated — non-command callers get 403.
+      // Surface that as an inline note rather than a hard error.
+      if (stRes.error) setStaffListErr(stRes.error);
+      else setStaffList(stRes.rows);
+      setLoadingMeta(false);
+    }
+    void load();
+    return () => { cancelled = true; };
+  }, []);
+
+  function reset(newType: SwapType) {
+    setSwapType(newType);
+    setChosenCounterpart(null);
+    setFormErr(null);
+  }
+
+  async function handleSubmit(): Promise<void> {
+    setFormErr(null);
+    if (!chosenAssignment) {
+      setFormErr('Pick the shift you want to swap or drop');
+      return;
+    }
+    if (swapType !== 'DROP' && !chosenCounterpart) {
+      setFormErr('Pick a counterpart staff member');
+      return;
+    }
+    if (swapType === 'SWAP') {
+      setFormErr('SWAP type from mobile is coming in a follow-up release — choose COVER or DROP for now, or coordinate the swap via your SH');
+      return;
+    }
+    setSubmitting(true);
+    const { error: err } = await proposeSwap({
+      swap_type: swapType,
+      original_assignment_id: chosenAssignment,
+      ...(swapType !== 'DROP' && chosenCounterpart ? { counterpart_staff_id: chosenCounterpart } : {}),
+      ...(reason.trim() !== '' ? { reason_text: reason.trim() } : {}),
+    });
+    setSubmitting(false);
+    if (err) { setFormErr(err); return; }
+    onSubmitted();
+  }
+
+  return (
+    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
+      <View style={ms.backdrop}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={ms.kbWrap}
+        >
+          <View style={[ms.sheet, { backgroundColor: c.background }]}>
+            <View style={[ms.header, { borderBottomColor: c.divider }]}>
+              <Text style={[ms.handle, { backgroundColor: c.textDisabled }]} />
+              <Text style={[ms.title, { color: c.textPrimary }]}>Propose Swap</Text>
+              <Text style={[ms.subtitle, { color: c.textMuted }]}>
+                Your Security Head reviews + approves
+              </Text>
+            </View>
+
+            <ScrollView contentContainerStyle={ms.body} keyboardShouldPersistTaps="handled">
+              {/* Type chips */}
+              <Text style={[ms.label, { color: c.textPrimary }]}>Swap type</Text>
+              <View style={ms.chipRow}>
+                {(['DROP', 'COVER', 'SWAP'] as SwapType[]).map((t) => {
+                  const selected = swapType === t;
+                  return (
+                    <TouchableOpacity
+                      key={t}
+                      onPress={() => reset(t)}
+                      style={[
+                        ms.chip,
+                        { borderColor: selected ? brand.primary_colour : c.borderStrong, backgroundColor: selected ? brand.primary_colour : c.background },
+                      ]}
+                      hitSlop={touch.hitSlop}
+                    >
+                      <Text style={[ms.chipText, { color: selected ? '#fff' : c.textPrimary }]}>
+                        {SWAP_TYPE_LABEL[t]}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {loadingMeta ? (
+                <View style={ms.loadingBlock}>
+                  <ActivityIndicator color={brand.primary_colour} />
+                  <Text style={[ms.loadingText, { color: c.textMuted }]}>Loading your shifts…</Text>
+                </View>
+              ) : (
+                <>
+                  {/* Assignment picker */}
+                  <Text style={[ms.label, { color: c.textPrimary, marginTop: spacing.md }]}>
+                    Your upcoming shifts ({assignments.length})
+                  </Text>
+                  {assignments.length === 0 ? (
+                    <Text style={[ms.helperText, { color: c.textMuted }]}>
+                      You have no upcoming shift assignments in the next 30 days.
+                    </Text>
+                  ) : (
+                    assignments.map((a) => {
+                      const selected = chosenAssignment === a.assignment_id;
+                      return (
+                        <TouchableOpacity
+                          key={a.assignment_id}
+                          onPress={() => setChosenAssignment(a.assignment_id)}
+                          style={[
+                            ms.optionCard,
+                            { borderColor: selected ? brand.primary_colour : c.borderStrong, backgroundColor: selected ? c.surface : c.background },
+                          ]}
+                          hitSlop={touch.hitSlop}
+                        >
+                          <Text style={[ms.optionTitle, { color: c.textPrimary }]}>
+                            {a.shift_date} · {a.shift_label}
+                          </Text>
+                          <Text style={[ms.optionMeta, { color: c.textMuted }]}>
+                            {a.zone_name} · {a.assignment_type}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })
+                  )}
+
+                  {/* Counterpart picker — COVER + SWAP only */}
+                  {(swapType === 'COVER' || swapType === 'SWAP') && (
+                    <>
+                      <Text style={[ms.label, { color: c.textPrimary, marginTop: spacing.md }]}>
+                        Counterpart staff
+                      </Text>
+                      {staffListErr ? (
+                        <Text style={[ms.helperText, { color: c.severity.SEV1 }]}>
+                          You can't see the venue staff list. SWAP / COVER need your SH to assist
+                          for now — or use DROP and let the SH find a replacement.
+                        </Text>
+                      ) : staffList.length === 0 ? (
+                        <Text style={[ms.helperText, { color: c.textMuted }]}>No other staff in this venue.</Text>
+                      ) : (
+                        staffList.map((s) => {
+                          const selected = chosenCounterpart === s.id;
+                          return (
+                            <TouchableOpacity
+                              key={s.id}
+                              onPress={() => setChosenCounterpart(s.id)}
+                              style={[
+                                ms.optionCard,
+                                { borderColor: selected ? brand.primary_colour : c.borderStrong, backgroundColor: selected ? c.surface : c.background },
+                              ]}
+                              hitSlop={touch.hitSlop}
+                            >
+                              <Text style={[ms.optionTitle, { color: c.textPrimary }]}>{s.name}</Text>
+                              <Text style={[ms.optionMeta, { color: c.textMuted }]}>{s.role}</Text>
+                            </TouchableOpacity>
+                          );
+                        })
+                      )}
+                    </>
+                  )}
+
+                  {/* SWAP-specific note */}
+                  {swapType === 'SWAP' && (
+                    <View style={[ms.errBox, { backgroundColor: c.severity.SEV1_BG, borderLeftColor: c.severity.SEV1 }]}>
+                      <Text style={[ms.errText, { color: c.severity.SEV1 }]}>
+                        SWAP requires picking the counterpart's specific assignment — that picker
+                        ships in the next release. For now, choose COVER or DROP, or ask your SH
+                        to set up the SWAP from the dashboard.
+                      </Text>
+                    </View>
+                  )}
+
+                  {/* Reason */}
+                  <Text style={[ms.label, { color: c.textPrimary, marginTop: spacing.md }]}>Reason (optional)</Text>
+                  <TextInput
+                    value={reason}
+                    onChangeText={setReason}
+                    placeholder="Brief note for your SH and counterpart"
+                    placeholderTextColor={c.textDisabled}
+                    multiline
+                    numberOfLines={3}
+                    style={[ms.input, ms.textArea, { backgroundColor: c.surface, color: c.textPrimary, borderColor: c.borderStrong }]}
+                  />
+                </>
+              )}
+
+              {formErr && (
+                <View style={[ms.errBox, { backgroundColor: c.severity.SEV1_BG, borderLeftColor: c.severity.SEV1 }]}>
+                  <Text style={[ms.errText, { color: c.severity.SEV1 }]}>{formErr}</Text>
+                </View>
+              )}
+            </ScrollView>
+
+            <View style={[ms.footer, { borderTopColor: c.divider }]}>
+              <TouchableOpacity
+                onPress={onClose}
+                style={[ms.btn, { borderColor: c.borderStrong, backgroundColor: c.background }]}
+                hitSlop={touch.hitSlop}
+              >
+                <Text style={[ms.btnText, { color: c.textPrimary }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => void handleSubmit()}
+                disabled={submitting || loadingMeta}
+                style={[
+                  ms.btn,
+                  { backgroundColor: brand.primary_colour, opacity: submitting || loadingMeta ? 0.6 : 1 },
+                ]}
+                hitSlop={touch.hitSlop}
+              >
+                {submitting ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={[ms.btnText, { color: '#fff', fontWeight: fontWeight.bold }]}>
+                    Submit
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </View>
+    </Modal>
   );
 }
 
@@ -412,10 +702,21 @@ const s = StyleSheet.create({
   errorText: { fontSize: fontSize.body, textAlign: 'center', maxWidth: 300, marginBottom: spacing.md },
   retryBtn: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderWidth: 1, borderRadius: radius.sm },
   retryText: { fontSize: fontSize.body, fontWeight: fontWeight.medium },
-  list: { padding: spacing.lg, paddingBottom: spacing['2xl'] },
+  list: { padding: spacing.lg, paddingBottom: spacing['3xl'] + 60 },
   sectionHeader: { marginTop: spacing.sm, marginBottom: spacing.sm },
   sectionTitle: { fontSize: fontSize.bodyLarge, fontWeight: fontWeight.bold },
   sectionSubtitle: { fontSize: fontSize.caption, marginTop: 2 },
+  fab: {
+    position: 'absolute',
+    bottom: spacing.lg,
+    left: spacing.lg,
+    right: spacing.lg,
+    paddingVertical: spacing.md,
+    borderRadius: radius.lg,
+    alignItems: 'center',
+    ...shadow.md,
+  },
+  fabText: { fontSize: fontSize.bodyLarge, fontWeight: fontWeight.bold },
 });
 
 const rs = StyleSheet.create({
@@ -444,4 +745,51 @@ const rs = StyleSheet.create({
   acceptBtn: {},
   declineBtn: { borderWidth: 1, backgroundColor: 'transparent' },
   actionBtnText: { fontSize: fontSize.caption, fontWeight: fontWeight.medium },
+});
+
+const ms = StyleSheet.create({
+  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
+  kbWrap: { width: '100%' },
+  sheet: { borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, maxHeight: '92%', minHeight: '60%' },
+  header: { padding: spacing.lg, borderBottomWidth: 1, alignItems: 'center' },
+  handle: { width: 36, height: 4, borderRadius: 2, marginBottom: spacing.md },
+  title: { fontSize: fontSize.h5, fontWeight: fontWeight.bold },
+  subtitle: { fontSize: fontSize.caption, marginTop: spacing.xs },
+  body: { padding: spacing.lg, paddingBottom: spacing.xl },
+  label: { fontSize: fontSize.caption, fontWeight: fontWeight.medium, marginBottom: spacing.sm },
+  helperText: { fontSize: fontSize.caption, fontStyle: 'italic', marginBottom: spacing.sm },
+  loadingBlock: { padding: spacing.xl, alignItems: 'center' },
+  loadingText: { fontSize: fontSize.caption, marginTop: spacing.sm },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  chip: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.pill, borderWidth: 1 },
+  chipText: { fontSize: fontSize.caption, fontWeight: fontWeight.medium },
+  optionCard: {
+    padding: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    marginBottom: spacing.sm,
+  },
+  optionTitle: { fontSize: fontSize.body, fontWeight: fontWeight.medium },
+  optionMeta: { fontSize: fontSize.caption, marginTop: 2 },
+  input: {
+    borderWidth: 1,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    fontSize: fontSize.body,
+  },
+  textArea: { minHeight: 70, textAlignVertical: 'top' },
+  errBox: { marginTop: spacing.md, padding: spacing.md, borderRadius: radius.md, borderLeftWidth: 4 },
+  errText: { fontSize: fontSize.caption, fontWeight: fontWeight.medium },
+  footer: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.md, padding: spacing.lg, borderTopWidth: 1 },
+  btn: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    minWidth: 100,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  btnText: { fontSize: fontSize.body, fontWeight: fontWeight.medium },
 });
