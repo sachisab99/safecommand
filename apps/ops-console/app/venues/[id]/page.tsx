@@ -258,6 +258,14 @@ export default async function VenueDetailPage({
               <span><strong className="text-gray-900">{staff.length}</strong> staff</span>
             </div>
           </div>
+          <div className="mt-3 flex gap-3 text-sm">
+            <Link
+              href={`/venues/${id}/patterns`}
+              className="inline-flex items-center px-3 py-1 rounded border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+            >
+              Roster patterns →
+            </Link>
+          </div>
         </div>
       </header>
 
