@@ -146,7 +146,15 @@ $$;
 -- Grant execute to authenticated (RLS still applies on shift_swap_requests
 -- + staff_zone_assignments; SECURITY INVOKER means the policies gate the
 -- function's reads/writes the same as direct table access).
+--
+-- ★ Supabase-specific belt-and-braces: Supabase auto-grants EXECUTE on
+-- new public-schema functions to BOTH `public` pseudo-role AND `anon`
+-- explicitly (same auto-grant pattern as Hard Rule 25 catches for views).
+-- REVOKE FROM PUBLIC alone does NOT remove the explicit anon grant, so
+-- we revoke from both. Verified by the DO block below — runs anon-grant
+-- check after the GRANTs.
 REVOKE ALL ON FUNCTION approve_shift_swap(UUID, UUID) FROM PUBLIC;
+REVOKE ALL ON FUNCTION approve_shift_swap(UUID, UUID) FROM anon;
 GRANT EXECUTE ON FUNCTION approve_shift_swap(UUID, UUID) TO authenticated;
 GRANT EXECUTE ON FUNCTION approve_shift_swap(UUID, UUID) TO service_role;
 
