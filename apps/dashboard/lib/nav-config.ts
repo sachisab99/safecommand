@@ -34,6 +34,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'Operations',
     items: [
       { id: 'shifts',    label: 'Shifts & Roster', icon: '🛡', href: '/shifts',    enabled: true },
+      { id: 'patterns',  label: 'Roster Patterns', icon: '🗓', href: '/patterns',  enabled: true, newBadge: true },
       { id: 'tasks',     label: 'Tasks',           icon: '✓', href: '/tasks',     enabled: false },
       { id: 'handovers', label: 'Shift Handovers', icon: '⇄', href: '/handovers', enabled: true },
       { id: 'briefings', label: 'Briefings',       icon: '🎙', href: '/briefings', enabled: false },
