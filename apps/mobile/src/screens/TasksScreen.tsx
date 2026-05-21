@@ -131,6 +131,7 @@ interface Props {
   onRoster: () => void;
   onHandover: () => void;
   onMyLeave: () => void;
+  onMyShiftSwaps: () => void;
   onDrillDetail: (drillId: string) => void;
 }
 
@@ -151,6 +152,7 @@ export function TasksScreen({
   onRoster,
   onHandover,
   onMyLeave,
+  onMyShiftSwaps,
   onDrillDetail,
 }: Props): React.JSX.Element {
   const c = useColours();
@@ -455,6 +457,15 @@ export function TasksScreen({
           label: 'My Leave',
           icon: '🌴',
           onPress: onMyLeave,
+        } as const,
+        // BR-AP — staff self-service for shift-swap workflow.
+        // All roles — view incoming requests (as counterpart), accept/decline,
+        // view own outgoing requests, withdraw. Propose-swap creation = Pass 5b-ii.
+        {
+          key: 'myShiftSwaps',
+          label: 'My Shift Swaps',
+          icon: '⇄',
+          onPress: onMyShiftSwaps,
         } as const,
         // SH/DSH only — gated server-side too (api 403 if non-SH/DSH attempts).
         // Per Plan §11 Role × Permission Matrix: "Add / remove staff" = FULL
